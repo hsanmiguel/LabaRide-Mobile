@@ -1,0 +1,188 @@
+name: advancedb_project
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.7.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  http: ^1.1.0
+  flutter_map: ^6.1.0
+  flutter_map_cancellable_tile_provider: ^1.0.0
+  latlong2: ^0.9.0
+  intl: ^0.20.2
+  google_maps_flutter: ^2.5.3
+  geolocator: ^10.1.0
+  geocoding: ^2.1.1
+  permission_handler: ^11.3.0
+  socket_io_client: ^2.0.3+1
+  flutter_launcher_icons: ^0.14.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter_icons:
+  android: true
+  ios: true
+  windows: true
+  macos: true
+  linux: true
+  image: assets/logosplash.jpg
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    # User Icon
+    - assets/Login.png
+    - assets/logosplash.jpg
+    - assets/welcome.png
+    - assets/how.png
+    - assets/whitelogo.png
+    - assets/blacklogo.png
+    - assets/backarrow.png
+    - assets/facebook.png
+    - assets/google.png
+    - assets/loginadmin.png
+    - assets/activities.png
+    - assets/birthdate.png
+    - assets/contact.png
+    - assets/edit.png
+    - assets/gender.png
+    - assets/home.png
+    - assets/locationblue.png
+    - assets/locationwhite.png
+    - assets/mail.png
+    - assets/profile.png
+    - assets/search.png
+    - assets/backarrowblue.png
+    - assets/transaction.png
+    - assets/delivery.png
+    - assets/shop.png
+    - assets/washonly.png
+    - assets/laundryshop.png
+    - assets/maps.png
+    - assets/lavandera.png
+    - assets/viewallicon.png
+    - assets/basket.png
+    - assets/bluecircle.png
+    - assets/bluepeso.png
+    - assets/blueplus.png
+    - assets/downarrow.png
+    - assets/drycleanpic.png
+    - assets/lavanderakocover.png
+    - assets/peso.png
+    - assets/pickuplaundry.png
+    - assets/star.png
+    - assets/steampresspic.png
+    - assets/circlebackarrow.png
+    - assets/laundryiconmap.png
+    - assets/mapa.png
+    - assets/washingmachine.png
+    - assets/lavanderaakoprfile.png
+    - assets/Time.png
+    - assets/pinkgift.png
+    - assets/bluegift.png
+    - assets/yellowgift.png
+
+    # Admin Icons
+    - assets/adminIcon/3stars.png
+    - assets/adminIcon/4stars.png
+    - assets/adminIcon/5stars.png
+    - assets/adminIcon/backarrow.png
+    - assets/adminIcon/bluedash.png   
+    - assets/adminIcon/ellipseblue.png
+    - assets/adminIcon/ellipsewhite.png
+    - assets/adminIcon/Group.png
+    - assets/adminIcon/happyface.png
+    - assets/adminIcon/home.png
+    - assets/adminIcon/Line.png
+    - assets/adminIcon/line1.png
+    - assets/adminIcon/neutralface.png
+    - assets/adminIcon/notificationwhite.png
+    - assets/adminIcon/Oval.png
+    - assets/adminIcon/people.png
+    - assets/adminIcon/Rectangle.png
+    - assets/adminIcon/Rectangleblue.png
+    - assets/adminIcon/reddot.png
+    - assets/adminIcon/sadface.png
+    - assets/adminIcon/servicesicon.png
+    - assets/adminIcon/star.png
+    - assets/adminIcon/washonly.png
+    - assets/adminIcon/bell.png
+
+    # Order Screen Icons
+    - assets/OrderScreenIcon/Accepted.png
+    - assets/OrderScreenIcon/Active.png
+    - assets/OrderScreenIcon/All.png
+    - assets/OrderScreenIcon/Cancelled.png
+    - assets/OrderScreenIcon/Completed.png
+    - assets/OrderScreenIcon/Customers.png
+    - assets/OrderScreenIcon/Home.png
+    - assets/OrderScreenIcon/Orders.png
+    - assets/OrderScreenIcon/Profile.png
+    - assets/OrderScreenIcon/Scroll.png
+    - assets/OrderScreenIcon/Search.png
+    - assets/OrderScreenIcon/Services.png
+    - assets/OrderScreenIcon/Checklist.png
+
+    # Profile Screen Icons
+    - assets/ProfileScreen/Customers.png
+    - assets/ProfileScreen/Home.png
+    - assets/ProfileScreen/Orders.png
+    - assets/ProfileScreen/Header.png
+    - assets/ProfileScreen/Location.png
+    - assets/ProfileScreen/Logout.png
+    - assets/ProfileScreen/Security.png
+    - assets/ProfileScreen/Payment.png
+    - assets/ProfileScreen/Profile.png
+    - assets/ProfileScreen/Shop.png
+    - assets/ProfileScreen/Star.png
+    - assets/ProfileScreen/Services.png
+
+    # Admin Account Info
+    - assets/AccountInfo/Change.png
+    - assets/AccountInfo/Edit.png
+    - assets/AccountInfo/Logo.png
+
+    # Admin 
+    - assets/Admin/Address.png
+    - assets/Admin/Call.png
+    - assets/Admin/Change.png
+    - assets/Admin/Edit.png
+    - assets/Admin/Sample.png
+    - assets/Admin/Authenticate.png
+    - assets/Admin/Email.png
+    - assets/Admin/Contain.png
+    - assets/Admin/Email.png
+    - assets/Admin/SMS.png
+    - assets/Admin/Success.png
+    - assets/Admin/Turn.png
+    - assets/Admin/BlackLogo.png
+
+    # Decline Order Icons
+    - assets/DeclineOrderIcon/NotAvailable.png
+    - assets/DeclineOrderIcon/Shop.png
+    - assets/DeclineOrderIcon/Time.png
+    - assets/DeclineOrderIcon/purplelogo.png
+
+    # Services Screen Icons
+    - assets/ServicesScreen/typeclothes.png
+    - assets/ServicesScreen/householditems.png
+
+  # fonts:
+  #   - family: Poppins
+  #     fonts:
+  #       - asset: fonts/Poppins-Regular.ttf
+  #       - asset: fonts/Poppins-Bold.ttf
+  #         weight: 700
+  #       - asset: fonts/Poppins-Medium.ttf
+  #         weight: 500
+  #       - asset: fonts/Poppins-SemiBold.ttf
+  #         weight: 600

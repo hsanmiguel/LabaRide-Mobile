@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LabaRide MVP</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Figtree:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#EEF4F6; --card:#FFFFFF; --ink:#12303F; --muted:#5B7482; --line:#D3E0E6;
+  --accent:#0B7F74; --accent-ink:#FFFFFF; --soft:#DDF1EE; --sun:#E9A23B; --sun-soft:#FBEFD8; --danger:#B3402E;
+  --head:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1D25; --card:#172932; --ink:#E4EEF2; --muted:#93AAB6; --line:#274250;
+    --accent:#3CC3B4; --accent-ink:#06211E; --soft:#12383A; --sun:#EDB04F; --sun-soft:#3A2F17; --danger:#F08A78;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1D25; --card:#172932; --ink:#E4EEF2; --muted:#93AAB6; --line:#274250;
+  --accent:#3CC3B4; --accent-ink:#06211E; --soft:#12383A; --sun:#EDB04F; --sun-soft:#3A2F17; --danger:#F08A78;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5}
+.wrap{max-width:960px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px}
+h1{font-family:var(--head);font-size:34px;line-height:1;margin:0;letter-spacing:-.02em}
+h1 span{color:var(--accent)}
+.tag{margin:6px 0 0;color:var(--muted);font-size:15px}
+h2{font-family:var(--head);font-size:21px;margin:0 0 4px}
+h3{font-family:var(--head);font-size:17px;margin:0}
+.roles{display:inline-flex;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px}
+.roles button{border:0;background:transparent;color:var(--muted);font:600 15px var(--body);padding:9px 18px;border-radius:9px;cursor:pointer}
+.roles button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--sun);outline-offset:2px}
+.panel{display:none}.panel.on{display:block}
+.grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:20px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+.sub{color:var(--muted);font-size:14px;margin:0 0 16px}
+label{display:block;font-size:14px;font-weight:600;margin:12px 0 4px}
+input,select,textarea{width:100%;font:400 16px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
+textarea{resize:vertical;min-height:60px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pk{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pk label{margin:0;font-weight:500;cursor:pointer}
+.pk input{position:absolute;opacity:0;width:1px;height:1px}
+.pk span{display:block;border:1.5px solid var(--line);border-radius:10px;padding:10px;text-align:center;font-size:14px;background:var(--bg)}
+.pk b{display:block;font-family:var(--head);font-size:20px}
+.pk input:checked+span{border-color:var(--accent);background:var(--soft)}
+.pk input:focus-visible+span{outline:3px solid var(--sun);outline-offset:2px}
+.btn{border:0;background:var(--accent);color:var(--accent-ink);font:600 15px var(--body);padding:11px 18px;border-radius:10px;cursor:pointer}
+.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.sm{padding:8px 12px;font-size:14px}
+.btn.full{width:100%;margin-top:18px;padding:13px}
+.total{display:flex;justify-content:space-between;align-items:baseline;margin-top:16px;padding-top:12px;border-top:1px dashed var(--line)}
+.total b{font-family:var(--head);font-size:26px}
+.err{color:var(--danger);font-size:14px;margin:8px 0 0;min-height:1em}
+.order{border:1px solid var(--line);border-radius:12px;padding:14px;margin-top:12px;background:var(--card)}
+.order .top{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.code{font-family:var(--head);font-weight:700;font-size:18px}
+.pill{display:inline-block;font-size:13px;font-weight:600;padding:3px 10px;border-radius:99px;background:var(--sun-soft);color:var(--ink)}
+.pill.done{background:var(--soft)}
+.meta{color:var(--muted);font-size:14px;margin:6px 0 0}
+.steps{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+.steps li{font-size:12px;color:var(--muted);text-align:center;padding-top:14px;position:relative}
+.steps li::before{content:"";position:absolute;top:0;left:0;right:0;height:6px;border-radius:3px;background:var(--line)}
+.steps li.d::before{background:var(--accent)}
+.steps li.c::before{background:var(--sun)}
+.steps li.c,.steps li.d{color:var(--ink)}
+.steps li.c{font-weight:600}
+@media(max-width:520px){.steps{grid-template-columns:repeat(3,1fr);row-gap:10px}}
+.actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.actions select{width:auto;min-width:130px;padding:8px 10px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+@media(max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat b{display:block;font-family:var(--head);font-size:26px;line-height:1.1}
+.stat span{font-size:13px;color:var(--muted)}
+.empty{color:var(--muted);font-size:15px;padding:18px;border:1px dashed var(--line);border-radius:12px;margin-top:12px;text-align:center}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:12px}
+.bar select{width:auto}
+.look{display:flex;gap:8px;margin-bottom:6px}
+.look input{flex:1}
+.foot{margin-top:28px;text-align:center;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div>
+    <h1>Laba<span>Ride</span></h1>
+    <p class="tag">Your laundry. Picked up. Washed. Delivered.</p>
+  </div>
+  <div class="roles" role="tablist" aria-label="Choose a view">
+    <button role="tab" id="t-customer" aria-selected="true" data-role="customer">Customer</button>
+    <button role="tab" id="t-rider" aria-selected="false" data-role="rider">Rider</button>
+    <button role="tab" id="t-admin" aria-selected="false" data-role="admin">Admin</button>
+  </div>
+</header>
+
+<section class="panel on" id="p-customer" aria-labelledby="t-customer">
+  <div class="grid">
+    <div class="card">
+      <h2>Book a laundry pickup</h2>
+      <p class="sub">Pick a fixed package. Delivery is included.</p>
+      <div id="form">
+        <label for="name">Name</label>
+        <input id="name" autocomplete="name" placeholder="Juan Dela Cruz">
+        <div class="row2">
+          <div><label for="mobile">Mobile number</label><input id="mobile" inputmode="tel" autocomplete="tel" placeholder="09XX XXX XXXX"></div>
+          <div><label for="pay">Payment</label>
+            <select id="pay"><option>Cash on delivery</option><option>GCash</option></select></div>
+        </div>
+        <label for="addr">Pickup and delivery address</label>
+        <input id="addr" autocomplete="street-address" placeholder="ABC Boarding House, Room 4">
+        <div class="row2">
+          <div><label for="date">Pickup date</label><input id="date" type="date"></div>
+          <div><label for="time">Pickup time</label>
+            <select id="time"><option>8:00 AM to 10:00 AM</option><option selected>10:00 AM to 12:00 PM</option><option>1:00 PM to 3:00 PM</option><option>3:00 PM to 5:00 PM</option></select></div>
+        </div>
+        <label>Package</label>
+        <div class="pk" id="pk">
+          <label><input type="radio" name="pkg" value="student" checked><span>Student<b>₱199</b></span></label>
+          <label><input type="radio" name="pkg" value="regular"><span>Regular<b>₱229</b></span></label>
+          <label><input type="radio" name="pkg" value="express"><span>Express<b>₱299</b></span></label>
+        </div>
+        <label for="notes">Special instructions (optional)</label>
+        <textarea id="notes" placeholder="Separate whites"></textarea>
+        <div class="total"><span>Estimated total</span><b id="total">₱199</b></div>
+        <p class="err" id="err" role="alert"></p>
+        <button class="btn full" data-act="book">Book pickup</button>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>Track an order</h2>
+        <p class="sub">Enter your order number, like LR1025.</p>
+        <div class="look"><input id="lookup" placeholder="LR1025" aria-label="Order number"><button class="btn alt" data-act="lookup">Track</button></div>
+        <div id="lookres"></div>
+      </div>
+      <div class="card" style="margin-top:20px">
+        <h2>Your orders</h2>
+        <div id="mine"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel" id="p-rider" aria-labelledby="t-rider">
+  <div class="card">
+    <div class="bar">
+      <div><h2>Rider jobs</h2><p class="sub" style="margin:0">Orders the admin assigned to you.</p></div>
+      <div><label for="who" style="margin:0 0 4px">I am</label><select id="who"></select></div>
+    </div>
+    <div id="jobs"></div>
+  </div>
+</section>
+
+<section class="panel" id="p-admin" aria-labelledby="t-admin">
+  <div class="stats" id="stats"></div>
+  <div class="card">
+    <div class="bar">
+      <div><h2>Order board</h2><p class="sub" style="margin:0">Assign riders and move orders through the laundromat steps.</p></div>
+      <button class="btn alt sm" data-act="reset">Clear all demo data</button>
+    </div>
+    <div id="board"></div>
+  </div>
+</section>
+
+<p class="foot">MVP demo. Data stays in this browser only.</p>
+</div>
+
+<script>
+var STEPS=['Order placed','Rider assigned','Laundry picked up','Washing','Ready for delivery','Delivered'];
+var RIDERS=['Mark','Ana','Jun'];
+var PKG={student:{n:'Student',p:199},regular:{n:'Regular',p:229},express:{n:'Express',p:299}};
+var KEY='labaride-mvp-v1';
+var S={orders:[],next:1025,mine:[]};
+try{var raw=localStorage.getItem(KEY);if(raw){var o=JSON.parse(raw);if(o&&o.orders){S=o;}}}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function $(id){return document.getElementById(id);}
+function peso(n){return '₱'+n.toLocaleString('en-PH');}
+function find(id){for(var i=0;i<S.orders.length;i++){if(S.orders[i].id===id)return S.orders[i];}return null;}
+
+function tracker(o){
+  var h='<ol class="steps">';
+  for(var i=0;i<STEPS.length;i++){
+    var c=i<o.status?'d':(i===o.status?'c':'');
+    h+='<li class="'+c+'">'+STEPS[i]+'</li>';
+  }
+  return h+'</ol>';
+}
+function orderCard(o,extra){
+  var done=o.status===5;
+  return '<div class="order"><div class="top"><span class="code">'+o.id+'</span><span class="pill'+(done?' done':'')+'">'+STEPS[o.status]+'</span></div>'+
+    '<p class="meta">'+esc(o.name)+' · '+esc(o.addr)+'</p>'+
+    '<p class="meta">'+esc(o.date)+', '+esc(o.time)+' · '+PKG[o.pkg].n+' '+peso(PKG[o.pkg].p)+' · '+esc(o.pay)+'</p>'+
+    (o.notes?'<p class="meta">Note: '+esc(o.notes)+'</p>':'')+
+    (o.rider?'<p class="meta">Rider: '+esc(o.rider)+'</p>':'')+
+    (extra||'')+'</div>';
+}
+
+function renderCustomer(){
+  var h='';
+  for(var i=S.mine.length-1;i>=0;i--){var o=find(S.mine[i]);if(o)h+=orderCard(o,tracker(o));}
+  $('mine').innerHTML=h||'<div class="empty">No orders yet. Book your first pickup.</div>';
+}
+function renderRider(){
+  var who=$('who').value||RIDERS[0],h='',any=false;
+  for(var i=0;i<S.orders.length;i++){
+    var o=S.orders[i];if(o.rider!==who)continue;any=true;
+    var a='';
+    if(o.status===1)a='<div class="actions"><button class="btn sm" data-act="adv" data-id="'+o.id+'">Mark picked up</button></div>';
+    else if(o.status===4)a='<div class="actions"><button class="btn sm" data-act="adv" data-id="'+o.id+'">Mark delivered</button></div>';
+    else if(o.status===2||o.status===3)a='<p class="meta">At the laundromat. Wait for the Ready for delivery update.</p>';
+    h+=orderCard(o,a);
+  }
+  $('jobs').innerHTML=any?h:'<div class="empty">No jobs yet. Ask the admin to assign an order to '+esc(who)+'.</div>';
+}
+function renderAdmin(){
+  var active=0,del=0,rev=0;
+  S.orders.forEach(function(o){if(o.status===5){del++;}else{active++;}rev+=PKG[o.pkg].p;});
+  $('stats').innerHTML='<div class="stat"><b>'+S.orders.length+'</b><span>Total orders</span></div>'+
+    '<div class="stat"><b>'+active+'</b><span>Active</span></div>'+
+    '<div class="stat"><b>'+del+'</b><span>Delivered</span></div>'+
+    '<div class="stat"><b>'+peso(rev)+'</b><span>Booked value</span></div>';
+  var h='';
+  for(var i=S.orders.length-1;i>=0;i--){
+    var o=S.orders[i],a='';
+    if(o.status===0){
+      a='<div class="actions"><select id="sel-'+o.id+'" aria-label="Rider for '+o.id+'">'+RIDERS.map(function(r){return '<option>'+r+'</option>';}).join('')+'</select><button class="btn sm" data-act="assign" data-id="'+o.id+'">Assign rider</button></div>';
+    }else if(o.status<5){
+      a='<div class="actions"><button class="btn sm" data-act="adv" data-id="'+o.id+'">Move to: '+STEPS[o.status+1]+'</button></div>';
+    }
+    h+=orderCard(o,tracker(o)+a);
+  }
+  $('board').innerHTML=h||'<div class="empty">No orders yet. Book one from the Customer view.</div>';
+}
+function renderAll(){renderCustomer();renderRider();renderAdmin();}
+
+function updTotal(){var v=document.querySelector('input[name=pkg]:checked').value;$('total').textContent=peso(PKG[v].p);}
+function book(){
+  var f={name:$('name').value.trim(),mobile:$('mobile').value.trim(),addr:$('addr').value.trim(),date:$('date').value,time:$('time').value,pay:$('pay').value,notes:$('notes').value.trim(),pkg:document.querySelector('input[name=pkg]:checked').value};
+  if(!f.name||!f.mobile||!f.addr||!f.date){$('err').textContent='Fill in your name, mobile number, address, and pickup date.';return;}
+  $('err').textContent='';
+  f.id='LR'+S.next;S.next++;f.status=0;f.rider='';
+  S.orders.push(f);S.mine.push(f.id);save();
+  $('name').value='';$('mobile').value='';$('addr').value='';$('notes').value='';
+  renderAll();
+  $('lookres').innerHTML='<div class="order"><span class="code">'+f.id+'</span> booked. Save this number to track your laundry.</div>';
+}
+function lookup(){
+  var q=$('lookup').value.trim().toUpperCase(),o=find(q);
+  $('lookres').innerHTML=o?orderCard(o,tracker(o)):'<div class="empty">No order found for "'+esc(q)+'". Check the number and try again.</div>';
+}
+
+document.addEventListener('click',function(e){
+  var r=e.target.closest('[data-role]');
+  if(r){
+    ['customer','rider','admin'].forEach(function(k){
+      var on=k===r.dataset.role;
+      $('p-'+k).classList.toggle('on',on);
+      $('t-'+k).setAttribute('aria-selected',on?'true':'false');
+    });
+    renderAll();return;
+  }
+  var b=e.target.closest('[data-act]');if(!b)return;
+  var act=b.dataset.act,o=b.dataset.id?find(b.dataset.id):null;
+  if(act==='book')book();
+  else if(act==='lookup')lookup();
+  else if(act==='assign'&&o){o.rider=$('sel-'+o.id).value;o.status=1;save();renderAll();}
+  else if(act==='adv'&&o&&o.status<5){o.status++;save();renderAll();$('lookres').innerHTML='';}
+  else if(act==='reset'){if(confirm('Delete all orders from this browser?')){S={orders:[],next:1025,mine:[]};save();$('lookres').innerHTML='';renderAll();}}
+});
+document.addEventListener('change',function(e){
+  if(e.target.name==='pkg')updTotal();
+  if(e.target.id==='who')renderRider();
+});
+
+$('who').innerHTML=RIDERS.map(function(r){return '<option>'+r+'</option>';}).join('');
+var d=new Date();d.setDate(d.getDate()+1);
+$('date').value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+renderAll();
+</script>
+</body>
+</html>

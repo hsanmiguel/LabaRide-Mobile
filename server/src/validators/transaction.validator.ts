@@ -1,0 +1,33 @@
+import { z } from 'zod';
+
+export const createTransactionSchema = z.object({
+  body: z.object({
+    shopId: z.number(),
+    serviceName: z.string(),
+    kiloAmount: z.number(),
+    subtotal: z.number(),
+    deliveryFee: z.number(),
+    voucherDiscount: z.number().default(0),
+    totalAmount: z.number(),
+    deliveryType: z.string(),
+    zone: z.string(),
+    street: z.string(),
+    barangay: z.string(),
+    building: z.string(),
+    scheduledDate: z.string(), // ISO String
+    scheduledTime: z.string(), // ISO String
+    paymentMethod: z.string().default('Cash on Delivery'),
+    notes: z.string().optional(),
+    items: z.array(z.object({
+      itemName: z.string(),
+      quantity: z.number().int().positive()
+    })).optional()
+  })
+});
+
+export const updateStatusSchema = z.object({
+  body: z.object({
+    status: z.enum(['Pending', 'Processing', 'Completed', 'Cancelled']),
+    notes: z.string().optional()
+  })
+});

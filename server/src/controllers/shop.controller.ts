@@ -1,0 +1,134 @@
+import { Request, Response, NextFunction } from 'express';
+import prisma from '../config/database';
+import { sendSuccess, sendError } from '../utils/response';
+import { registerShopSchema, createServiceSchema, createKiloPriceSchema, createItemSchema } from '../validators/shop.validator';
+import { AuthRequest } from '../middleware/auth.middleware';
+
+export class ShopController {
+  
+  static async registerShop(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const validatedData = registerShopSchema.parse(req).body;
+      const userId = req.user!.userId;
+
+      // Check if user already has a shop
+      const existingShop = await prisma.shop.findUnique({ where: { userId } });
+      if (existingShop) {
+        return sendError(res, 'User already has a registered shop', 'CONFLICT', 409);
+      }
+
+      // Create shop and update user isShopOwner flag in transaction
+      const result = await prisma.$transaction(async (tx) => {
+        const shop = await tx.shop.create({
+          data: { ...validatedData, userId }
+        });
+        
+        await tx.user.update({
+          where: { id: userId },
+          data: { isShopOwner: true }
+        });
+
+        return shop;
+      });
+
+      return sendSuccess(res, result, 'Shop registered successfully', 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getAllShops(req: Request, res: Response, next: NextFunction) {
+    try {
+      const shops = await prisma.shop.findMany({
+        include: {
+          services: true,
+          kiloPrices: true
+        }
+      });
+      return sendSuccess(res, shops, 'Shops retrieved successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getRecentShops(req: Request, res: Response, next: NextFunction) {
+    try {
+      const shops = await prisma.shop.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: { services: true }
+      });
+      return sendSuccess(res, shops, 'Recent shops retrieved successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getShopById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const shopId = parseInt(req.params.shopId);
+      const shop = await prisma.shop.findUnique({
+        where: { id: shopId },
+        include: {
+          services: true,
+          kiloPrices: true,
+          householdItems: true,
+          clothingTypes: true
+        }
+      });
+
+      if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
+      return sendSuccess(res, shop, 'Shop details retrieved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getShopByUserId(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = parseInt(req.params.userId);
+      const shop = await prisma.shop.findUnique({
+        where: { userId },
+        include: { services: true }
+      });
+
+      if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
+      return sendSuccess(res, shop, 'Shop details retrieved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // SERVICES
+  static async addService(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const shopId = parseInt(req.params.shopId);
+      const validatedData = createServiceSchema.parse(req).body;
+
+      // Basic authorization check could be added here
+      const service = await prisma.shopService.create({
+        data: { ...validatedData, shopId }
+      });
+
+      return sendSuccess(res, service, 'Service added successfully', 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // KILO PRICES
+  static async addKiloPrice(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const shopId = parseInt(req.params.shopId);
+      const validatedData = createKiloPriceSchema.parse(req).body;
+
+      const kiloPrice = await prisma.kiloPrice.create({
+        data: { ...validatedData, shopId }
+      });
+
+      return sendSuccess(res, kiloPrice, 'Kilo price added successfully', 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+}

@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionStatus {
+  Pending
+  Processing
+  Completed
+  Cancelled
+}
+
+model User {
+  id          Int       @id @default(autoincrement())
+  name        String
+  email       String    @unique
+  password    String
+  phone       String?
+  birthdate   DateTime? @db.Date
+  gender      String?
+  zone        String?
+  street      String?
+  barangay    String?
+  building    String?
+  isShopOwner Boolean   @default(false) @map("is_shop_owner")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  shop         Shop?
+  transactions Transaction[]
+
+  @@map("users")
+}
+
+model Shop {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @unique @map("user_id")
+  shopName      String    @map("shop_name")
+  contactNumber String    @map("contact_number")
+  zone          String
+  street        String
+  barangay      String
+  building      String?
+  openingTime   String    @map("opening_time")
+  closingTime   String    @map("closing_time")
+  latitude      Float?
+  longitude     Float?
+  address       String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  services       ShopService[]
+  kiloPrices     KiloPrice[]
+  transactions   Transaction[]
+  householdItems HouseholdItem[]
+  clothingTypes  ClothingType[]
+
+  @@map("shops")
+}
+
+model ShopService {
+  id          Int     @id @default(autoincrement())
+  shopId      Int     @map("shop_id")
+  serviceName String  @map("service_name")
+  price       Decimal @default(0) @db.Decimal(10, 2)
+  color       String?
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@map("shop_services")
+}
+
+model KiloPrice {
+  id           Int      @id @default(autoincrement())
+  shopId       Int      @map("shop_id")
+  minKilo      Decimal  @map("min_kilo") @db.Decimal(10, 2)
+  maxKilo      Decimal  @map("max_kilo") @db.Decimal(10, 2)
+  pricePerKilo Decimal  @map("price_per_kilo") @db.Decimal(10, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@unique([shopId, minKilo, maxKilo], map: "unique_range")
+  @@map("kilo_prices")
+}
+
+model Transaction {
+  id              Int               @id @default(autoincrement())
+  userId          Int               @map("user_id")
+  shopId          Int               @map("shop_id")
+  userName        String            @map("user_name")
+  userEmail       String            @map("user_email")
+  userPhone       String?           @map("user_phone")
+  serviceName     String            @map("service_name")
+  kiloAmount      Decimal           @map("kilo_amount") @db.Decimal(10, 2)
+  subtotal        Decimal           @db.Decimal(10, 2)
+  deliveryFee     Decimal           @map("delivery_fee") @db.Decimal(10, 2)
+  voucherDiscount Decimal           @default(0) @map("voucher_discount") @db.Decimal(10, 2)
+  totalAmount     Decimal           @map("total_amount") @db.Decimal(10, 2)
+  deliveryType    String            @map("delivery_type")
+  zone            String
+  street          String
+  barangay        String
+  building        String
+  scheduledDate   DateTime          @map("scheduled_date") @db.Date
+  scheduledTime   DateTime          @map("scheduled_time") @db.Time()
+  paymentMethod   String            @default("Cash on Delivery") @map("payment_method")
+  notes           String?
+  status          TransactionStatus @default(Pending)
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  user  User  @relation(fields: [userId], references: [id])
+  shop  Shop  @relation(fields: [shopId], references: [id])
+  items TransactionItem[]
+
+  @@map("transactions")
+}
+
+model TransactionItem {
+  id            Int    @id @default(autoincrement())
+  transactionId Int    @map("transaction_id")
+  itemName      String @map("item_name")
+  quantity      Int
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@map("transaction_items")
+}
+
+model HouseholdItem {
+  id       Int     @id @default(autoincrement())
+  shopId   Int     @map("shop_id")
+  itemName String  @map("item_name")
+  price    Decimal @db.Decimal(10, 2)
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@map("household_items")
+}
+
+model ClothingType {
+  id       Int     @id @default(autoincrement())
+  shopId   Int     @map("shop_id")
+  typeName String  @map("type_name")
+  price    Decimal @db.Decimal(10, 2)
+
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@map("clothing_types")
+}

@@ -1,0 +1,494 @@
+[
+  {
+    "source": "how.dart",
+    "route": "/how-it-works",
+    "component": "OnboardingScreen (how)",
+    "empty": false
+  },
+  {
+    "source": "loginscreen.dart",
+    "route": "/login",
+    "component": "LoginDesign",
+    "empty": false
+  },
+  {
+    "source": "main.dart",
+    "route": "/",
+    "component": "SplashDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/AuthenticationShop/registershop.dart",
+    "route": "/register-shop",
+    "component": "RegisterShopDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/AcceptingOrder.dart",
+    "route": "/(shop)/orders/[id] (pending)",
+    "component": "ShopOrderDetailsDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/CancelDetails.dart",
+    "route": "/(shop)/orders/[id] (cancelled)",
+    "component": "ShopOrderDetailsDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/CompleteDetails.dart",
+    "route": "/(shop)/orders/[id] (completed)",
+    "component": "ShopOrderDetailsDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/CustomerOrder.dart",
+    "route": "/(shop)/customers",
+    "component": "CustomersDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/DeclineOrder/DeclineOrder1.dart",
+    "route": "/decline-order?id=<id>",
+    "component": "DeclineOrderDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/DeclineOrder/DeclineOrder2.dart",
+    "route": "/decline-closed?id=<id>",
+    "component": "DeclineOrderDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/DeclineOrder/DeclineOrder3.dart",
+    "route": "/decline-busy?id=<id>",
+    "component": "DeclineOrderDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/DeclineOrder/DeclineOrder4.dart",
+    "route": "/decline-services?id=<id>",
+    "component": "DeclineOrderDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/DeclineOrder/OrderDeclined.dart",
+    "route": "/order-declined",
+    "component": "SuccessDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/ExpandCancelledOrder.dart",
+    "route": "/shop-customers?status=Cancelled",
+    "component": "CustomersDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/ExpandCompleteOrder.dart",
+    "route": "/shop-customers?status=Completed",
+    "component": "CustomersDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/ExpandNewOrder.dart",
+    "route": "/shop-customers?status=Pending",
+    "component": "CustomersDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/ExpandOngoingOrder.dart",
+    "route": "/shop-customers?status=Processing",
+    "component": "CustomersDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/CustomerOrder/OngoingDetails.dart",
+    "route": "/(shop)/orders/[id] (processing)",
+    "component": "ShopOrderDetailsDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/OrderScreen/IndividualTransact.dart",
+    "route": "/shop-transaction?id=<id>",
+    "component": "ShopOrderDetailsDesign (transaction)",
+    "empty": false
+  },
+  {
+    "source": "shop/OrderScreen/OrderScreen.dart",
+    "route": "/(shop)/transactions",
+    "component": "ShopTransactionsDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/ProfileShop/2FAConfirm.dart",
+    "route": "/2fa-complete",
+    "component": "TwoFactorDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/ProfileShop/AccDelete.dart",
+    "route": "/account-deleted",
+    "component": "SuccessDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/ProfileShop/AccountInfo.dart",
+    "route": "/account-information",
+    "component": "EditProfileDesign (account)",
+    "empty": false
+  },
+  {
+    "source": "shop/ProfileShop/Choose2FA.dart",
+    "route": "/choose-2fa",
+    "component": "TwoFactorDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/ProfileShop/DeleteAcc.dart",
+    "route": "/delete-account",
+    "component": "AccountConfirmationDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/ProfileShop/Enter2FA.dart",
+    "route": "/enter-2fa",
+    "component": "TwoFactorDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/ProfileShop/Logout.dart",
+    "route": "/logout",
+    "component": "AccountConfirmationDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/ProfileShop/Security.dart",
+    "route": "/security",
+    "component": "ChangePasswordDesign (security)",
+    "empty": false
+  },
+  {
+    "source": "shop/ProfileShop/ShopDetails.dart",
+    "route": "/shop-details",
+    "component": "ShopDetailsFormDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/ProfileShop/ShopProfile.dart",
+    "route": "/(shop)/profile",
+    "component": "ShopProfileDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/Services/ServiceScreen1.dart",
+    "route": "/(shop)/services",
+    "component": "ServicesDesign (services, pricing, add/edit dialogs)",
+    "empty": false
+  },
+  {
+    "source": "shop/ShopDashboard/homescreen.dart",
+    "route": "/(shop)/home",
+    "component": "ShopHomeDesign",
+    "empty": false
+  },
+  {
+    "source": "shop/ShopDashboard/notifpage.dart",
+    "route": "/shop-notifications",
+    "component": "NotificationsDesign (shop)",
+    "empty": false
+  },
+  {
+    "source": "shop/ShopDashboard/shop_map.dart",
+    "route": "embedded dashboard map",
+    "component": "LaundryMap",
+    "empty": false
+  },
+  {
+    "source": "Sockets/socketService.dart",
+    "route": "data helper",
+    "component": "socket.service.ts",
+    "empty": false
+  },
+  {
+    "source": "user/authenticationuser/forgot1_user.dart",
+    "route": "/forgot-password",
+    "component": "RecoveryDesign",
+    "empty": false
+  },
+  {
+    "source": "user/authenticationuser/forgot2_user.dart",
+    "route": "/verify-email",
+    "component": "RecoveryDesign",
+    "empty": false
+  },
+  {
+    "source": "user/authenticationuser/forgot3_user.dart",
+    "route": "/password-reset",
+    "component": "RecoveryDesign",
+    "empty": false
+  },
+  {
+    "source": "user/authenticationuser/forgot4_user.dart",
+    "route": "/new-password",
+    "component": "RecoveryDesign",
+    "empty": false
+  },
+  {
+    "source": "user/authenticationuser/forgot5_user.dart",
+    "route": "/password-changed",
+    "component": "RecoveryDesign",
+    "empty": false
+  },
+  {
+    "source": "user/authenticationuser/signupcomplete.dart",
+    "route": "/registration-complete",
+    "component": "SuccessDesign",
+    "empty": false
+  },
+  {
+    "source": "user/authenticationuser/signupscreen.dart",
+    "route": "/signup",
+    "component": "SignupDesign",
+    "empty": false
+  },
+  {
+    "source": "user/authenticationuser/userdetails.dart",
+    "route": "/user-details",
+    "component": "UserDetailsDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Dashboard/activities_screen.dart",
+    "route": "/(user)/activities",
+    "component": "ActivitiesDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Dashboard/allshops.dart",
+    "route": "/(user)/shops",
+    "component": "ShopsDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Dashboard/laundry_dashboard_screen.dart",
+    "route": "/(user)/home",
+    "component": "UserHomeDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Dashboard/notifications_screen.dart",
+    "route": "/notifications",
+    "component": "NotificationsDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Dashboard/search_screen.dart",
+    "route": "/search",
+    "component": "ShopsDesign (search)",
+    "empty": false
+  },
+  {
+    "source": "user/Dashboard/viewmap.dart",
+    "route": "/map",
+    "component": "ShopsDesign (map)",
+    "empty": false
+  },
+  {
+    "source": "user/Dashboard/viewshopinfo.dart",
+    "route": "/(user)/shops/[id]",
+    "component": "ShopInfoDesign",
+    "empty": false
+  },
+  {
+    "source": "user/History/ActiveTransact.dart",
+    "route": "/history",
+    "component": "ActivitiesDesign (active)",
+    "empty": false
+  },
+  {
+    "source": "user/History/DetailTransact.dart",
+    "route": "/transaction-details?id=<id>",
+    "component": "OrderDetailsDesign (full)",
+    "empty": false
+  },
+  {
+    "source": "user/History/PastTransact.dart",
+    "route": "/past-orders",
+    "component": "ActivitiesDesign (past)",
+    "empty": false
+  },
+  {
+    "source": "user/Location/AddLocation.dart",
+    "route": "/add-location",
+    "component": "LocationDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Location/Addresses.Dart",
+    "route": "/addresses",
+    "component": "AddressesDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Location/CurrentLocation.dart",
+    "route": "/current-location",
+    "component": "LocationDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Location/ViewAddress.dart",
+    "route": "no UI in source",
+    "component": "Empty Dart file",
+    "empty": true
+  },
+  {
+    "source": "user/Location/ViewShopInformation.dart",
+    "route": "no UI in source",
+    "component": "Empty Dart file",
+    "empty": true
+  },
+  {
+    "source": "user/Location/ViewShops.dart",
+    "route": "/view-shops",
+    "component": "ShopsDesign (map)",
+    "empty": false
+  },
+  {
+    "source": "user/OrderingSystem/laundryfulldetails.dart",
+    "route": "/shop-about?id=<id>",
+    "component": "ShopInfoDesign (about/pricing)",
+    "empty": false
+  },
+  {
+    "source": "user/OrderingSystem/ordershopsystem.dart",
+    "route": "/(user)/order/[shopId]",
+    "component": "ShopMenuDesign",
+    "empty": false
+  },
+  {
+    "source": "user/ProfileUser/AccountDelete.dart",
+    "route": "/account-deleted",
+    "component": "SuccessDesign",
+    "empty": false
+  },
+  {
+    "source": "user/ProfileUser/ChangePassword.dart",
+    "route": "/change-password",
+    "component": "ChangePasswordDesign",
+    "empty": false
+  },
+  {
+    "source": "user/ProfileUser/ConfirmDelete.dart",
+    "route": "/delete-account",
+    "component": "AccountConfirmationDesign",
+    "empty": false
+  },
+  {
+    "source": "user/ProfileUser/EditProfile.dart",
+    "route": "/edit-profile",
+    "component": "EditProfileDesign",
+    "empty": false
+  },
+  {
+    "source": "user/ProfileUser/UserProfile.dart",
+    "route": "/(user)/profile",
+    "component": "UserProfileDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Transaction/1OrderConfirm.dart",
+    "route": "/(user)/order/confirm",
+    "component": "OrderSummaryDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Transaction/2PlaceOrder.dart",
+    "route": "/checkout",
+    "component": "CheckoutDesign + ScheduleDesign + PaymentDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Transaction/3ProceedOrder.dart",
+    "route": "/order-complete?id=<id>",
+    "component": "SuccessDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Transaction/CancelOrder.dart",
+    "route": "/cancel-order-confirm?id=<id>",
+    "component": "CancelOrderDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Transaction/CancelOrder2.dart",
+    "route": "/cancel-order?id=<id>",
+    "component": "CancelOrderDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Transaction/CardType.dart",
+    "route": "no UI in source",
+    "component": "Empty Dart file",
+    "empty": true
+  },
+  {
+    "source": "user/Transaction/ConfirmedTranct.dart",
+    "route": "/(user)/order/tracking/[id]",
+    "component": "OrderDetailsDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Transaction/LaundryCount.dart",
+    "route": "/laundries",
+    "component": "LaundryCountDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Transaction/OrderCancelled.dart",
+    "route": "/order-cancelled",
+    "component": "SuccessDesign",
+    "empty": false
+  },
+  {
+    "source": "user/Transaction/OrderDelivered.dart",
+    "route": "/order-delivered?id=<id>",
+    "component": "OrderDetailsDesign (delivered)",
+    "empty": false
+  },
+  {
+    "source": "user/Transaction/Payment.dart",
+    "route": "no UI in source",
+    "component": "Empty Dart file",
+    "empty": true
+  },
+  {
+    "source": "user/Transaction/Schedule.dart",
+    "route": "no UI in source",
+    "component": "Empty Dart file",
+    "empty": true
+  },
+  {
+    "source": "user/Transaction/Status.dart",
+    "route": "no UI in source",
+    "component": "Empty Dart file",
+    "empty": true
+  },
+  {
+    "source": "user/Transaction/transaction_service.dart",
+    "route": "data helper",
+    "component": "design/data.ts",
+    "empty": false
+  },
+  {
+    "source": "user/Transaction/Voucher.dart",
+    "route": "/vouchers",
+    "component": "VouchersDesign",
+    "empty": false
+  },
+  {
+    "source": "welcome.dart",
+    "route": "/welcome",
+    "component": "OnboardingScreen",
+    "empty": false
+  }
+]

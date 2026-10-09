@@ -29,6 +29,9 @@ export const createKiloPriceSchema = z.object({
     minKilo: z.number().min(0),
     maxKilo: z.number().min(0),
     pricePerKilo: z.number().min(0),
+  }).refine((range) => range.maxKilo > range.minKilo, {
+    message: 'Maximum weight must be greater than minimum weight',
+    path: ['maxKilo'],
   })
 });
 

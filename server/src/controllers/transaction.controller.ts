@@ -4,6 +4,8 @@ import { sendSuccess, sendError } from '../utils/response';
 import { createTransactionSchema, updateStatusSchema, cancelTransactionSchema } from '../validators/transaction.validator';
 import { AuthRequest } from '../middleware/auth.middleware';
 import type { Server } from 'socket.io';
+import { Prisma } from '@prisma/client';
+import { priceOrder } from '../utils/order-pricing';
 
 export class TransactionController {
   
@@ -15,11 +17,30 @@ export class TransactionController {
       const user = await prisma.user.findUnique({ where: { id: userId } });
       if (!user) return sendError(res, 'User not found', 'NOT_FOUND', 404);
 
-      const { items, ...transactionData } = validatedData;
+      const shop = await prisma.shop.findUnique({
+        where: { id: validatedData.shopId },
+        include: { services: true, kiloPrices: true },
+      });
+      if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
+      const pricing = priceOrder({
+        kilos: validatedData.kiloAmount,
+        serviceIds: validatedData.serviceIds,
+        serviceName: validatedData.serviceName,
+        services: shop.services,
+        ranges: shop.kiloPrices,
+        deliveryType: validatedData.deliveryType,
+      });
+      if ('error' in pricing && pricing.error) return sendError(res, pricing.error, 'INVALID_PRICING', 409);
+      const changedQuote = (['subtotal', 'deliveryFee', 'voucherDiscount', 'totalAmount'] as const)
+        .some((field) => validatedData[field] !== undefined &&
+          !new Prisma.Decimal(validatedData[field]!).equals(pricing[field]));
+      if (changedQuote) return sendError(res, 'Shop prices changed. Review the updated total and try again.', 'PRICE_CHANGED', 409);
+      const { items, serviceIds, subtotal, deliveryFee, voucherDiscount, totalAmount, ...transactionData } = validatedData;
 
       const transaction = await prisma.transaction.create({
         data: {
           ...transactionData,
+          ...pricing,
           userId,
           userName: user.name,
           userEmail: user.email,

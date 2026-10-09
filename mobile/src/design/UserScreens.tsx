@@ -16,6 +16,7 @@ import {
   Button,
   Card,
   Empty,
+  PriceRow,
   Screen,
   SearchBox,
   Section,
@@ -442,8 +443,12 @@ export function ShopMenuDesign({ id }: { id: number }) {
       footer={
         <View style={styles.between}>
           <View>
-            <Txt style={styles.muted}>Basket</Txt>
-            <Txt style={styles.heading}>{money(service?.price)}</Txt>
+            <Txt style={styles.muted}>{service ? "Laundry rate" : "Basket"}</Txt>
+            <Txt style={styles.heading}>
+              {service
+                ? shop?.kiloPrices?.length ? "Based on weight" : `${money(service.price)}/kg`
+                : money(0)}
+            </Txt>
           </View>
           <Button
             title="Basket"
@@ -452,7 +457,7 @@ export function ShopMenuDesign({ id }: { id: number }) {
             disabled={!service}
             onPress={() => {
               if (shop && service) {
-                draft.start(shop, service);
+                draft.start(shop, service, chosen.map((selectedService) => selectedService.id));
                 if (inShop) openFlow("order-summary", { id: String(id) });
                 else router.push({
                   pathname: "/(user)/order/confirm",
@@ -589,13 +594,25 @@ export function ShopMenuDesign({ id }: { id: number }) {
                       }}
                     >
                       <Txt style={{ color: palette.navy, fontWeight: "600" }}>
-                        {money(s.price)} per kilo
+                        Base rate: {money(s.price)} per kg
                       </Txt>
                     </View>
                   </Card>
                 </Pressable>
               );
             })}
+            {!!shop.kiloPrices?.length && (
+              <Card>
+                <Txt style={styles.heading}>Weight prices</Txt>
+                {shop.kiloPrices.map((range) => (
+                  <PriceRow
+                    key={range.id}
+                    label={`${range.minKilo}–${range.maxKilo} kg`}
+                    value={`${money(range.pricePerKilo)}/kg`}
+                  />
+                ))}
+              </Card>
+            )}
             {!shop.services?.length && <Empty title="No services available" />}
           </>
         )}

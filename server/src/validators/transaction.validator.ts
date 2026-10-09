@@ -3,14 +3,21 @@ import { addressSchema } from './address.validator';
 
 export const createTransactionSchema = z.object({
   body: z.object({
-    shopId: z.number(),
-    serviceName: z.string(),
-    kiloAmount: z.number(),
-    subtotal: z.number(),
-    deliveryFee: z.number(),
-    voucherDiscount: z.number().default(0),
-    totalAmount: z.number(),
-    deliveryType: z.string(),
+    shopId: z.number().int().positive(),
+    serviceName: z.string().min(1),
+    serviceIds: z.array(z.number().int().positive()).min(1).refine(
+      (ids) => new Set(ids).size === ids.length, 'Select each service only once',
+    ).optional(),
+    kiloAmount: z.number().finite().positive().refine(
+      (value) => Number(value.toFixed(2)) === value,
+      'Enter a weight with up to two decimal places',
+    ),
+    // Kept for existing clients; the server calculates all prices from the shop.
+    subtotal: z.number().optional(),
+    deliveryFee: z.number().optional(),
+    voucherDiscount: z.number().optional(),
+    totalAmount: z.number().optional(),
+    deliveryType: z.enum(['Deliver', 'Pickup']),
     ...addressSchema.shape,
     scheduledDate: z.string(), // ISO String
     scheduledTime: z.string(), // ISO String

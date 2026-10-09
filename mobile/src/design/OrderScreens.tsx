@@ -39,23 +39,18 @@ import {
   useOrders,
   useProfile,
   type Order,
+  type Shop,
 } from "./data";
 import { addressError, addressPayload } from "./address";
 import { DeliveryDetails, FormError } from "./AddressFields";
 import { message } from "./data";
 import { clothingNames, householdNames, useLaundryDraft } from "./store";
+import { orderPricing } from "./order-pricing";
 import { QueryState } from "./UserScreens";
 
 export function draftTotals() {
   const d = useLaundryDraft.getState();
-  const kilos = Number(d.kilos) || 1;
-  const range = d.shop?.kiloPrices?.find(
-    (r) => kilos >= Number(r.minKilo) && kilos <= Number(r.maxKilo),
-  );
-  const subtotal = kilos * Number(range?.pricePerKilo || d.service?.price || 0);
-  // Match the fixed delivery charge in Flutter's ordershopsystem.dart.
-  const deliveryFee = d.deliveryType === "Deliver" ? 30 : 0;
-  return { subtotal, deliveryFee, discount: 0, total: subtotal + deliveryFee };
+  return orderPricing(d.kilos, d.service, d.shop, d.deliveryType);
 }
 export function Totals({ order }: { order?: Order }) {
   useLaundryDraft();
@@ -64,7 +59,7 @@ export function Totals({ order }: { order?: Order }) {
     <View>
       <PriceRow
         label="Subtotal"
-        value={money(order?.subtotal ?? totals.subtotal)}
+        value={order ? money(order.subtotal) : totals.subtotal === null ? "Enter weight at checkout" : money(totals.subtotal)}
       />
       <PriceRow
         label="Delivery Fee"
@@ -77,7 +72,7 @@ export function Totals({ order }: { order?: Order }) {
       <View style={styles.divider} />
       <PriceRow
         label="Total"
-        value={money(order?.totalAmount ?? totals.total)}
+        value={order ? money(order.totalAmount) : totals.total === null ? "Enter weight at checkout" : money(totals.total)}
         total
       />
     </View>
@@ -209,7 +204,7 @@ export function OrderSummaryDesign() {
               <Txt style={styles.heading}>Order Summary</Txt>
             </View>
             <Txt style={{ fontWeight: "600", color: palette.navy }}>
-              {money(totals.subtotal)}
+              {totals.subtotal === null ? "Enter weight at checkout" : money(totals.subtotal)}
             </Txt>
           </View>
         </Card>
@@ -268,17 +263,20 @@ export function CheckoutDesign() {
     if (!draft.shop || !draft.service) return;
     if (busy) return;
     const locationError = addressError(deliveryAddress);
-    const validation = !(Number(draft.kilos) > 0) ? "Please enter a valid laundry weight." :
+    const validation = totals.kilos === null ? "Enter a weight above 0 kg with up to two decimal places." :
+      totals.pricingError ? totals.pricingError :
       !draft.schedule || new Date(draft.schedule).getTime() <= Date.now() ? "Please select a future delivery schedule." :
         locationError && draft.deliveryType === "Pickup" ? "The shop address is incomplete. Ask the shop owner to update Shop Details before booking pickup." : locationError;
     if (validation) { setError(validation); return; }
+    if (totals.kilos === null || totals.subtotal === null || totals.total === null) return;
     setError(null);
     setBusy(true);
     try {
       const order = await api.post<Order>("/transactions", {
         shopId: draft.shop.id,
         serviceName: draft.service.serviceName,
-        kiloAmount: Number(draft.kilos),
+        serviceIds: draft.serviceIds,
+        kiloAmount: totals.kilos,
         subtotal: totals.subtotal,
         deliveryFee: totals.deliveryFee,
         voucherDiscount: 0,
@@ -296,7 +294,29 @@ export function CheckoutDesign() {
       await cache.invalidateQueries({ queryKey: ["user-orders"] });
       replaceFlow("order-complete", { id: String(order.id) });
     } catch (error) {
-      setError(message(error));
+      if ((error as { error?: { code?: string } })?.error?.code === "PRICE_CHANGED" && draft.shop) {
+        try {
+          const refreshedShop = await api.get<Shop>(`/shops/${draft.shop.id}`);
+          const selected = draft.serviceIds.map((id) => refreshedShop.services?.find((service) => service.id === id));
+          if (selected.length && selected.every((service) => !!service)) {
+            draft.set({
+              shop: refreshedShop,
+              service: {
+                ...selected[0]!,
+                serviceName: selected.map((service) => service!.serviceName).join(", "),
+                price: selected.reduce((sum, service) => sum + Number(service!.price), 0),
+              },
+            });
+            setError("Shop prices changed. Review the updated total before placing your order.");
+          } else {
+            setError("A selected service is no longer available. Return to the shop and choose a service again.");
+          }
+        } catch (refreshError) {
+          setError(message(refreshError));
+        }
+      } else {
+        setError(message(error));
+      }
     } finally {
       setBusy(false);
     }
@@ -317,7 +337,7 @@ export function CheckoutDesign() {
           <View style={styles.between}>
             <View>
               <Txt style={styles.muted}>Total (incl. vat)</Txt>
-              <Txt style={styles.heading}>{money(totals.total)}</Txt>
+              <Txt style={styles.heading}>{totals.total === null ? "Enter weight" : money(totals.total)}</Txt>
             </View>
             <Button
               title="Place Order"
@@ -351,9 +371,14 @@ export function CheckoutDesign() {
           <Field
             placeholder="Enter weight in kilos"
             keyboardType="decimal-pad"
+            suffix="kg"
             value={draft.kilos}
             onChangeText={(kilos) => draft.set({ kilos })}
           />
+          {!!draft.kilos && <FormError error={totals.kilos === null ? "Enter a weight above 0 kg with up to two decimal places." : totals.pricingError} />}
+          {totals.kilos !== null && totals.rate !== null && (
+            <Txt style={styles.muted}>Shop rate: {money(totals.rate)} per kg</Txt>
+          )}
         </Card>
         <Card>
           <View style={styles.between}>

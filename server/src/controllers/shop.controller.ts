@@ -122,7 +122,9 @@ export class ShopController {
       const shopId = parseInt(req.params.shopId);
       const validatedData = createServiceSchema.parse(req).body;
 
-      // Basic authorization check could be added here
+      const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { userId: true } });
+      if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
+      if (shop.userId !== req.user!.userId) return sendError(res, 'Only the shop owner can set service prices', 'FORBIDDEN', 403);
       const service = await prisma.shopService.create({
         data: { ...validatedData, shopId }
       });
@@ -139,6 +141,15 @@ export class ShopController {
       const shopId = parseInt(req.params.shopId);
       const validatedData = createKiloPriceSchema.parse(req).body;
 
+      const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { userId: true } });
+      if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
+      if (shop.userId !== req.user!.userId) return sendError(res, 'Only the shop owner can set weight prices', 'FORBIDDEN', 403);
+      const overlap = await prisma.kiloPrice.findFirst({ where: {
+        shopId,
+        minKilo: { lte: validatedData.maxKilo },
+        maxKilo: { gte: validatedData.minKilo },
+      } });
+      if (overlap) return sendError(res, 'Weight price ranges cannot overlap', 'CONFLICT', 409);
       const kiloPrice = await prisma.kiloPrice.create({
         data: { ...validatedData, shopId }
       });

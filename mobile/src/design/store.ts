@@ -20,6 +20,7 @@ export const householdNames = [
 interface Draft {
   shop: Shop | null;
   service: Service | null;
+  serviceIds: number[];
   deliveryType: "Deliver" | "Pickup";
   kilos: string;
   counts: Record<string, number>;
@@ -29,11 +30,12 @@ interface Draft {
   address: Partial<Profile> | null;
   searchHistory: string[];
   set: (value: Partial<Omit<Draft, "set" | "start">>) => void;
-  start: (shop: Shop, service: Service) => void;
+  start: (shop: Shop, service: Service, serviceIds: number[]) => void;
 }
 export const useLaundryDraft = create<Draft>()((set) => ({
   shop: null,
   service: null,
+  serviceIds: [],
   deliveryType: "Deliver",
   kilos: "",
   counts: {},
@@ -43,10 +45,11 @@ export const useLaundryDraft = create<Draft>()((set) => ({
   address: null,
   searchHistory: [],
   set: (value) => set(value),
-  start: (shop, service) =>
+  start: (shop, service, serviceIds) =>
     set({
       shop,
       service,
+      serviceIds,
       counts: {},
       notes: "",
       kilos: "",

@@ -86,14 +86,38 @@ async function main() {
         const fetched = (await request(`/shops/user/${signup.user.id}`, 'GET', undefined, recovered.token)).data;
         assert.equal(fetched.postal_code, '0080');
 
+        const service = (await request(`/shops/${registration.id}/services`, 'POST',
+          { serviceName: 'Wash', price: 50 }, recovered.token, 201)).data;
+        assert.equal(service.serviceName, 'Wash');
+        await request(`/shops/${registration.id}/services`, 'POST',
+          { serviceName: 'Unauthorised', price: 1 }, stranger.token, 403);
+        await request(`/shops/${registration.id}/kilo-prices`, 'POST',
+          { minKilo: 1, maxKilo: 8, pricePerKilo: 45 }, stranger.token, 403);
+        await request(`/shops/${registration.id}/kilo-prices`, 'POST',
+          { minKilo: 1, maxKilo: 8, pricePerKilo: 45 }, recovered.token, 201);
+        await request(`/shops/${registration.id}/kilo-prices`, 'POST',
+          { minKilo: 8, maxKilo: 12, pricePerKilo: 40 }, recovered.token, 409);
+
         const schedule = new Date(Date.now() + 86400000).toISOString();
         const customer = await signupUser('Test Customer');
         const orderInput = { ...location, shopId: registration.id, serviceName: 'Wash', kiloAmount: 2,
           subtotal: 100, deliveryFee: 30, totalAmount: 130, deliveryType: 'Deliver', scheduledDate: schedule,
-          scheduledTime: schedule, items: [{ itemName: 'T-shirt', quantity: 2 }] };
+          scheduledTime: schedule, serviceIds: [service.id], items: [{ itemName: 'T-shirt', quantity: 2 }] };
         await request('/transactions', 'POST', { ...orderInput, postal_code: undefined }, customer.token, 400);
+        await request('/transactions', 'POST', { ...orderInput, kiloAmount: 0 }, customer.token, 400);
+        await request('/transactions', 'POST', { ...orderInput, kiloAmount: 2.345 }, customer.token, 400);
+        await request('/transactions', 'POST', { ...orderInput, serviceIds: [999999] }, customer.token, 409);
+        const oldPrice = await request('/transactions', 'POST', orderInput, customer.token, 409);
+        assert.equal(oldPrice.error.code, 'PRICE_CHANGED');
         for (const deliveryType of ['Deliver', 'Pickup']) {
-          const order = (await request('/transactions', 'POST', { ...orderInput, deliveryType }, customer.token, 201)).data;
+          const deliveryFee = deliveryType === 'Deliver' ? 30 : 0;
+          const order = (await request('/transactions', 'POST', {
+            ...orderInput, deliveryType, subtotal: 90, deliveryFee, totalAmount: 90 + deliveryFee,
+          }, customer.token, 201)).data;
+          assert.equal(Number(order.subtotal), 90);
+          assert.equal(Number(order.deliveryFee), deliveryType === 'Deliver' ? 30 : 0);
+          assert.equal(Number(order.totalAmount), deliveryType === 'Deliver' ? 120 : 90);
+          assert.equal(order.serviceName, 'Wash');
           assert.equal(order.access_code, '0123');
           assert.equal(order.dropoff_instructions, 'Leave with doorman');
           assert.equal(order.latitude, null);
@@ -120,7 +144,7 @@ async function main() {
         await request(`/transactions/${orders[1].id}/status`, 'PUT', { status: 'Processing' }, recovered.token, 409);
         const refreshed = (await request(`/transactions/user/${customer.user.id}`, 'GET', undefined, customer.token)).data;
         assert.equal(refreshed.find(order => order.id === cancelled.id).status, 'Cancelled');
-        console.log('PASS: real HTTP signup, validation, profile address, shop registration, owner token, shop edits, authorization, order address snapshots, and pending cancellation with saved reason.');
+        console.log('PASS: real HTTP signup, shop price ownership, authoritative order pricing, addresses, authorization, and cancellation.');
       } finally {
         await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
         configuration.default = prisma;

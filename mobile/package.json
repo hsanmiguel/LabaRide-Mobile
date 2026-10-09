@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test:navigation": "node tests/shop-navigation.test.cjs",
     "test:network": "node tests/api-address.test.cjs",
-    "test:cancel": "node tests/cancel-order.test.cjs"
+    "test:cancel": "node tests/cancel-order.test.cjs",
+    "test:pricing": "node tests/order-pricing.test.cjs"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

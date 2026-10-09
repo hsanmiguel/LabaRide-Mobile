@@ -202,9 +202,10 @@ export function Button({
 export function Field({
   label,
   password = false,
+  suffix,
   style,
   ...props
-}: TextInputProps & { label?: string; password?: boolean }) {
+}: TextInputProps & { label?: string; password?: boolean; suffix?: string }) {
   const [visible, setVisible] = useState(false);
   return (
     <View style={{ gap: 8, marginBottom: 16 }}>
@@ -237,6 +238,9 @@ export function Field({
             style,
           ]}
         />
+        {!!suffix && (
+          <Txt style={{ color: "#545454", paddingRight: 16 }}>{suffix}</Txt>
+        )}
         {password && (
           <Pressable
             accessibilityLabel={visible ? "Hide password" : "Show password"}

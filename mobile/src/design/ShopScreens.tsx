@@ -1164,6 +1164,7 @@ export function ServicesDesign() {
                   key={field.key}
                   label={field.label}
                   keyboardType="decimal-pad"
+                  suffix={field.key === "pricePerKilo" ? undefined : "kg"}
                   value={values[field.key]}
                   onChangeText={(v) => setValues({ ...values, [field.key]: v })}
                 />

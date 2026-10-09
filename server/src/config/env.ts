@@ -48,7 +48,7 @@ const databaseUrl = z.string().transform((value) => {
 });
 
 export const envSchema = z.object({
-  PORT: z.string().default('5000'),
+  PORT: z.string().default('5001'),
   DATABASE_URL: databaseUrl,
   DIRECT_URL: databaseUrl.optional(),
   JWT_SECRET: z.string().min(32, 'Set JWT_SECRET to a random secret of at least 32 characters.'),

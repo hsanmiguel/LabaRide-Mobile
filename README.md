@@ -50,6 +50,9 @@ npm run db:check
 npm run dev
 ```
 
+The backend uses port `5001`. Check `http://localhost:5001/health` to verify it
+is running.
+
 ### 3. Frontend (Mobile)
 ```bash
 cd mobile
@@ -60,6 +63,10 @@ npm install
 # Start the Expo development server
 npx expo start
 ```
+
+Use `http://localhost:5001` for the API in a browser on this computer, or
+`http://<your-computer-LAN-IP>:5001` in Expo Go on a physical phone. After changing
+`mobile/.env`, restart Expo with `npx expo start --clear` and fully reopen the app.
 
 The mobile app supports Node.js 24. In PowerShell, use `npm.cmd install` and
 `npx.cmd expo start` if `.ps1` script execution is disabled.

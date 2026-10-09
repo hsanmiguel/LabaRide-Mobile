@@ -37,7 +37,7 @@ apiClient.interceptors.response.use(
       useAuthStore.getState().logout();
     }
     if (!error.response && ["ERR_NETWORK", "ECONNABORTED", "ETIMEDOUT"].includes(error.code)) {
-      return Promise.reject(connectionErrorMessage(API_URL, error.code !== "ERR_NETWORK"));
+      return Promise.reject(connectionErrorMessage(API_URL, error.code !== "ERR_NETWORK", Platform.OS));
     }
     return Promise.reject(error.response?.data || error.message);
   },

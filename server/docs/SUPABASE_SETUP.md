@@ -93,10 +93,10 @@ Copy `mobile/.env.example` to `mobile/.env` if needed and set
 `EXPO_PUBLIC_API_URL` to the Express server, for example:
 
 ```dotenv
-EXPO_PUBLIC_API_URL=http://localhost:5000
+EXPO_PUBLIC_API_URL=http://localhost:5001
 ```
 
-Use your computer's LAN address for a physical phone or `http://10.0.2.2:5000`
+Use your computer's LAN address for a physical phone or `http://10.0.2.2:5001`
 for an Android emulator. Restart Expo after changing its environment variables.
 Use the deployed HTTPS backend URL for a hosted app. Never place a PostgreSQL
 URL or database password in an `EXPO_PUBLIC_*` variable.

@@ -92,7 +92,7 @@ successfully. `.env.example` now contains placeholders. Neither `server/.env` no
 exposed in the provided selection and was preserved.
 
 No further database repair or migration is pending. Start the normal backend with
-`npm.cmd run dev` from `server/`; it uses the configured port 5000. Start the web
+`npm.cmd run dev` from `server/`; it uses the configured port 5001. Start the web
 app with `npm.cmd run web` from `mobile/`. Keep `EXPO_PUBLIC_API_URL` pointed at
 the Express API. Signup and booking flows can be tested with user-created test
 accounts; this diagnosis did not create business records.

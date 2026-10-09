@@ -29,3 +29,11 @@ export const updateStatusSchema = z.object({
     notes: z.string().optional()
   })
 });
+
+export const cancelTransactionSchema = z.object({
+  params: z.object({ id: z.coerce.number().int().positive() }),
+  body: z.object({
+    // Older clients can omit the reason; supplied reasons must contain text.
+    reason: z.string().trim().min(1, 'Choose a cancellation reason').max(500).optional(),
+  }),
+});

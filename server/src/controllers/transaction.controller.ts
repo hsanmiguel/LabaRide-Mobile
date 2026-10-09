@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../config/database';
 import { sendSuccess, sendError } from '../utils/response';
-import { createTransactionSchema, updateStatusSchema } from '../validators/transaction.validator';
+import { createTransactionSchema, updateStatusSchema, cancelTransactionSchema } from '../validators/transaction.validator';
 import { AuthRequest } from '../middleware/auth.middleware';
 import type { Server } from 'socket.io';
 
@@ -92,11 +92,15 @@ export class TransactionController {
       if (existing.shop.userId !== req.user!.userId) {
         return sendError(res, 'Only the shop owner can update order status', 'FORBIDDEN', 403);
       }
-
-      const transaction = await prisma.transaction.update({
-        where: { id: transactionId },
-        data: { status, notes: notes || undefined }
+      if (existing.status === 'Cancelled' && status !== 'Cancelled') {
+        return sendError(res, 'A cancelled order cannot be accepted or completed', 'CONFLICT', 409);
+      }
+      const updated = await prisma.transaction.updateMany({
+        where: { id: transactionId, status: existing.status },
+        data: { status, notes: notes || undefined },
       });
+      if (!updated.count) return sendError(res, 'Order status changed. Refresh and try again.', 'CONFLICT', 409);
+      const transaction = await prisma.transaction.findUniqueOrThrow({ where: { id: transactionId } });
 
       // Emit socket event to both user and shop
       const payload = { transaction_id: transaction.id, status, notes, total_amount: transaction.totalAmount };
@@ -111,19 +115,24 @@ export class TransactionController {
 
   static async cancelTransaction(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const transactionId = parseInt(req.params.id);
+      const { params: { id: transactionId }, body: { reason } } = cancelTransactionSchema.parse(req);
       const existing = await prisma.transaction.findUnique({
-        where: { id: transactionId }, select: { userId: true },
+        where: { id: transactionId }, select: { userId: true, status: true },
       });
       if (!existing) return sendError(res, 'Order not found', 'NOT_FOUND', 404);
       if (existing.userId !== req.user!.userId) {
         return sendError(res, 'Only the customer can cancel this order', 'FORBIDDEN', 403);
       }
+      if (existing.status !== 'Pending') {
+        return sendError(res, 'You can only cancel a pending order before it is accepted', 'CONFLICT', 409);
+      }
       
-      const transaction = await prisma.transaction.update({
-        where: { id: transactionId },
-        data: { status: 'Cancelled' }
+      const updated = await prisma.transaction.updateMany({
+        where: { id: transactionId, userId: req.user!.userId, status: 'Pending' },
+        data: { status: 'Cancelled', notes: reason },
       });
+      if (!updated.count) return sendError(res, 'Order status changed. Refresh and try again.', 'CONFLICT', 409);
+      const transaction = await prisma.transaction.findUniqueOrThrow({ where: { id: transactionId } });
 
       const payload = { transaction_id: transaction.id, status: 'Cancelled', notes: transaction.notes, total_amount: transaction.totalAmount };
       (req.app.get('io') as Server | undefined)?.to(`user_${transaction.userId}`).emit('status_update', payload);

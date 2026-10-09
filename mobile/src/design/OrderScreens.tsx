@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Alert, Pressable, View } from "react-native";
 import {
   CalendarDays,
@@ -32,6 +32,7 @@ import {
 import {
   address,
   api,
+  confirmAction,
   fail,
   useFlowNavigation,
   unavailable,
@@ -953,7 +954,7 @@ export function OrderDetailsDesign({
           ) : (
             <Txt style={styles.muted}>No items listed</Txt>
           )}
-          {order.notes && <Txt style={styles.muted}>{order.notes}</Txt>}
+          {!!order.notes && <Txt style={styles.muted}>{order.notes}</Txt>}
         </Card>
         <Card>
           <Totals order={order} />
@@ -976,21 +977,38 @@ export function CancelOrderDesign({ id }: { id: number }) {
   const order = orders.data?.find((o) => o.id === id);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
   const cache = useQueryClient();
   async function cancel() {
-    if (!order || order.status !== "Pending")
-      return Alert.alert(
-        "Cancel Order",
-        "You can cancel an order before it is accepted",
-      );
-    setBusy(true);
+    if (submitting.current) return;
+    if (!order || order.status !== "Pending") {
+      setError("You can only cancel a pending order before it is accepted.");
+      return;
+    }
+    if (!reason.trim()) {
+      setError("Please select a cancellation reason.");
+      return;
+    }
+    submitting.current = true;
+    setBusy(true); setError(null);
     try {
-      await api.put(`/transactions/${id}/cancel`, { reason });
-      await cache.invalidateQueries({ queryKey: ["user-orders"] });
-      replaceFlow("order-cancelled");
-    } catch (error) {
-      fail(error);
+      if (!await confirmAction("Cancel Order", "Are you sure you want to cancel your order?")) return;
+      const cancelled = await api.put<Order>(`/transactions/${id}/cancel`, { reason: reason.trim() });
+      for (const key of ["user-orders", "shop-orders"]) {
+        cache.setQueriesData<Order[]>({ queryKey: [key] }, (current) =>
+          current?.map((entry) => entry.id === id ? { ...entry, ...cancelled } : entry));
+      }
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: ["user-orders"] }),
+        cache.invalidateQueries({ queryKey: ["shop-orders"] }),
+      ]);
+      replaceFlow("order-cancelled", { id: String(id) });
+    } catch (failure) {
+      setError(message(failure));
+      void orders.refetch();
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -1001,22 +1019,16 @@ export function CancelOrderDesign({ id }: { id: number }) {
         <Button
           title="Confirm"
           color={palette.navy}
-          disabled={!reason || !order || order.status !== "Pending"}
+          disabled={!reason.trim() || !order || order.status !== "Pending"}
           busy={busy}
-          onPress={() =>
-            Alert.alert(
-              "Cancel Order",
-              "Are you sure you want to cancel your order?",
-              [
-                { text: "No", style: "cancel" },
-                { text: "Yes", style: "destructive", onPress: cancel },
-              ],
-            )
-          }
+          onPress={cancel}
         />
       }
     >
       <View style={styles.stack}>
+        <QueryState loading={orders.isLoading} error={orders.error} retry={() => orders.refetch()} />
+        {!orders.isLoading && !orders.error && !order && <Empty title="Order not found" />}
+        <FormError error={error} />
         <Card>
           <PriceRow label="Order number:" value={`#${id}`} />
           <PriceRow label="Shop name:" value={order?.shop?.shopName || "—"} />
@@ -1035,7 +1047,7 @@ export function CancelOrderDesign({ id }: { id: number }) {
             key={value}
             label={value}
             selected={reason === value}
-            onPress={() => setReason(value)}
+            onPress={() => { setReason(value); setError(null); }}
           />
         ))}
       </View>

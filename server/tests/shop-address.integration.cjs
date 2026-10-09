@@ -110,9 +110,17 @@ async function main() {
         await request(`/transactions/${orders[0].id}/cancel`, 'PUT', {}, stranger.token, 403);
         await request(`/transactions/${orders[0].id}/status`, 'PUT', { status: 'Processing' }, customer.token, 403);
         await request(`/transactions/${orders[0].id}/status`, 'PUT', { status: 'Processing' }, recovered.token);
+        await request(`/transactions/${orders[0].id}/cancel`, 'PUT', { reason: 'I changed my mind' }, customer.token, 409);
         await request(`/transactions/${orders[1].id}/cancel`, 'PUT', {}, recovered.token, 403);
-        await request(`/transactions/${orders[1].id}/cancel`, 'PUT', {}, customer.token);
-        console.log('PASS: real HTTP signup, validation, profile address, shop registration, owner token, duplicate recovery, shop edits, authorization, and order address snapshots.');
+        await request(`/transactions/${orders[1].id}/cancel`, 'PUT', { reason: '  ' }, customer.token, 400);
+        const cancelled = (await request(`/transactions/${orders[1].id}/cancel`, 'PUT', { reason: '  I changed my mind  ' }, customer.token)).data;
+        assert.equal(cancelled.status, 'Cancelled');
+        assert.equal(cancelled.notes, 'I changed my mind');
+        await request(`/transactions/${orders[1].id}/cancel`, 'PUT', {}, customer.token, 409);
+        await request(`/transactions/${orders[1].id}/status`, 'PUT', { status: 'Processing' }, recovered.token, 409);
+        const refreshed = (await request(`/transactions/user/${customer.user.id}`, 'GET', undefined, customer.token)).data;
+        assert.equal(refreshed.find(order => order.id === cancelled.id).status, 'Cancelled');
+        console.log('PASS: real HTTP signup, validation, profile address, shop registration, owner token, shop edits, authorization, order address snapshots, and pending cancellation with saved reason.');
       } finally {
         await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
         configuration.default = prisma;

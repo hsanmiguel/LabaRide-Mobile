@@ -628,7 +628,7 @@ export function ShopOrderDetailsDesign({
           label="Scheduled Date"
           value={new Date(order.scheduledDate).toLocaleDateString()}
         />
-        {order.notes && (
+        {!!order.notes && (
           <>
             <Section
               title={

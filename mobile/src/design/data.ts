@@ -101,6 +101,17 @@ export function notify(title: string, text: string) {
   if (Platform.OS === "web" && typeof window !== "undefined") window.alert(title + "\n" + text);
   else Alert.alert(title, text);
 }
+export function confirmAction(title: string, text: string): Promise<boolean> {
+  if (Platform.OS === "web") {
+    return Promise.resolve(typeof window !== "undefined" && window.confirm(title + "\n\n" + text));
+  }
+  return new Promise((resolve) => {
+    Alert.alert(title, text, [
+      { text: "No", style: "cancel", onPress: () => resolve(false) },
+      { text: "Yes", style: "destructive", onPress: () => resolve(true) },
+    ], { cancelable: true, onDismiss: () => resolve(false) });
+  });
+}
 export function fail(error: unknown) {
   notify("Something went wrong", message(error));
 }

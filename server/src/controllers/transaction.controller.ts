@@ -3,7 +3,7 @@ import prisma from '../config/database';
 import { sendSuccess, sendError } from '../utils/response';
 import { createTransactionSchema, updateStatusSchema } from '../validators/transaction.validator';
 import { AuthRequest } from '../middleware/auth.middleware';
-import { io } from '../server';
+import type { Server } from 'socket.io';
 
 export class TransactionController {
   
@@ -34,7 +34,7 @@ export class TransactionController {
       });
 
       // Emit socket event to shop room
-      io.to(`shop_${transaction.shopId}`).emit('new_transaction', transaction);
+      (req.app.get('io') as Server | undefined)?.to(`shop_${transaction.shopId}`).emit('new_transaction', transaction);
 
       return sendSuccess(res, transaction, 'Transaction created successfully', 201);
     } catch (error) {
@@ -64,6 +64,10 @@ export class TransactionController {
   static async getShopTransactions(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const shopId = parseInt(req.params.shopId);
+      const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { userId: true } });
+      if (!shop || shop.userId !== req.user!.userId) {
+        return sendError(res, 'Only the shop owner can view these orders', 'FORBIDDEN', 403);
+      }
       
       const transactions = await prisma.transaction.findMany({
         where: { shopId },
@@ -81,6 +85,13 @@ export class TransactionController {
     try {
       const transactionId = parseInt(req.params.id);
       const { status, notes } = updateStatusSchema.parse(req).body;
+      const existing = await prisma.transaction.findUnique({
+        where: { id: transactionId }, include: { shop: { select: { userId: true } } },
+      });
+      if (!existing) return sendError(res, 'Order not found', 'NOT_FOUND', 404);
+      if (existing.shop.userId !== req.user!.userId) {
+        return sendError(res, 'Only the shop owner can update order status', 'FORBIDDEN', 403);
+      }
 
       const transaction = await prisma.transaction.update({
         where: { id: transactionId },
@@ -89,8 +100,8 @@ export class TransactionController {
 
       // Emit socket event to both user and shop
       const payload = { transaction_id: transaction.id, status, notes, total_amount: transaction.totalAmount };
-      io.to(`user_${transaction.userId}`).emit('status_update', payload);
-      io.to(`shop_${transaction.shopId}`).emit('status_update', payload);
+      (req.app.get('io') as Server | undefined)?.to(`user_${transaction.userId}`).emit('status_update', payload);
+      (req.app.get('io') as Server | undefined)?.to(`shop_${transaction.shopId}`).emit('status_update', payload);
 
       return sendSuccess(res, transaction, 'Transaction status updated');
     } catch (error) {
@@ -101,6 +112,13 @@ export class TransactionController {
   static async cancelTransaction(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const transactionId = parseInt(req.params.id);
+      const existing = await prisma.transaction.findUnique({
+        where: { id: transactionId }, select: { userId: true },
+      });
+      if (!existing) return sendError(res, 'Order not found', 'NOT_FOUND', 404);
+      if (existing.userId !== req.user!.userId) {
+        return sendError(res, 'Only the customer can cancel this order', 'FORBIDDEN', 403);
+      }
       
       const transaction = await prisma.transaction.update({
         where: { id: transactionId },
@@ -108,8 +126,8 @@ export class TransactionController {
       });
 
       const payload = { transaction_id: transaction.id, status: 'Cancelled', notes: transaction.notes, total_amount: transaction.totalAmount };
-      io.to(`user_${transaction.userId}`).emit('status_update', payload);
-      io.to(`shop_${transaction.shopId}`).emit('status_update', payload);
+      (req.app.get('io') as Server | undefined)?.to(`user_${transaction.userId}`).emit('status_update', payload);
+      (req.app.get('io') as Server | undefined)?.to(`shop_${transaction.shopId}`).emit('status_update', payload);
 
       return sendSuccess(res, transaction, 'Transaction cancelled');
     } catch (error) {

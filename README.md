@@ -19,14 +19,18 @@ LabaRide/
 
 ## Prerequisites
 - Node.js 24.19.0 (the mobile app uses Expo SDK 57)
-- PostgreSQL installed and running
+- A Supabase project and its database password (or a local PostgreSQL server)
 - Expo CLI
 
 ## Installation & Setup
 
-### 1. Database (PostgreSQL)
-Ensure PostgreSQL is running on your machine.
-Create a new database for LabaRide (e.g., `labaride_db`).
+### 1. Database (Supabase)
+The backend uses Prisma to connect to Supabase PostgreSQL. The mobile app calls
+the Express API; database credentials stay in `server/.env`.
+
+The environment template is configured for project `domftqrekdrimtulkvxf`.
+Follow [the Supabase setup guide](server/docs/SUPABASE_SETUP.md) to set the
+database password, deploy the tables, and verify the connection.
 
 ### 2. Backend (Server)
 ```bash
@@ -34,10 +38,13 @@ cd server
 npm install
 
 # Configure your environment variables
-# Copy .env.example to .env and set DATABASE_URL and JWT_SECRET
+# Copy .env.example to .env if it does not exist, then set the database URLs
+# and a random JWT_SECRET. Never overwrite an existing configured .env.
 
-# Run database migrations
-npx prisma migrate dev --name init
+# Deploy the initial migration to a new database (no shadow database needed)
+npm run prisma:generate
+npm run prisma:deploy
+npm run db:check
 
 # Start the server
 npm run dev
@@ -47,6 +54,8 @@ npm run dev
 ```bash
 cd mobile
 npm install
+
+# Copy .env.example to .env and set EXPO_PUBLIC_API_URL to your backend URL
 
 # Start the Expo development server
 npx expo start

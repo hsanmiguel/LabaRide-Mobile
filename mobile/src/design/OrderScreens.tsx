@@ -40,6 +40,9 @@ import {
   useProfile,
   type Order,
 } from "./data";
+import { addressError, addressPayload } from "./address";
+import { DeliveryDetails, FormError } from "./AddressFields";
+import { message } from "./data";
 import { clothingNames, householdNames, useLaundryDraft } from "./store";
 import { QueryState } from "./UserScreens";
 
@@ -183,16 +186,16 @@ export function OrderSummaryDesign() {
             user
               ? go("checkout")
               : Alert.alert(
-                  "Login Required",
-                  "Please log in to place your order.",
-                  [
-                    { text: "Cancel" },
-                    {
-                      text: "Log In",
-                      onPress: () => router.push("/(auth)/login"),
-                    },
-                  ],
-                )
+                "Login Required",
+                "Please log in to place your order.",
+                [
+                  { text: "Cancel" },
+                  {
+                    text: "Log In",
+                    onPress: () => router.push("/(auth)/login"),
+                  },
+                ],
+              )
           }
         />
       }
@@ -254,29 +257,20 @@ export function OrderSummaryDesign() {
 export function CheckoutDesign() {
   const draft = useLaundryDraft();
   const profile = useProfile();
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const cache = useQueryClient();
-  const deliveryAddress = draft.address || profile.data;
+  const deliveryAddress = draft.deliveryType === "Pickup" ? draft.shop : draft.address || profile.data;
   const totals = draftTotals();
   async function submit() {
     if (!draft.shop || !draft.service) return;
-    if (!(Number(draft.kilos) > 0))
-      return Alert.alert("Laundry Weight", "Please enter valid weight");
-    if (!draft.schedule || new Date(draft.schedule).getTime() <= Date.now())
-      return Alert.alert(
-        "Delivery Schedule",
-        "Please select a future delivery schedule",
-      );
-    if (
-      draft.deliveryType === "Deliver" &&
-      (!deliveryAddress?.street ||
-        !deliveryAddress.barangay ||
-        !deliveryAddress.zone)
-    )
-      return Alert.alert(
-        "Delivery Address",
-        "Please complete your delivery address.",
-      );
+    if (busy) return;
+    const locationError = addressError(deliveryAddress);
+    const validation = !(Number(draft.kilos) > 0) ? "Please enter a valid laundry weight." :
+      !draft.schedule || new Date(draft.schedule).getTime() <= Date.now() ? "Please select a future delivery schedule." :
+        locationError && draft.deliveryType === "Pickup" ? "The shop address is incomplete. Ask the shop owner to update Shop Details before booking pickup." : locationError;
+    if (validation) { setError(validation); return; }
+    setError(null);
     setBusy(true);
     try {
       const order = await api.post<Order>("/transactions", {
@@ -288,10 +282,7 @@ export function CheckoutDesign() {
         voucherDiscount: 0,
         totalAmount: totals.total,
         deliveryType: draft.deliveryType,
-        zone: deliveryAddress?.zone || "",
-        street: deliveryAddress?.street || "",
-        barangay: deliveryAddress?.barangay || "",
-        building: deliveryAddress?.building || "",
+        ...addressPayload(deliveryAddress!),
         scheduledDate: draft.schedule,
         scheduledTime: draft.schedule,
         paymentMethod: draft.paymentMethod,
@@ -303,7 +294,7 @@ export function CheckoutDesign() {
       await cache.invalidateQueries({ queryKey: ["user-orders"] });
       replaceFlow("order-complete", { id: String(order.id) });
     } catch (error) {
-      fail(error);
+      setError(message(error));
     } finally {
       setBusy(false);
     }
@@ -319,17 +310,20 @@ export function CheckoutDesign() {
       title="Checkout"
       background={palette.surface}
       footer={
-        <View style={styles.between}>
-          <View>
-            <Txt style={styles.muted}>Total (incl. vat)</Txt>
-            <Txt style={styles.heading}>{money(totals.total)}</Txt>
+        <View>
+          <FormError error={error} />
+          <View style={styles.between}>
+            <View>
+              <Txt style={styles.muted}>Total (incl. vat)</Txt>
+              <Txt style={styles.heading}>{money(totals.total)}</Txt>
+            </View>
+            <Button
+              title="Place Order"
+              color={palette.navy}
+              onPress={submit}
+              busy={busy}
+            />
           </View>
-          <Button
-            title="Place Order"
-            color={palette.navy}
-            onPress={submit}
-            busy={busy}
-          />
         </View>
       }
     >
@@ -347,7 +341,7 @@ export function CheckoutDesign() {
                 : address(deliveryAddress) || "Choose your delivery address"
             }
             asset="locationblue.png"
-            onPress={() => go("add-location", { checkout: "true" })}
+            onPress={draft.deliveryType === "Deliver" ? () => go("add-location", { checkout: "true" }) : undefined}
           />
         </Card>
         <Card>
@@ -740,9 +734,9 @@ export function OrderCard({
           onPress={() =>
             shopMode
               ? router.push({
-                  pathname: "/(shop)/orders/[id]",
-                  params: { id: String(order.id) },
-                })
+                pathname: "/(shop)/orders/[id]",
+                params: { id: String(order.id) },
+              })
               : go("transaction-details", { id: String(order.id) })
           }
         />
@@ -916,10 +910,11 @@ export function OrderDetailsDesign({
         <Card>
           <Section title={full ? "Shipping Information" : "Order Details"} />
           <MenuRow
-            title={order.userName}
+            title={order.deliveryType === "Pickup" ? "Pickup location" : order.userName}
             detail={address(order)}
             asset="delivery.png"
           />
+          <DeliveryDetails value={order} />
           <MenuRow
             title={order.shop?.shopName || "Laundry Shop"}
             detail={order.shop?.address}

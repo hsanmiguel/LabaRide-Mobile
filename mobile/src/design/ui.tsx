@@ -220,6 +220,7 @@ export function Field({
         }}
       >
         <TextInput
+          accessibilityLabel={label || props.placeholder}
           {...props}
           secureTextEntry={password && !visible}
           placeholderTextColor="#9CA3AF"

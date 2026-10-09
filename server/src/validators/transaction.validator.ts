@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { addressSchema } from './address.validator';
 
 export const createTransactionSchema = z.object({
   body: z.object({
@@ -10,10 +11,7 @@ export const createTransactionSchema = z.object({
     voucherDiscount: z.number().default(0),
     totalAmount: z.number(),
     deliveryType: z.string(),
-    zone: z.string(),
-    street: z.string(),
-    barangay: z.string(),
-    building: z.string(),
+    ...addressSchema.shape,
     scheduledDate: z.string(), // ISO String
     scheduledTime: z.string(), // ISO String
     paymentMethod: z.string().default('Cash on Delivery'),

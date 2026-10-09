@@ -6,6 +6,7 @@ import { env } from '../config/env';
 import { sendSuccess, sendError } from '../utils/response';
 import { signupSchema, loginSchema } from '../validators/auth.validator';
 import { AuthRequest } from '../middleware/auth.middleware';
+import { userProfileSelect } from '../utils/user-profile';
 
 export class AuthController {
   
@@ -87,13 +88,14 @@ export class AuthController {
         return sendError(res, 'Unauthorized', 'UNAUTHORIZED', 401);
       }
 
-      const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+      const user = await prisma.user.findUnique({ where: { id: req.user.userId }, select: userProfileSelect });
       if (!user) {
         return sendError(res, 'User not found', 'NOT_FOUND', 404);
       }
 
       return sendSuccess(res, {
-        user: { id: user.id, name: user.name, email: user.email, isShopOwner: user.isShopOwner }
+        user,
+        token: jwt.sign({ userId: user.id, isShopOwner: user.isShopOwner }, env.JWT_SECRET, { expiresIn: '7d' }),
       }, 'Token is valid');
     } catch (error) {
       next(error);

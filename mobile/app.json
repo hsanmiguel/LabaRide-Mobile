@@ -23,7 +23,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow LabaRide to use your location for pickup and delivery routing."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

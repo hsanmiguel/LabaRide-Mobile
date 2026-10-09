@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import apiClient from "../api/client";
 import { useAuthStore } from "../store/authStore";
 
-export interface Profile {
+import { formatAddress, type AddressData } from "./address";
+
+export interface Profile extends AddressData {
   id: number;
   name: string;
   email: string;
@@ -12,10 +14,6 @@ export interface Profile {
   phone?: string;
   birthdate?: string;
   gender?: string;
-  zone?: string;
-  street?: string;
-  barangay?: string;
-  building?: string;
 }
 export interface Service {
   id: number;
@@ -35,26 +33,20 @@ export interface KiloPrice {
   maxKilo: string | number;
   pricePerKilo: string | number;
 }
-export interface Shop {
+export interface Shop extends AddressData {
   id: number;
   userId: number;
   shopName: string;
   contactNumber?: string;
-  zone?: string;
-  street?: string;
-  barangay?: string;
-  building?: string;
   address?: string;
   openingTime?: string;
   closingTime?: string;
-  latitude?: number;
-  longitude?: number;
   services?: Service[];
   kiloPrices?: KiloPrice[];
   clothingTypes?: LaundryItem[];
   householdItems?: LaundryItem[];
 }
-export interface Order {
+export interface Order extends AddressData {
   id: number;
   userId: number;
   shopId: number;
@@ -68,10 +60,6 @@ export interface Order {
   voucherDiscount: string | number;
   totalAmount: string | number;
   deliveryType: string;
-  zone?: string;
-  street?: string;
-  barangay?: string;
-  building?: string;
   scheduledDate: string;
   scheduledTime: string;
   paymentMethod: string;
@@ -102,11 +90,18 @@ export const api = {
 };
 export function message(error: unknown) {
   if (typeof error === "string") return error;
-  const e = error as { error?: { message?: string }; message?: string };
+  const e = error as { error?: { message?: string; details?: { path?: (string | number)[]; message?: string }[] }; message?: string };
+  if (Array.isArray(e?.error?.details)) {
+    return e.error.details.map(detail => [detail.path?.filter(key => key !== "body").join("."), detail.message].filter(Boolean).join(": ")).join("\n");
+  }
   return e?.error?.message || e?.message || "Please try again.";
 }
+export function notify(title: string, text: string) {
+  if (Platform.OS === "web" && typeof window !== "undefined") window.alert(title + "\n" + text);
+  else Alert.alert(title, text);
+}
 export function fail(error: unknown) {
-  Alert.alert("Something went wrong", message(error));
+  notify("Something went wrong", message(error));
 }
 export function unavailable(feature: string) {
   Alert.alert(
@@ -129,19 +124,7 @@ export function replaceFlow(
     params: { ...params, flow: screen },
   });
 }
-export const address = (
-  value?: {
-    zone?: string;
-    street?: string;
-    barangay?: string;
-    building?: string;
-    address?: string;
-  } | null,
-) =>
-  value?.address ||
-  [value?.building, value?.zone, value?.street, value?.barangay]
-    .filter(Boolean)
-    .join(", ");
+export const address = formatAddress;
 export function useProfile() {
   const user = useAuthStore((state) => state.user);
   return useQuery({

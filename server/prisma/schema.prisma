@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum TransactionStatus {
@@ -12,6 +13,13 @@ enum TransactionStatus {
   Processing
   Completed
   Cancelled
+}
+
+enum AddressType {
+  Home
+  Work
+  Hotel
+  Apartment
 }
 
 model User {
@@ -30,34 +38,56 @@ model User {
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  shop         Shop?
-  transactions Transaction[]
+  shop                 Shop?
+  transactions         Transaction[]
+  // Nullable for existing accounts and historical records; new address saves are validated by the API.
+  address_line_1       String?
+  address_line_2       String?
+  city                 String?
+  state_province       String?
+  postal_code          String?
+  country              String?
+  latitude             Decimal?      @db.Decimal(10, 7)
+  longitude            Decimal?      @db.Decimal(10, 7)
+  address_type         AddressType?
+  access_code          String?
+  dropoff_instructions String?
 
   @@map("users")
 }
 
 model Shop {
-  id            Int       @id @default(autoincrement())
-  userId        Int       @unique @map("user_id")
-  shopName      String    @map("shop_name")
-  contactNumber String    @map("contact_number")
-  zone          String
-  street        String
-  barangay      String
+  id            Int      @id @default(autoincrement())
+  userId        Int      @unique @map("user_id")
+  shopName      String   @map("shop_name")
+  contactNumber String   @map("contact_number")
+  zone          String?
+  street        String?
+  barangay      String?
   building      String?
-  openingTime   String    @map("opening_time")
-  closingTime   String    @map("closing_time")
-  latitude      Float?
-  longitude     Float?
+  openingTime   String   @map("opening_time")
+  closingTime   String   @map("closing_time")
   address       String?
-  createdAt     DateTime  @default(now()) @map("created_at")
+  createdAt     DateTime @default(now()) @map("created_at")
 
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  services       ShopService[]
-  kiloPrices     KiloPrice[]
-  transactions   Transaction[]
-  householdItems HouseholdItem[]
-  clothingTypes  ClothingType[]
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  services             ShopService[]
+  kiloPrices           KiloPrice[]
+  transactions         Transaction[]
+  householdItems       HouseholdItem[]
+  clothingTypes        ClothingType[]
+  // Nullable for existing accounts and historical records; new address saves are validated by the API.
+  address_line_1       String?
+  address_line_2       String?
+  city                 String?
+  state_province       String?
+  postal_code          String?
+  country              String?
+  latitude             Decimal?        @db.Decimal(10, 7)
+  longitude            Decimal?        @db.Decimal(10, 7)
+  address_type         AddressType?
+  access_code          String?
+  dropoff_instructions String?
 
   @@map("shops")
 }
@@ -102,10 +132,10 @@ model Transaction {
   voucherDiscount Decimal           @default(0) @map("voucher_discount") @db.Decimal(10, 2)
   totalAmount     Decimal           @map("total_amount") @db.Decimal(10, 2)
   deliveryType    String            @map("delivery_type")
-  zone            String
-  street          String
-  barangay        String
-  building        String
+  zone            String?
+  street          String?
+  barangay        String?
+  building        String?
   scheduledDate   DateTime          @map("scheduled_date") @db.Date
   scheduledTime   DateTime          @map("scheduled_time") @db.Time()
   paymentMethod   String            @default("Cash on Delivery") @map("payment_method")
@@ -113,9 +143,21 @@ model Transaction {
   status          TransactionStatus @default(Pending)
   createdAt       DateTime          @default(now()) @map("created_at")
 
-  user  User  @relation(fields: [userId], references: [id])
-  shop  Shop  @relation(fields: [shopId], references: [id])
-  items TransactionItem[]
+  user                 User              @relation(fields: [userId], references: [id])
+  shop                 Shop              @relation(fields: [shopId], references: [id])
+  items                TransactionItem[]
+  // Nullable for existing accounts and historical records; new address saves are validated by the API.
+  address_line_1       String?
+  address_line_2       String?
+  city                 String?
+  state_province       String?
+  postal_code          String?
+  country              String?
+  latitude             Decimal?          @db.Decimal(10, 7)
+  longitude            Decimal?          @db.Decimal(10, 7)
+  address_type         AddressType?
+  access_code          String?
+  dropoff_instructions String?
 
   @@map("transactions")
 }

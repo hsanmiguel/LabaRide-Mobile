@@ -10,7 +10,6 @@ import {
 } from "lucide-react-native";
 import { router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import * as Location from "expo-location";
 import { useAuthStore } from "../store/authStore";
 import {
   Asset,
@@ -50,6 +49,11 @@ import {
 import { OrderCard, StatusBadge, Totals } from "./OrderScreens";
 import { QueryState } from "./UserScreens";
 import LaundryMap from "./LaundryMap";
+import { AddressFields, DeliveryDetails, FormError } from "./AddressFields";
+import { addressError, addressPayload, addressValues } from "./address";
+import { message, type Shop } from "./data";
+import PickerField from "./PickerField";
+import { timeInputValue } from "./form-values";
 
 const statusLabels: Record<Order["status"], string> = {
   Pending: "New Orders",
@@ -59,154 +63,76 @@ const statusLabels: Record<Order["status"], string> = {
 };
 export function RegisterShopDesign() {
   const [values, setValues] = useState<Record<string, string>>({
-    shopName: "",
-    contactNumber: "",
-    zone: "",
-    street: "",
-    barangay: "",
-    building: "",
-    openingTime: "",
-    closingTime: "",
+    shopName: "", contactNumber: "", openingTime: "", closingTime: "", ...addressValues(null, "Work"),
   });
-  const [pin, setPin] = useState({ latitude: 13.6217, longitude: 123.1948 });
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const auth = useAuthStore();
+  const owned = useOwnedShop();
   const cache = useQueryClient();
-  async function locate() {
+  async function openExistingShop() {
+    setBusy(true); setError(null);
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted)
-        return Alert.alert(
-          "Shop Location",
-          "Allow location access to use your current location.",
-        );
-      const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      setPin(current.coords);
-    } catch (error) {
-      fail(error);
-    }
+      const result = await api.post<{ user: Profile; token: string }>("/auth/verify-token", {});
+      if (!result.user.isShopOwner) { setError("No registered shop was found for this account."); return; }
+      await auth.setAuth(result.user, result.token);
+      await cache.invalidateQueries({ queryKey: ["shop"] });
+      await cache.invalidateQueries({ queryKey: ["user"] });
+      router.replace("/(shop)/home");
+    } catch (failure) { setError(message(failure)); }
+    finally { setBusy(false); }
   }
   async function submit() {
-    if (
-      [
-        "shopName",
-        "contactNumber",
-        "zone",
-        "street",
-        "barangay",
-        "openingTime",
-        "closingTime",
-      ].some((key) => !values[key].trim())
-    )
-      return Alert.alert(
-        "Register your shop",
-        "Please fill in all required fields",
-      );
+    if (busy) return;
+    const missing = ["shopName", "contactNumber", "openingTime", "closingTime"].find(key => !values[key]?.trim());
+    const validation = missing ? "Please enter the shop name, contact number, and business hours." :
+      values.shopName.trim().length < 2 ? "Shop name must have at least 2 characters." :
+        !timeInputValue(values.openingTime) || !timeInputValue(values.closingTime) ? "Choose valid opening and closing times." : addressError(values);
+    if (validation) { setError(validation); return; }
     if (!auth.user) return router.replace("/(auth)/login");
-    setBusy(true);
+    setBusy(true); setError(null);
     try {
-      await api.post("/shops", { ...values, ...pin, address: address(values) });
-      const user = await api.get<Profile>(`/users/${auth.user.id}`);
-      await auth.setAuth(user, auth.token!);
-      await cache.invalidateQueries({ queryKey: ["shop"] });
-      await cache.invalidateQueries({ queryKey: ["shops"] });
+      const result = await api.post<Shop & { user: Profile; token: string }>("/shops", {
+        shopName: values.shopName.trim(), contactNumber: values.contactNumber.trim(),
+        openingTime: values.openingTime.trim(), closingTime: values.closingTime.trim(), ...addressPayload(values),
+      });
+      await auth.setAuth(result.user, result.token);
+      cache.setQueryData(["user", result.user.id], result.user);
+      const { user, token, ...shop } = result;
+      cache.setQueryData(["shop", "owner", user.id], shop);
+      void cache.invalidateQueries({ queryKey: ["shops"] });
       router.replace("/(shop)/home");
-    } catch (error) {
-      fail(error);
-    } finally {
-      setBusy(false);
-    }
+    } catch (failure) {
+      setError(message(failure));
+      void owned.refetch();
+    } finally { setBusy(false); }
   }
-  return (
-    <Screen>
-      <View style={{ padding: 8, paddingTop: 24 }}>
-        <Brand compact />
-        <Txt style={[styles.title, { fontSize: 30, marginVertical: 24 }]}>
-          Register your shop
-        </Txt>
+  return <Screen>
+    <View style={{ padding: 8, paddingTop: 24 }}>
+      <Brand compact />
+      <Txt style={[styles.title, { fontSize: 30, marginVertical: 24 }]}>Register your shop</Txt>
+      {owned.data ? <Card>
+        <Txt style={styles.heading}>Your shop is already registered</Txt>
+        <Txt style={styles.muted}>{owned.data.shopName}</Txt>
+        <FormError error={error} />
+        <Button title="Open My Shop" busy={busy} onPress={openExistingShop} />
+      </Card> : <>
         <Section title="Shop Information" />
-        {[
-          { key: "shopName", label: "Shop Name" },
-          { key: "contactNumber", label: "Contact Number" },
-        ].map((field) => (
-          <Field
-            key={field.key}
-            label={field.label}
-            placeholder={`Enter ${field.label.toLowerCase()}`}
-            value={values[field.key]}
-            onChangeText={(value) =>
-              setValues({ ...values, [field.key]: value })
-            }
-          />
-        ))}
-        <Section title="Address" />
-        {[
-          { key: "zone", label: "Zone Name" },
-          { key: "street", label: "Street Name" },
-          { key: "barangay", label: "Barangay Name" },
-          { key: "building", label: "Building Name" },
-        ].map((field) => (
-          <Field
-            key={field.key}
-            label={field.label}
-            value={values[field.key]}
-            onChangeText={(value) =>
-              setValues({ ...values, [field.key]: value })
-            }
-          />
-        ))}
-        <Section
-          title="Pinpoint Shop Location"
-          action="Use Current Location"
-          onPress={locate}
-        />
-        <Txt style={styles.muted}>
-          Tap on the map to select your shop location
-        </Txt>
-        <View
-          style={{
-            height: 200,
-            borderRadius: 12,
-            overflow: "hidden",
-            marginVertical: 16,
-          }}
-        >
-          <LaundryMap {...pin} onPin={setPin} />
-        </View>
+        {[["shopName", "Shop Name *"], ["contactNumber", "Contact Number *"]].map(([key, label]) =>
+          <Field key={key} label={label} value={values[key]} onChangeText={value => setValues(current => ({ ...current, [key]: value }))} />)}
+        <Section title="Shop Address" />
+        <AddressFields values={values} setValues={setValues} />
         <Section title="Business Hours" />
         <View style={styles.row}>
-          <View style={styles.grow}>
-            <Field
-              label="Opening Time"
-              placeholder="8:00 AM"
-              value={values.openingTime}
-              onChangeText={(openingTime) =>
-                setValues({ ...values, openingTime })
-              }
-            />
-          </View>
-          <View style={styles.grow}>
-            <Field
-              label="Closing Time"
-              placeholder="6:00 PM"
-              value={values.closingTime}
-              onChangeText={(closingTime) =>
-                setValues({ ...values, closingTime })
-              }
-            />
-          </View>
+          {[["openingTime", "Opening Time *", "08:00"], ["closingTime", "Closing Time *", "18:00"]].map(([key, label, initialValue]) =>
+            <View key={key} style={styles.grow}><PickerField label={label} mode="time" value={values[key]} initialValue={initialValue}
+              onChange={value => setValues(current => ({ ...current, [key]: value }))} /></View>)}
         </View>
-        <Button
-          title="Register Shop"
-          busy={busy}
-          onPress={submit}
-          style={{ marginVertical: 24 }}
-        />
-      </View>
-    </Screen>
-  );
+        <FormError error={error} />
+        <Button title="Register Shop" busy={busy} onPress={submit} style={{ marginVertical: 24 }} />
+      </>}
+    </View>
+  </Screen>;
 }
 export function TransactionsTable({
   orders,
@@ -224,15 +150,15 @@ export function TransactionsTable({
   const columns = dashboard
     ? ["Customer Name", "Date", "Service", "Delivery Type", "Status", "Total"]
     : [
-        "Customer ID",
-        "Recipient Name",
-        "Date",
-        "Service",
-        "Delivery Type",
-        "Status",
-        "Payment Type",
-        "Total Amount",
-      ];
+      "Customer ID",
+      "Recipient Name",
+      "Date",
+      "Service",
+      "Delivery Type",
+      "Status",
+      "Payment Type",
+      "Total Amount",
+    ];
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
       <View>
@@ -285,23 +211,23 @@ export function TransactionsTable({
             )}
             {(dashboard
               ? [
-                  order.userName,
-                  new Date(order.createdAt).toLocaleDateString(),
-                  order.serviceName,
-                  order.deliveryType,
-                  order.status,
-                  money(order.totalAmount),
-                ]
+                order.userName,
+                new Date(order.createdAt).toLocaleDateString(),
+                order.serviceName,
+                order.deliveryType,
+                order.status,
+                money(order.totalAmount),
+              ]
               : [
-                  String(order.userId),
-                  order.userName,
-                  new Date(order.createdAt).toLocaleDateString(),
-                  order.serviceName,
-                  order.deliveryType,
-                  order.status,
-                  order.paymentMethod,
-                  money(order.totalAmount),
-                ]
+                String(order.userId),
+                order.userName,
+                new Date(order.createdAt).toLocaleDateString(),
+                order.serviceName,
+                order.deliveryType,
+                order.status,
+                order.paymentMethod,
+                money(order.totalAmount),
+              ]
             ).map((value, i) =>
               dashboard && i === 4 ? (
                 <View key={i} style={{ width: 132, alignItems: "flex-start" }}>
@@ -509,69 +435,69 @@ export function CustomersDesign({ filter }: { filter?: Order["status"] }) {
         />
         {filter
           ? filtered.map((order) => (
-              <OrderCard key={order.id} order={order} shopMode />
-            ))
+            <OrderCard key={order.id} order={order} shopMode />
+          ))
           : statuses.map((status) => {
-              const list = (orders.data || []).filter(
-                (o) => o.status === status,
-              );
-              return (
-                <View key={status}>
-                  <Section title={statusLabels[status]} light />
-                  <Pressable onPress={() => go("shop-customers", { status })}>
-                    <Card style={{ minHeight: 80, justifyContent: "center" }}>
-                      {!list.length ? (
-                        <Txt style={{ textAlign: "center" }}>
-                          No{" "}
-                          {status === "Processing"
-                            ? "ongoing"
-                            : status === "Pending"
-                              ? "new"
-                              : status.toLowerCase()}{" "}
-                          orders yet.
-                        </Txt>
-                      ) : status === "Processing" ? (
-                        <>
-                          <View style={styles.between}>
-                            <Txt style={{ fontWeight: "600" }}>
-                              #{list[0].id}
-                            </Txt>
-                            <Txt style={styles.muted}>
-                              {new Date(list[0].createdAt).toLocaleDateString()}
-                            </Txt>
-                          </View>
-                          <View style={styles.between}>
-                            <Txt
-                              style={{ color: "#00897B", fontWeight: "600" }}
-                            >
-                              {list[0].serviceName.toUpperCase()}
-                            </Txt>
-                            <Txt>{money(list[0].totalAmount)}</Txt>
-                          </View>
-                        </>
-                      ) : (
-                        <View style={[styles.row, styles.center]}>
-                          <Txt
-                            style={{
-                              fontSize: 24,
-                              color:
-                                status === "Cancelled"
-                                  ? palette.danger
-                                  : palette.navy,
-                              fontWeight: "700",
-                            }}
-                          >
-                            {list.length}
+            const list = (orders.data || []).filter(
+              (o) => o.status === status,
+            );
+            return (
+              <View key={status}>
+                <Section title={statusLabels[status]} light />
+                <Pressable onPress={() => go("shop-customers", { status })}>
+                  <Card style={{ minHeight: 80, justifyContent: "center" }}>
+                    {!list.length ? (
+                      <Txt style={{ textAlign: "center" }}>
+                        No{" "}
+                        {status === "Processing"
+                          ? "ongoing"
+                          : status === "Pending"
+                            ? "new"
+                            : status.toLowerCase()}{" "}
+                        orders yet.
+                      </Txt>
+                    ) : status === "Processing" ? (
+                      <>
+                        <View style={styles.between}>
+                          <Txt style={{ fontWeight: "600" }}>
+                            #{list[0].id}
                           </Txt>
-                          <Txt>{statusLabels[status]}</Txt>
-                          <ChevronRight size={18} color={palette.navy} />
+                          <Txt style={styles.muted}>
+                            {new Date(list[0].createdAt).toLocaleDateString()}
+                          </Txt>
                         </View>
-                      )}
-                    </Card>
-                  </Pressable>
-                </View>
-              );
-            })}
+                        <View style={styles.between}>
+                          <Txt
+                            style={{ color: "#00897B", fontWeight: "600" }}
+                          >
+                            {list[0].serviceName.toUpperCase()}
+                          </Txt>
+                          <Txt>{money(list[0].totalAmount)}</Txt>
+                        </View>
+                      </>
+                    ) : (
+                      <View style={[styles.row, styles.center]}>
+                        <Txt
+                          style={{
+                            fontSize: 24,
+                            color:
+                              status === "Cancelled"
+                                ? palette.danger
+                                : palette.navy,
+                            fontWeight: "700",
+                          }}
+                        >
+                          {list.length}
+                        </Txt>
+                        <Txt>{statusLabels[status]}</Txt>
+                        <ChevronRight size={18} color={palette.navy} />
+                      </View>
+                    )}
+                  </Card>
+                </Pressable>
+              </View>
+            );
+          })}
         {filter && !orders.isLoading && !filtered.length && (
           <Card>
             <Empty title={`No ${statusLabels[filter].toLowerCase()} yet.`} />
@@ -662,7 +588,9 @@ export function ShopOrderDetailsDesign({
         <PriceRow label="Customer ID" value={String(order.userId)} />
         <PriceRow label="Customer" value={order.userName} />
         <PriceRow label="Contact" value={order.userPhone || "—"} />
+        <Section title={order.deliveryType === "Pickup" ? "Pickup Location" : "Delivery Address"} />
         <Txt style={styles.muted}>{address(order)}</Txt>
+        <DeliveryDetails value={order} />
         <Section title="Order Details" />
         <View
           style={{ backgroundColor: "#98D8BF", padding: 16, borderRadius: 12 }}
@@ -936,60 +864,52 @@ export function ShopProfileDesign() {
 }
 export function ShopDetailsFormDesign() {
   const owned = useOwnedShop();
+  const cache = useQueryClient();
   const [values, setValues] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    if (owned.data)
-      setValues({
-        shopName: owned.data.shopName,
-        contactNumber: owned.data.contactNumber || "",
-        openingTime: owned.data.openingTime || "",
-        closingTime: owned.data.closingTime || "",
-      });
+    if (owned.data) setValues({
+      ...addressValues(owned.data, "Work"), shopName: owned.data.shopName,
+      contactNumber: owned.data.contactNumber || "", openingTime: owned.data.openingTime || "", closingTime: owned.data.closingTime || ""
+    });
   }, [owned.data]);
-  return (
-    <Screen
-      title="Shop Details"
-      background={palette.lavender}
-      footer={
-        <Button
-          title="Save Changes"
-          color={palette.navy}
-          onPress={() => unavailable("Update shop details")}
-        />
-      }
-    >
-      <View style={styles.stack}>
-        <Section title="Shop Location" />
-        <View style={{ height: 250, borderRadius: 12, overflow: "hidden" }}>
-          <LaundryMap
-            latitude={owned.data?.latitude}
-            longitude={owned.data?.longitude}
-          />
+  async function save() {
+    if (!owned.data || busy) return;
+    const validation = !timeInputValue(values.openingTime) || !timeInputValue(values.closingTime) ? "Choose valid opening and closing times." : addressError(values);
+    if (validation) { setError(validation); return; }
+    setBusy(true); setError(null);
+    try {
+      await api.put<Shop>("/shops/" + owned.data.id, {
+        ...addressPayload(values), shopName: values.shopName,
+        contactNumber: values.contactNumber, openingTime: values.openingTime, closingTime: values.closingTime
+      });
+      await cache.invalidateQueries({ queryKey: ["shop"] });
+      await cache.invalidateQueries({ queryKey: ["shops"] });
+      router.back();
+    } catch (failure) { setError(message(failure)); }
+    finally { setBusy(false); }
+  }
+  return <Screen title="Shop Details" background={palette.lavender} footer={<View>
+    <FormError error={error} /><Button title="Save Changes" color={palette.navy} busy={busy} onPress={save} />
+  </View>}>
+    <View style={styles.stack}>
+      <QueryState loading={owned.isLoading} error={owned.error} retry={() => owned.refetch()} />
+      <Card>
+        <Field label="Shop ID" value={String(owned.data?.id || "")} editable={false} />
+        {[["shopName", "Shop Name *"], ["contactNumber", "Contact Number *"]].map(([key, label]) =>
+          <Field key={key} label={label} value={values[key] || ""} onChangeText={value => setValues(current => ({ ...current, [key]: value }))} />)}
+        <Section title="Business Hours" />
+        <View style={styles.row}>
+          {[["openingTime", "Opening Time *", "08:00"], ["closingTime", "Closing Time *", "18:00"]].map(([key, label, initialValue]) =>
+            <View key={key} style={styles.grow}><PickerField label={label} mode="time" value={values[key] || ""} initialValue={initialValue}
+              onChange={value => setValues(current => ({ ...current, [key]: value }))} /></View>)}
         </View>
-        <Txt style={styles.muted}>Current Address: {address(owned.data)}</Txt>
-        <Card>
-          <Field
-            label="Shop ID"
-            value={String(owned.data?.id || "")}
-            editable={false}
-          />
-          {[
-            { key: "shopName", label: "Shop Name" },
-            { key: "openingTime", label: "Opening Time" },
-            { key: "closingTime", label: "Closing Time" },
-            { key: "contactNumber", label: "Contact" },
-          ].map((field) => (
-            <Field
-              key={field.key}
-              label={field.label}
-              value={values[field.key] || ""}
-              onChangeText={(v) => setValues({ ...values, [field.key]: v })}
-            />
-          ))}
-        </Card>
-      </View>
-    </Screen>
-  );
+        <Section title="Shop Address" />
+        <AddressFields values={values} setValues={setValues} />
+      </Card>
+    </View>
+  </Screen>;
 }
 export function ServicesDesign() {
   const owned = useOwnedShop();
@@ -1007,15 +927,15 @@ export function ServicesDesign() {
     setValues(
       kind === "service"
         ? {
-            serviceName: item && "serviceName" in item ? item.serviceName : "",
-            price: item && "price" in item ? String(item.price) : "",
-          }
+          serviceName: item && "serviceName" in item ? item.serviceName : "",
+          price: item && "price" in item ? String(item.price) : "",
+        }
         : {
-            minKilo: item && "minKilo" in item ? String(item.minKilo) : "",
-            maxKilo: item && "maxKilo" in item ? String(item.maxKilo) : "",
-            pricePerKilo:
-              item && "pricePerKilo" in item ? String(item.pricePerKilo) : "",
-          },
+          minKilo: item && "minKilo" in item ? String(item.minKilo) : "",
+          maxKilo: item && "maxKilo" in item ? String(item.maxKilo) : "",
+          pricePerKilo:
+            item && "pricePerKilo" in item ? String(item.pricePerKilo) : "",
+        },
     );
     setColor(item && "color" in item ? item.color || "#98D8BF" : "#98D8BF");
   }
@@ -1048,15 +968,15 @@ export function ServicesDesign() {
         `/shops/${shop.id}/${dialog === "service" ? "services" : "kilo-prices"}`,
         dialog === "service"
           ? {
-              serviceName: values.serviceName,
-              price: Number(values.price),
-              color,
-            }
+            serviceName: values.serviceName,
+            price: Number(values.price),
+            color,
+          }
           : {
-              minKilo: Number(values.minKilo),
-              maxKilo: Number(values.maxKilo),
-              pricePerKilo: Number(values.pricePerKilo),
-            },
+            minKilo: Number(values.minKilo),
+            maxKilo: Number(values.maxKilo),
+            pricePerKilo: Number(values.pricePerKilo),
+          },
       );
       await cache.invalidateQueries({ queryKey: ["shop"] });
       await cache.invalidateQueries({ queryKey: ["shops"] });

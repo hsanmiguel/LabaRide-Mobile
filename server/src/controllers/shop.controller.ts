@@ -3,6 +3,10 @@ import prisma from '../config/database';
 import { sendSuccess, sendError } from '../utils/response';
 import { registerShopSchema, createServiceSchema, createKiloPriceSchema, createItemSchema } from '../validators/shop.validator';
 import { AuthRequest } from '../middleware/auth.middleware';
+import jwt from 'jsonwebtoken';
+import { env } from '../config/env';
+import { formatAddress } from '../validators/address.validator';
+import { userProfileSelect } from '../utils/user-profile';
 
 export class ShopController {
   
@@ -17,24 +21,37 @@ export class ShopController {
         return sendError(res, 'User already has a registered shop', 'CONFLICT', 409);
       }
 
-      // Create shop and update user isShopOwner flag in transaction
-      const result = await prisma.$transaction(async (tx) => {
-        const shop = await tx.shop.create({
-          data: { ...validatedData, userId }
-        });
-        
-        await tx.user.update({
-          where: { id: userId },
-          data: { isShopOwner: true }
-        });
-
-        return shop;
+      // A nested write atomically creates the shop and updates ownership.
+      const result = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          isShopOwner: true,
+          shop: { create: { ...validatedData, address: formatAddress(validatedData) } },
+        },
+        select: { ...userProfileSelect, shop: true },
       });
-
-      return sendSuccess(res, result, 'Shop registered successfully', 201);
+      const { shop, ...user } = result;
+      const token = jwt.sign({ userId, isShopOwner: true }, env.JWT_SECRET, { expiresIn: '7d' });
+      return sendSuccess(res, { ...shop, user, token }, 'Shop registered successfully', 201);
     } catch (error) {
       next(error);
     }
+  }
+
+  static async updateShop(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const shopId = Number(req.params.shopId);
+      const shop = await prisma.shop.findUnique({ where: { id: shopId } });
+      if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
+      if (shop.userId !== req.user!.userId) {
+        return sendError(res, 'Only the shop owner can update this shop', 'FORBIDDEN', 403);
+      }
+      const data = registerShopSchema.parse(req).body;
+      const updated = await prisma.shop.update({
+        where: { id: shopId }, data: { ...data, address: formatAddress(data) },
+      });
+      return sendSuccess(res, updated, 'Shop details updated successfully');
+    } catch (error) { next(error); }
   }
 
   static async getAllShops(req: Request, res: Response, next: NextFunction) {

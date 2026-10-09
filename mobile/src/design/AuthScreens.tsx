@@ -25,7 +25,12 @@ import {
   palette,
   styles,
 } from "./ui";
-import { api, fail, go, replaceFlow, unavailable, type Profile } from "./data";
+import { api, fail, go, replaceFlow, unavailable, notify, message, type Profile } from "./data";
+
+import { AddressFields, FormError } from "./AddressFields";
+import { addressValues, addressError, addressPayload } from "./address";
+import PickerField from "./PickerField";
+import { signupError, validBirthdate } from "./form-values";
 
 export function OnboardingScreen({ how = false }: { how?: boolean }) {
   return (
@@ -150,7 +155,7 @@ export function LoginDesign() {
   const cache = useQueryClient();
   async function login() {
     if (!email.trim() || !password)
-      return Alert.alert("Log In", "Please fill in all fields");
+      return notify("Log In", "Please fill in all fields");
     setBusy(true);
     try {
       const result = await api.post<{ user: Profile; token: string }>(
@@ -267,27 +272,24 @@ export function SignupDesign() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   async function submit() {
-    if (
-      name.trim().length < 2 ||
-      !/^\S+@\S+\.\S+$/.test(email) ||
-      password.length < 6
-    )
-      return Alert.alert(
-        "Create an account",
-        "Enter your full name, a valid email, and a password with at least 6 characters.",
-      );
+    if (busy) return;
+    const validation = signupError({ name, email, password, confirmPassword });
+    if (validation) { setError(validation); return; }
+    setError(null);
     setBusy(true);
     try {
       const result = await api.post<{ user: Profile; token: string }>(
         "/auth/signup",
-        { name: name.trim(), email: email.trim(), password },
+        { name: name.trim(), email: email.trim(), password, confirmPassword },
       );
       await useAuthStore.getState().setAuth(result.user, result.token);
       go("user-details");
     } catch (error) {
-      fail(error);
+      setError(message(error));
     } finally {
       setBusy(false);
     }
@@ -330,7 +332,18 @@ export function SignupDesign() {
           value={password}
           onChangeText={setPassword}
           password
+          autoComplete="new-password"
         />
+        <Field
+          label="Confirm Password"
+          placeholder="Re-enter password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          password
+          autoComplete="new-password"
+          onSubmitEditing={submit}
+        />
+        <FormError error={error} />
         <Button
           title="Next"
           onPress={submit}
@@ -346,37 +359,23 @@ export function UserDetailsDesign() {
     phone: "",
     birthdate: "",
     gender: "",
-    zone: "",
-    street: "",
-    barangay: "",
-    building: "",
+    ...addressValues(),
   });
+  const [error, setError] = useState<string | null>(null);
   const [createShop, setCreateShop] = useState(false);
   const [busy, setBusy] = useState(false);
   const cache = useQueryClient();
   async function submit() {
-    if (
-      !values.phone ||
-      !values.birthdate ||
-      !values.gender ||
-      !values.zone ||
-      !values.street ||
-      !values.barangay
-    )
-      return Alert.alert(
-        "Set up your details",
-        "Please fill in all required fields",
-      );
-    if (
-      !/^\d{4}-\d{2}-\d{2}$/.test(values.birthdate) ||
-      Number.isNaN(Date.parse(values.birthdate))
-    )
-      return Alert.alert("Birthdate", "Enter a valid date as YYYY-MM-DD.");
+    if (busy) return;
+    const validation = !values.phone?.trim() || !values.birthdate || !values.gender ? "Please fill in your contact number, birthdate, and gender." :
+      !validBirthdate(values.birthdate) ? "Choose a valid birthdate that is not in the future." : addressError(values);
+    if (validation) { setError(validation); return; }
+    setError(null);
     setBusy(true);
     try {
       const user = await api.put<Profile>(
         `/users/${useAuthStore.getState().user!.id}`,
-        values,
+        { phone: values.phone, birthdate: values.birthdate, gender: values.gender, ...addressPayload(values) },
       );
       await useAuthStore
         .getState()
@@ -384,7 +383,7 @@ export function UserDetailsDesign() {
       await cache.invalidateQueries({ queryKey: ["user"] });
       replaceFlow(createShop ? "register-shop" : "registration-complete");
     } catch (error) {
-      fail(error);
+      setError(message(error));
     } finally {
       setBusy(false);
     }
@@ -410,7 +409,8 @@ export function UserDetailsDesign() {
           Personal Information
         </Txt>
         {field("phone", "Contact Number", "+63 9XX XXX XXXX")}
-        {field("birthdate", "Birthdate", "YYYY-MM-DD")}
+        <PickerField label="Birthdate *" mode="date" value={values.birthdate} maximumDate={new Date()}
+          onChange={birthdate => setValues(current => ({ ...current, birthdate }))} />
         <Txt style={styles.muted}>Gender</Txt>
         <View style={[styles.row, { flexWrap: "wrap", marginBottom: 24 }]}>
           {["Male", "Female", "Other"].map((g) => (
@@ -423,16 +423,14 @@ export function UserDetailsDesign() {
           ))}
         </View>
         <Txt style={[styles.heading, { marginBottom: 16 }]}>Address</Txt>
-        {field("zone", "Zone Name", "Enter zone")}
-        {field("street", "Street Name", "Enter street name")}
-        {field("barangay", "Barangay Name", "Enter barangay name")}
-        {field("building", "Building Name (Optional)", "Enter building name")}
+        <AddressFields values={values} setValues={setValues} />
         <Choice
           square
           label="Want to create a laundry shop?"
           selected={createShop}
           onPress={() => setCreateShop(!createShop)}
         />
+        <FormError error={error} />
         <Button
           title={createShop ? "Next: Shop Setup" : "Complete Registration"}
           busy={busy}

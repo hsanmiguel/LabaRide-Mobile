@@ -11,6 +11,7 @@ router.get('/recent', ShopController.getRecentShops);
 // Authenticated routes
 router.use(authenticateToken);
 router.post('/', ShopController.registerShop);
+router.put('/:shopId', ShopController.updateShop);
 router.get('/:shopId', ShopController.getShopById);
 router.get('/user/:userId', ShopController.getShopByUserId);
 

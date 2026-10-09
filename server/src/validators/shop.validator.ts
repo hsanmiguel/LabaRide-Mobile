@@ -1,18 +1,18 @@
 import { z } from 'zod';
+import { addressSchema } from './address.validator';
+
+const businessTime = z.string().trim().regex(
+  /^(?:(?:[01]?\d|2[0-3]):[0-5]\d|(?:0?[1-9]|1[0-2]):[0-5]\d\s*(?:AM|PM))$/i,
+  'Choose a valid business time',
+);
 
 export const registerShopSchema = z.object({
   body: z.object({
-    shopName: z.string().min(2, 'Shop name is required'),
-    contactNumber: z.string().min(1, 'Contact number is required'),
-    zone: z.string().min(1, 'Zone is required'),
-    street: z.string().min(1, 'Street is required'),
-    barangay: z.string().min(1, 'Barangay is required'),
-    building: z.string().optional(),
-    openingTime: z.string().min(1, 'Opening time is required'),
-    closingTime: z.string().min(1, 'Closing time is required'),
-    latitude: z.number().optional(),
-    longitude: z.number().optional(),
-    address: z.string().optional(),
+    shopName: z.string().trim().min(2, 'Shop name must have at least 2 characters'),
+    contactNumber: z.string().trim().min(1, 'Contact number is required'),
+    openingTime: businessTime,
+    closingTime: businessTime,
+    ...addressSchema.shape,
   })
 });
 

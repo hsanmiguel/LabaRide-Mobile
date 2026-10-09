@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Alert, Modal, Pressable, Switch, View } from "react-native";
 import { MapPin, Pencil, UserRound } from "lucide-react-native";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Location from "expo-location";
 import { useAuthStore } from "../store/authStore";
 import {
   Asset,
@@ -35,6 +34,11 @@ import {
 import { CodeInput } from "./AuthScreens";
 import { QueryState } from "./UserScreens";
 import LaundryMap from "./LaundryMap";
+import { AddressFields, FormError } from "./AddressFields";
+import { addressValues, addressError, addressPayload } from "./address";
+import { message, notify } from "./data";
+import PickerField from "./PickerField";
+import { validBirthdate } from "./form-values";
 import { useLaundryDraft } from "./store";
 
 export function UserProfileDesign() {
@@ -187,13 +191,12 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
   async function save() {
     if (!auth.user) return;
     if (values.name?.trim().length < 2)
-      return Alert.alert("Profile", "Please enter your full name.");
+      return notify("Profile", "Please enter your full name.");
     if (
       values.birthdate &&
-      (!/^\d{4}-\d{2}-\d{2}$/.test(values.birthdate) ||
-        Number.isNaN(Date.parse(values.birthdate)))
+      !validBirthdate(values.birthdate)
     )
-      return Alert.alert("Birthdate", "Enter a valid date as YYYY-MM-DD.");
+      return notify("Birthdate", "Choose a valid birthdate that is not in the future.");
     setBusy(true);
     try {
       const fields = [
@@ -201,10 +204,6 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
         "phone",
         "birthdate",
         "gender",
-        "zone",
-        "street",
-        "barangay",
-        "building",
       ];
       const payload = Object.fromEntries(
         fields
@@ -218,7 +217,7 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
       const user = await api.put<Profile>(`/users/${auth.user.id}`, payload);
       await auth.setAuth(user, auth.token!);
       cache.setQueryData(["user", user.id], user);
-      Alert.alert("Profile", "Changes saved successfully");
+      notify("Profile", "Changes saved successfully");
       router.back();
     } catch (error) {
       fail(error);
@@ -285,16 +284,15 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
             { key: "email", label: "Email Address" },
             ...(!account
               ? [
-                  { key: "birthdate", label: "Birthdate" },
-                  { key: "gender", label: "Gender" },
-                  { key: "zone", label: "Zone Name" },
-                  { key: "street", label: "Street Name" },
-                  { key: "barangay", label: "Barangay Name" },
-                  { key: "building", label: "Building Name" },
-                ]
+                { key: "birthdate", label: "Birthdate" },
+                { key: "gender", label: "Gender" },
+              ]
               : []),
           ].map((field) =>
-            account ? (
+            field.key === "birthdate" ? (
+              <PickerField key={field.key} label="Birthdate" mode="date" value={values.birthdate || ""} maximumDate={new Date()}
+                onChange={birthdate => setValues(current => ({ ...current, birthdate }))} />
+            ) : account ? (
               <Field
                 key={field.key}
                 label={field.label}
@@ -332,6 +330,8 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
               </Pressable>
             ),
           )}
+          {!account && <MenuRow title="Address" detail={address(profile.data) || "Add your address"} asset="locationblue.png"
+            onPress={() => { useLaundryDraft.getState().set({ address: null }); go("confirm-location"); }} />}
         </Card>
         {account ? (
           <Card>
@@ -764,166 +764,63 @@ export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
     </Screen>
   );
 }
-export function LocationDesign({
-  stage = "add-location",
-  checkout = false,
-}: {
-  stage?: string;
-  checkout?: boolean;
-}) {
+export function LocationDesign({ stage = "add-location", checkout = false }: { stage?: string; checkout?: boolean }) {
   const draft = useLaundryDraft();
   const profile = useProfile();
   const cache = useQueryClient();
-  const user = useAuthStore((state) => state.user);
-  const [values, setValues] = useState<Record<string, string>>({
-    zone: draft.address?.zone || profile.data?.zone || "",
-    street: draft.address?.street || profile.data?.street || "",
-    barangay: draft.address?.barangay || profile.data?.barangay || "",
-    building: draft.address?.building || profile.data?.building || "",
-  });
-  const [coordinate, setCoordinate] = useState({
-    latitude: 13.6217,
-    longitude: 123.1948,
-  });
+  const auth = useAuthStore();
+  const user = auth.user;
+  const selected = stage === "add-address" ? null : draft.address || profile.data;
+  const initialized = useRef(stage === "add-address" || !!selected);
+  const [values, setValues] = useState<Record<string, string>>(() => addressValues(selected));
   const [busy, setBusy] = useState(false);
-  async function locate() {
-    setBusy(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert(
-          "Location permission",
-          "Allow location access to use your current location.",
-        );
-        return;
-      }
-      const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      setCoordinate(current.coords);
-      const results = await Location.reverseGeocodeAsync(current.coords);
-      const place = results[0];
-      if (place)
-        setValues({
-          ...values,
-          street: place.street || "",
-          barangay: place.district || place.city || "",
-          zone: place.streetNumber || values.zone,
-        });
-    } catch (error) {
-      fail(error);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!initialized.current && selected) { initialized.current = true; setValues(addressValues(selected)); }
+  }, [selected]);
   async function save() {
-    if (!values.street || !values.barangay || !values.zone)
-      return Alert.alert(
-        "Delivery Address",
-        "Enter your zone, street, and barangay.",
-      );
-    setBusy(true);
+    if (busy) return;
+    const validation = addressError(values);
+    if (validation) { setError(validation); return; }
+    const payload = addressPayload(values);
+    setBusy(true); setError(null);
     try {
-      draft.set({ address: values });
       if (stage === "add-address" && user) {
-        const key = `labaride-addresses:${user.id}`;
+        const key = "labaride-addresses:" + user.id;
         const raw = await AsyncStorage.getItem(key);
         const entries: Partial<Profile>[] = raw ? JSON.parse(raw) : [];
-        await AsyncStorage.setItem(key, JSON.stringify([...entries, values]));
+        await AsyncStorage.setItem(key, JSON.stringify([...entries, payload]));
+        draft.set({ address: payload });
         await cache.invalidateQueries({ queryKey: ["saved-addresses"] });
         router.back();
       } else if (checkout) {
-        router.dismissTo({
-          pathname: "/(flows)/[flow]",
-          params: { flow: "checkout" },
-        });
+        draft.set({ address: payload });
+        router.dismissTo({ pathname: "/(flows)/[flow]", params: { flow: "checkout" } });
       } else if (user) {
-        const result = await api.put<Profile>(`/users/${user.id}`, values);
+        const result = await api.put<Profile>("/users/" + user.id, payload);
+        await auth.setAuth(result, auth.token!);
         cache.setQueryData(["user", user.id], result);
+        draft.set({ address: null });
         router.dismissTo("/(user)/profile");
-      } else router.replace("/(user)/home");
-    } catch (error) {
-      fail(error);
-    } finally {
-      setBusy(false);
-    }
+      } else router.replace("/(auth)/login");
+    } catch (failure) { setError(message(failure)); }
+    finally { setBusy(false); }
   }
-  if (stage === "add-location")
-    return (
-      <Screen title="Current Location">
-        <View style={styles.stack}>
-          <View style={{ height: 240, borderRadius: 12, overflow: "hidden" }}>
-            <Asset name="maps.png" style={{ width: "100%", height: "100%" }} />
-          </View>
-          <MenuRow
-            title="Current Location"
-            detail={address(profile.data) || "Choose a delivery location"}
-            asset="locationblue.png"
-            onPress={() =>
-              go("confirm-location", { checkout: String(checkout) })
-            }
-          />
-          <Section title="Other Locations" />
-          <MenuRow
-            title="Saved Addresses"
-            asset="locationblue.png"
-            onPress={() => go("addresses", { checkout: String(checkout) })}
-          />
-          <Button
-            title="Use Current Location"
-            color={palette.navy}
-            onPress={() =>
-              go("current-location", { checkout: String(checkout) })
-            }
-          />
-        </View>
-      </Screen>
-    );
-  return (
-    <Screen
-      title={stage === "add-address" ? "Add New Address" : "Confirm Location"}
-      background={palette.surface}
-      footer={
-        <Button
-          title={stage === "add-address" ? "Add" : "Confirm Address"}
-          color={palette.navy}
-          busy={busy}
-          onPress={save}
-        />
-      }
-    >
-      <View style={styles.stack}>
-        <View style={{ height: 250, borderRadius: 12, overflow: "hidden" }}>
-          <LaundryMap {...coordinate} onPin={setCoordinate} />
-        </View>
-        <Button
-          title="Use Current Location"
-          outline
-          color={palette.navy}
-          icon={<MapPin size={18} color={palette.navy} />}
-          busy={busy}
-          onPress={locate}
-        />
-        <Card>
-          <Section title="Delivery Address" />
-          <Txt style={styles.muted}>Tap on the map to select your location</Txt>
-          {[
-            { key: "zone", title: "Zone Name" },
-            { key: "street", title: "Street Name" },
-            { key: "barangay", title: "Barangay Name" },
-            { key: "building", title: "Building Name (Optional)" },
-          ].map((field) => (
-            <Field
-              key={field.key}
-              label={field.title}
-              value={values[field.key]}
-              onChangeText={(value) =>
-                setValues({ ...values, [field.key]: value })
-              }
-            />
-          ))}
-        </Card>
-      </View>
-    </Screen>
-  );
+  if (stage === "add-location") return <Screen title="Current Location">
+    <View style={styles.stack}>
+      <MenuRow title="Current Location" detail={address(profile.data) || "Choose a delivery location"} asset="locationblue.png"
+        onPress={() => go("confirm-location", { checkout: String(checkout) })} />
+      <Section title="Other Locations" />
+      <MenuRow title="Saved Addresses" asset="locationblue.png" onPress={() => go("addresses", { checkout: String(checkout) })} />
+      <Button title="Use Current Location" color={palette.navy} onPress={() => go("current-location", { checkout: String(checkout) })} />
+    </View>
+  </Screen>;
+  return <Screen title={stage === "add-address" ? "Add New Address" : "Confirm Location"} background={palette.surface}
+    footer={<View><FormError error={error} /><Button title={stage === "add-address" ? "Add" : "Confirm Address"}
+      color={palette.navy} busy={busy} onPress={save} /></View>}>
+    <View style={styles.stack}>
+      <QueryState loading={profile.isLoading} error={profile.error} retry={() => profile.refetch()} />
+      <Card><Section title="Delivery Address" /><AddressFields values={values} setValues={setValues} /></Card>
+    </View>
+  </Screen>;
 }

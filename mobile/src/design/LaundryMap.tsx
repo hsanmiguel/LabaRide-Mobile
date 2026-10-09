@@ -3,8 +3,8 @@ import { Asset } from "./ui";
 import type { Shop } from "./data";
 export interface MapProps {
   shops?: Shop[];
-  latitude?: number;
-  longitude?: number;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   onSelect?: (shop: Shop) => void;
   onPin?: (coordinate: { latitude: number; longitude: number }) => void;
 }

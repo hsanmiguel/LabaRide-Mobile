@@ -3,9 +3,11 @@ import { View } from "react-native";
 import { Asset } from "./ui";
 import type { MapProps } from "./LaundryMap";
 export default function LaundryMap({
-  latitude = 13.6217,
-  longitude = 123.1948,
+  latitude: suppliedLatitude,
+  longitude: suppliedLongitude,
 }: MapProps) {
+  const latitude = suppliedLatitude == null ? 13.6217 : Number(suppliedLatitude);
+  const longitude = suppliedLongitude == null ? 123.1948 : Number(suppliedLongitude);
   const [loaded, setLoaded] = useState(false);
   const bbox = `${longitude - 0.02},${latitude - 0.02},${longitude + 0.02},${latitude + 0.02}`;
   return (

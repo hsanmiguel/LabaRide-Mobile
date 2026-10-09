@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
+import { userProfileSelect } from '../utils/user-profile';
 import prisma from '../config/database';
 import { sendSuccess, sendError } from '../utils/response';
 import { updateUserSchema, updatePasswordSchema } from '../validators/user.validator';
@@ -18,11 +19,7 @@ export class UserController {
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: {
-          id: true, name: true, email: true, phone: true, birthdate: true,
-          gender: true, zone: true, street: true, barangay: true, building: true,
-          isShopOwner: true, createdAt: true
-        }
+        select: userProfileSelect
       });
 
       if (!user) {
@@ -51,11 +48,7 @@ export class UserController {
           ...validatedData,
           birthdate: validatedData.birthdate ? new Date(validatedData.birthdate) : undefined
         },
-        select: {
-          id: true, name: true, email: true, phone: true, birthdate: true,
-          gender: true, zone: true, street: true, barangay: true, building: true,
-          isShopOwner: true, updatedAt: true
-        }
+        select: userProfileSelect
       });
 
       return sendSuccess(res, updatedUser, 'User updated successfully');

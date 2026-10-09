@@ -8,7 +8,13 @@
     "dev": "nodemon src/server.ts",
     "build": "tsc",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
+    "db:check": "ts-node src/scripts/check-database.ts",
+    "test:database": "npm run build && node --test tests/database.test.cjs",
+    "test:shop": "npm run build && node --test tests/shop-address.test.cjs",
+    "test:forms": "npm run build && node --test tests/form-inputs.test.cjs",
+    "test:shop:integration": "npm run build && node tests/shop-address.integration.cjs"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",

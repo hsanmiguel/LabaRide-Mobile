@@ -33,8 +33,7 @@ import {
   address,
   api,
   fail,
-  go,
-  replaceFlow,
+  useFlowNavigation,
   unavailable,
   useOrders,
   useProfile,
@@ -161,6 +160,7 @@ export function LaundryCountDesign() {
   );
 }
 export function OrderSummaryDesign() {
+  const { go, inShop } = useFlowNavigation();
   const draft = useLaundryDraft();
   const user = useAuthStore((state) => state.user);
   const totals = draftTotals();
@@ -170,7 +170,7 @@ export function OrderSummaryDesign() {
         <Empty
           title="Your basket is empty"
           action="Explore shops"
-          onPress={() => router.replace("/(user)/home")}
+          onPress={() => router.replace(inShop ? "/shop/home" : "/(user)/home")}
         />
       </Screen>
     );
@@ -255,6 +255,7 @@ export function OrderSummaryDesign() {
   );
 }
 export function CheckoutDesign() {
+  const { go, replaceFlow } = useFlowNavigation();
   const draft = useLaundryDraft();
   const profile = useProfile();
   const [error, setError] = useState<string | null>(null);
@@ -699,6 +700,7 @@ export function OrderCard({
   order: Order;
   shopMode?: boolean;
 }) {
+  const { go } = useFlowNavigation();
   return (
     <Card>
       <Txt style={{ color: palette.muted, fontSize: 12 }}>
@@ -734,7 +736,7 @@ export function OrderCard({
           onPress={() =>
             shopMode
               ? router.push({
-                pathname: "/(shop)/orders/[id]",
+                pathname: "/shop/customers/orders/[id]",
                 params: { id: String(order.id) },
               })
               : go("transaction-details", { id: String(order.id) })
@@ -751,6 +753,7 @@ export function ActivitiesDesign({
   history?: boolean;
   past?: boolean;
 }) {
+  const { go } = useFlowNavigation();
   const orders = useOrders();
   const user = useAuthStore((state) => state.user);
   const [tab, setTab] = useState(past ? "Past Order" : "Active Order");
@@ -836,6 +839,7 @@ export function OrderDetailsDesign({
   delivered?: boolean;
   full?: boolean;
 }) {
+  const { go, inShop } = useFlowNavigation();
   const orders = useOrders();
   const order = orders.data?.find((o) => o.id === id);
   if (!order)
@@ -870,7 +874,7 @@ export function OrderDetailsDesign({
             title="Order Again"
             color={palette.navy}
             onPress={() =>
-              router.push({
+              inShop ? go("shop-menu", { id: String(order.shopId) }) : router.push({
                 pathname: "/(user)/order/[shopId]",
                 params: { shopId: String(order.shopId) },
               })
@@ -967,6 +971,7 @@ export function OrderDetailsDesign({
   );
 }
 export function CancelOrderDesign({ id }: { id: number }) {
+  const { replaceFlow } = useFlowNavigation();
   const orders = useOrders();
   const order = orders.data?.find((o) => o.id === id);
   const [reason, setReason] = useState("");

@@ -32,6 +32,7 @@ import {
   useProfile,
   useShop,
   useShops,
+  useFlowNavigation,
   type Shop,
 } from "./data";
 import { useLaundryDraft } from "./store";
@@ -212,6 +213,7 @@ export function ShopsDesign({
   search?: boolean;
   map?: boolean;
 }) {
+  const { go: openFlow, inShop } = useFlowNavigation();
   const shops = useShops();
   const [query, setQuery] = useState("");
   const draft = useLaundryDraft();
@@ -226,6 +228,7 @@ export function ShopsDesign({
           ...draft.searchHistory.filter((s) => s !== query.trim()),
         ].slice(0, 8),
       });
+    if (inShop) return openFlow("shop-information", { id: String(shop.id) });
     router.push({
       pathname: "/(user)/shops/[id]",
       params: { id: String(shop.id) },
@@ -239,7 +242,7 @@ export function ShopsDesign({
       scroll={!map}
       right={
         !search && (
-          <Pressable accessibilityLabel="View map" onPress={() => go("map")}>
+          <Pressable accessibilityLabel="View map" onPress={() => openFlow("map")}>
             <MapPin color="white" size={24} />
           </Pressable>
         )
@@ -321,6 +324,7 @@ export function ShopInfoDesign({
   id: number;
   about?: boolean;
 }) {
+  const { go: openFlow, inShop } = useFlowNavigation();
   const result = useShop(id);
   const [tab, setTab] = useState("About");
   const shop = result.data;
@@ -343,7 +347,7 @@ export function ShopInfoDesign({
           title="Open Shop"
           color={palette.navy}
           onPress={() =>
-            router.push({
+            inShop ? openFlow("shop-menu", { id: String(id) }) : router.push({
               pathname: "/(user)/order/[shopId]",
               params: { shopId: String(id) },
             })
@@ -418,6 +422,7 @@ export function ShopInfoDesign({
   );
 }
 export function ShopMenuDesign({ id }: { id: number }) {
+  const { go: openFlow, inShop } = useFlowNavigation();
   const result = useShop(id);
   const draft = useLaundryDraft();
   const shop = result.data;
@@ -448,7 +453,8 @@ export function ShopMenuDesign({ id }: { id: number }) {
             onPress={() => {
               if (shop && service) {
                 draft.start(shop, service);
-                router.push({
+                if (inShop) openFlow("order-summary", { id: String(id) });
+                else router.push({
                   pathname: "/(user)/order/confirm",
                   params: { shopId: String(id) },
                 });
@@ -492,7 +498,7 @@ export function ShopMenuDesign({ id }: { id: number }) {
         />
         {shop && (
           <>
-            <Pressable onPress={() => go("shop-about", { id: String(id) })}>
+            <Pressable onPress={() => openFlow("shop-about", { id: String(id) })}>
               <Card style={{ backgroundColor: "white" }}>
                 <View style={styles.row}>
                   <Asset

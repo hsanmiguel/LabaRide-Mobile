@@ -111,7 +111,7 @@ export function SplashDesign() {
     router.replace(
       user
         ? user.isShopOwner
-          ? "/(shop)/home"
+          ? "/shop/home"
           : "/(user)/home"
         : isGuest
           ? "/(user)/home"
@@ -164,7 +164,7 @@ export function LoginDesign() {
       );
       cache.clear();
       await setAuth(result.user, result.token);
-      router.replace(result.user.isShopOwner ? "/(shop)/home" : "/(user)/home");
+      router.replace(result.user.isShopOwner ? "/shop/home" : "/(user)/home");
     } catch (error) {
       fail(error);
     } finally {

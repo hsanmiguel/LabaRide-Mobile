@@ -24,8 +24,7 @@ import {
   address,
   api,
   fail,
-  go,
-  replaceFlow,
+  useFlowNavigation,
   unavailable,
   useOwnedShop,
   useProfile,
@@ -42,6 +41,7 @@ import { validBirthdate } from "./form-values";
 import { useLaundryDraft } from "./store";
 
 export function UserProfileDesign() {
+  const { go } = useFlowNavigation();
   const user = useAuthStore((state) => state.user);
   const profile = useProfile();
   const owned = useOwnedShop();
@@ -143,7 +143,7 @@ export function UserProfileDesign() {
               icon={<Asset name="shop.png" tint="white" />}
               onPress={() =>
                 owned.data
-                  ? router.replace("/(shop)/profile")
+                  ? router.replace("/shop/profile")
                   : go("register-shop")
               }
             />
@@ -165,6 +165,7 @@ export function UserProfileDesign() {
   );
 }
 export function EditProfileDesign({ account = false }: { account?: boolean }) {
+  const { go } = useFlowNavigation();
   const profile = useProfile();
   const auth = useAuthStore();
   const cache = useQueryClient();
@@ -458,6 +459,7 @@ export function ChangePasswordDesign({
 }: {
   security?: boolean;
 }) {
+  const { go } = useFlowNavigation();
   const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -551,6 +553,7 @@ export function AccountConfirmationDesign({
 }: {
   logout?: boolean;
 }) {
+  const { replaceFlow } = useFlowNavigation();
   const [busy, setBusy] = useState(false);
   const auth = useAuthStore();
   const cache = useQueryClient();
@@ -610,6 +613,7 @@ export function TwoFactorDesign({
   stage?: string;
   method?: string;
 }) {
+  const { go } = useFlowNavigation();
   const [method, setMethod] = useState(initialMethod);
   const [code, setCode] = useState("");
   return (
@@ -709,6 +713,7 @@ export function TwoFactorDesign({
   );
 }
 export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
+  const { go } = useFlowNavigation();
   const profile = useProfile();
   const user = useAuthStore((state) => state.user);
   const draft = useLaundryDraft();
@@ -765,6 +770,7 @@ export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
   );
 }
 export function LocationDesign({ stage = "add-location", checkout = false }: { stage?: string; checkout?: boolean }) {
+  const { go, flowHref, inShop } = useFlowNavigation();
   const draft = useLaundryDraft();
   const profile = useProfile();
   const cache = useQueryClient();
@@ -795,13 +801,13 @@ export function LocationDesign({ stage = "add-location", checkout = false }: { s
         router.back();
       } else if (checkout) {
         draft.set({ address: payload });
-        router.dismissTo({ pathname: "/(flows)/[flow]", params: { flow: "checkout" } });
+        router.dismissTo(flowHref("checkout"));
       } else if (user) {
         const result = await api.put<Profile>("/users/" + user.id, payload);
         await auth.setAuth(result, auth.token!);
         cache.setQueryData(["user", user.id], result);
         draft.set({ address: null });
-        router.dismissTo("/(user)/profile");
+        router.dismissTo(inShop ? "/shop/profile" : "/(user)/profile");
       } else router.replace("/(auth)/login");
     } catch (failure) { setError(message(failure)); }
     finally { setBusy(false); }

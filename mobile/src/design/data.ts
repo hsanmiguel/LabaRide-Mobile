@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
+import { router, useSegments } from "expo-router";
 import { Alert, Platform } from "react-native";
 import apiClient from "../api/client";
 import { useAuthStore } from "../store/authStore";
 
 import { formatAddress, type AddressData } from "./address";
+import { flowTarget } from "../navigation/flow-target";
 
 export interface Profile extends AddressData {
   id: number;
@@ -123,6 +124,18 @@ export function replaceFlow(
     pathname: "/(flows)/[flow]",
     params: { ...params, flow: screen },
   });
+}
+export function useFlowNavigation() {
+  const segments = useSegments() as string[];
+  return {
+    inShop: segments[0] === "shop",
+    flowHref: (screen: string, params: Record<string, string> = {}) =>
+      flowTarget(screen, params, segments),
+    go: (screen: string, params: Record<string, string> = {}) =>
+      router.push(flowTarget(screen, params, segments)),
+    replaceFlow: (screen: string, params: Record<string, string> = {}) =>
+      router.replace(flowTarget(screen, params, segments)),
+  };
 }
 export const address = formatAddress;
 export function useProfile() {

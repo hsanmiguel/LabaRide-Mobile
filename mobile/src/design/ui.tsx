@@ -265,6 +265,8 @@ export function Header({
   back?: boolean;
   right?: React.ReactNode;
 }) {
+  const segments = useSegments() as string[];
+  const home = segments[0] === "shop" ? "/shop/home" : "/(user)/home";
   return (
     <View
       style={{
@@ -280,7 +282,7 @@ export function Header({
         <Pressable
           accessibilityLabel="Back"
           onPress={() =>
-            router.canGoBack() ? router.back() : router.replace("/(user)/home")
+            router.canGoBack() ? router.back() : router.replace(home)
           }
           hitSlop={12}
         >
@@ -324,8 +326,9 @@ export function Screen({
 }) {
   const segments = useSegments() as string[];
   const inTab =
-    ["(user)", "(shop)"].includes(segments[0]) &&
-    !segments.some((segment) => ["order", "orders", "shops"].includes(segment));
+    segments[0] === "shop" ||
+    (segments[0] === "(user)" &&
+      !segments.some((segment) => ["order", "orders", "shops"].includes(segment)));
   return (
     <SafeAreaView
       style={{ flex: 1, backgroundColor: dark ? palette.navy : background }}

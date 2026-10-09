@@ -25,25 +25,25 @@
   },
   {
     "source": "shop/CustomerOrder/AcceptingOrder.dart",
-    "route": "/(shop)/orders/[id] (pending)",
+    "route": "/shop/orders/[id] (pending)",
     "component": "ShopOrderDetailsDesign",
     "empty": false
   },
   {
     "source": "shop/CustomerOrder/CancelDetails.dart",
-    "route": "/(shop)/orders/[id] (cancelled)",
+    "route": "/shop/orders/[id] (cancelled)",
     "component": "ShopOrderDetailsDesign",
     "empty": false
   },
   {
     "source": "shop/CustomerOrder/CompleteDetails.dart",
-    "route": "/(shop)/orders/[id] (completed)",
+    "route": "/shop/orders/[id] (completed)",
     "component": "ShopOrderDetailsDesign",
     "empty": false
   },
   {
     "source": "shop/CustomerOrder/CustomerOrder.dart",
-    "route": "/(shop)/customers",
+    "route": "/shop/customers",
     "component": "CustomersDesign",
     "empty": false
   },
@@ -103,7 +103,7 @@
   },
   {
     "source": "shop/CustomerOrder/OngoingDetails.dart",
-    "route": "/(shop)/orders/[id] (processing)",
+    "route": "/shop/orders/[id] (processing)",
     "component": "ShopOrderDetailsDesign",
     "empty": false
   },
@@ -115,7 +115,7 @@
   },
   {
     "source": "shop/OrderScreen/OrderScreen.dart",
-    "route": "/(shop)/transactions",
+    "route": "/shop/transactions",
     "component": "ShopTransactionsDesign",
     "empty": false
   },
@@ -175,19 +175,19 @@
   },
   {
     "source": "shop/ProfileShop/ShopProfile.dart",
-    "route": "/(shop)/profile",
+    "route": "/shop/profile",
     "component": "ShopProfileDesign",
     "empty": false
   },
   {
     "source": "shop/Services/ServiceScreen1.dart",
-    "route": "/(shop)/services",
+    "route": "/shop/services",
     "component": "ServicesDesign (services, pricing, add/edit dialogs)",
     "empty": false
   },
   {
     "source": "shop/ShopDashboard/homescreen.dart",
-    "route": "/(shop)/home",
+    "route": "/shop/home",
     "component": "ShopHomeDesign",
     "empty": false
   },

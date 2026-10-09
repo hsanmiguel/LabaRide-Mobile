@@ -34,8 +34,7 @@ import {
   address,
   api,
   fail,
-  go,
-  replaceFlow,
+  useFlowNavigation,
   unavailable,
   useOrders,
   useOwnedShop,
@@ -78,7 +77,7 @@ export function RegisterShopDesign() {
       await auth.setAuth(result.user, result.token);
       await cache.invalidateQueries({ queryKey: ["shop"] });
       await cache.invalidateQueries({ queryKey: ["user"] });
-      router.replace("/(shop)/home");
+      router.replace("/shop/home");
     } catch (failure) { setError(message(failure)); }
     finally { setBusy(false); }
   }
@@ -101,7 +100,7 @@ export function RegisterShopDesign() {
       const { user, token, ...shop } = result;
       cache.setQueryData(["shop", "owner", user.id], shop);
       void cache.invalidateQueries({ queryKey: ["shops"] });
-      router.replace("/(shop)/home");
+      router.replace("/shop/home");
     } catch (failure) {
       setError(message(failure));
       void owned.refetch();
@@ -147,6 +146,7 @@ export function TransactionsTable({
   onSelect?: (id: number) => void;
   dashboard?: boolean;
 }) {
+  const { go } = useFlowNavigation();
   const columns = dashboard
     ? ["Customer Name", "Date", "Service", "Delivery Type", "Status", "Total"]
     : [
@@ -255,6 +255,7 @@ export function TransactionsTable({
   );
 }
 export function ShopHomeDesign() {
+  const { go } = useFlowNavigation();
   const owned = useOwnedShop();
   const orders = useOrders(true);
   const today = new Date().toDateString();
@@ -323,6 +324,7 @@ export function ShopHomeDesign() {
   );
 }
 export function ShopTransactionsDesign() {
+  const { go } = useFlowNavigation();
   const orders = useOrders(true);
   const [tab, setTab] = useState("All");
   const [selection, setSelection] = useState<number[]>([]);
@@ -400,6 +402,7 @@ export function ShopTransactionsDesign() {
   );
 }
 export function CustomersDesign({ filter }: { filter?: Order["status"] }) {
+  const { go } = useFlowNavigation();
   const orders = useOrders(true);
   const [query, setQuery] = useState("");
   const statuses: Order["status"][] = [
@@ -514,6 +517,7 @@ export function ShopOrderDetailsDesign({
   id: number;
   transaction?: boolean;
 }) {
+  const { go } = useFlowNavigation();
   const result = useOrders(true);
   const order = result.data?.find((o) => o.id === id);
   const [busy, setBusy] = useState(false);
@@ -660,6 +664,7 @@ export function DeclineOrderDesign({
   stage?: string;
   reason?: string;
 }) {
+  const { go, replaceFlow } = useFlowNavigation();
   const [reason, setReason] = useState(initialReason);
   const [services, setServices] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -786,6 +791,7 @@ export function DeclineOrderDesign({
   );
 }
 export function ShopProfileDesign() {
+  const { go } = useFlowNavigation();
   const owned = useOwnedShop();
   const profile = useProfile();
   const shop = owned.data;

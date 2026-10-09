@@ -27,10 +27,10 @@ Empty Dart files and the damaged fragments in `main.dart` and `welcome.dart` can
 | `loginscreen.dart`                                   | `/login`                            | LoginDesign                                          |
 | `main.dart`                                          | `/`                                 | SplashDesign                                         |
 | `shop/AuthenticationShop/registershop.dart`          | `/register-shop`                    | RegisterShopDesign                                   |
-| `shop/CustomerOrder/AcceptingOrder.dart`             | `/(shop)/orders/[id] (pending)`     | ShopOrderDetailsDesign                               |
-| `shop/CustomerOrder/CancelDetails.dart`              | `/(shop)/orders/[id] (cancelled)`   | ShopOrderDetailsDesign                               |
-| `shop/CustomerOrder/CompleteDetails.dart`            | `/(shop)/orders/[id] (completed)`   | ShopOrderDetailsDesign                               |
-| `shop/CustomerOrder/CustomerOrder.dart`              | `/(shop)/customers`                 | CustomersDesign                                      |
+| `shop/CustomerOrder/AcceptingOrder.dart`             | `/shop/orders/[id] (pending)`     | ShopOrderDetailsDesign                               |
+| `shop/CustomerOrder/CancelDetails.dart`              | `/shop/orders/[id] (cancelled)`   | ShopOrderDetailsDesign                               |
+| `shop/CustomerOrder/CompleteDetails.dart`            | `/shop/orders/[id] (completed)`   | ShopOrderDetailsDesign                               |
+| `shop/CustomerOrder/CustomerOrder.dart`              | `/shop/customers`                 | CustomersDesign                                      |
 | `shop/CustomerOrder/DeclineOrder/DeclineOrder1.dart` | `/decline-order?id=<id>`               | DeclineOrderDesign                                   |
 | `shop/CustomerOrder/DeclineOrder/DeclineOrder2.dart` | `/decline-closed?id=<id>`              | DeclineOrderDesign                                   |
 | `shop/CustomerOrder/DeclineOrder/DeclineOrder3.dart` | `/decline-busy?id=<id>`                | DeclineOrderDesign                                   |
@@ -40,9 +40,9 @@ Empty Dart files and the damaged fragments in `main.dart` and `welcome.dart` can
 | `shop/CustomerOrder/ExpandCompleteOrder.dart`        | `/shop-customers?status=Completed`  | CustomersDesign                                      |
 | `shop/CustomerOrder/ExpandNewOrder.dart`             | `/shop-customers?status=Pending`    | CustomersDesign                                      |
 | `shop/CustomerOrder/ExpandOngoingOrder.dart`         | `/shop-customers?status=Processing` | CustomersDesign                                      |
-| `shop/CustomerOrder/OngoingDetails.dart`             | `/(shop)/orders/[id] (processing)`  | ShopOrderDetailsDesign                               |
+| `shop/CustomerOrder/OngoingDetails.dart`             | `/shop/orders/[id] (processing)`  | ShopOrderDetailsDesign                               |
 | `shop/OrderScreen/IndividualTransact.dart`           | `/shop-transaction?id=<id>`            | ShopOrderDetailsDesign (transaction)                 |
-| `shop/OrderScreen/OrderScreen.dart`                  | `/(shop)/transactions`              | ShopTransactionsDesign                               |
+| `shop/OrderScreen/OrderScreen.dart`                  | `/shop/transactions`              | ShopTransactionsDesign                               |
 | `shop/ProfileShop/2FAConfirm.dart`                   | `/2fa-complete`                     | TwoFactorDesign                                      |
 | `shop/ProfileShop/AccDelete.dart`                    | `/account-deleted`                  | SuccessDesign                                        |
 | `shop/ProfileShop/AccountInfo.dart`                  | `/account-information`              | EditProfileDesign (account)                          |
@@ -52,9 +52,9 @@ Empty Dart files and the damaged fragments in `main.dart` and `welcome.dart` can
 | `shop/ProfileShop/Logout.dart`                       | `/logout`                           | AccountConfirmationDesign                            |
 | `shop/ProfileShop/Security.dart`                     | `/security`                         | ChangePasswordDesign (security)                      |
 | `shop/ProfileShop/ShopDetails.dart`                  | `/shop-details`                     | ShopDetailsFormDesign                                |
-| `shop/ProfileShop/ShopProfile.dart`                  | `/(shop)/profile`                   | ShopProfileDesign                                    |
-| `shop/Services/ServiceScreen1.dart`                  | `/(shop)/services`                  | ServicesDesign (services, pricing, add/edit dialogs) |
-| `shop/ShopDashboard/homescreen.dart`                 | `/(shop)/home`                      | ShopHomeDesign                                       |
+| `shop/ProfileShop/ShopProfile.dart`                  | `/shop/profile`                   | ShopProfileDesign                                    |
+| `shop/Services/ServiceScreen1.dart`                  | `/shop/services`                  | ServicesDesign (services, pricing, add/edit dialogs) |
+| `shop/ShopDashboard/homescreen.dart`                 | `/shop/home`                      | ShopHomeDesign                                       |
 | `shop/ShopDashboard/notifpage.dart`                  | `/shop-notifications`               | NotificationsDesign (shop)                           |
 | `shop/ShopDashboard/shop_map.dart`                   | `embedded dashboard map`            | LaundryMap                                           |
 | `Sockets/socketService.dart`                         | `data helper`                       | socket.service.ts                                    |

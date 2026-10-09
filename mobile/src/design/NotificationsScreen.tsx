@@ -44,7 +44,7 @@ export function NotificationsDesign({
                   onPress={() =>
                     shopMode
                       ? router.push({
-                          pathname: "/(shop)/orders/[id]",
+                          pathname: "/shop/customers/orders/[id]",
                           params: { id: String(order.id) },
                         })
                       : go("transaction-details", { id: String(order.id) })

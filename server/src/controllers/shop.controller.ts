@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { formatAddress } from '../validators/address.validator';
 import { userProfileSelect } from '../utils/user-profile';
+import { shopPhotoSelection, withShopPhoto } from '../utils/shop-photo';
 
 export class ShopController {
   
@@ -32,7 +33,7 @@ export class ShopController {
       });
       const { shop, ...user } = result;
       const token = jwt.sign({ userId, isShopOwner: true }, env.JWT_SECRET, { expiresIn: '7d' });
-      return sendSuccess(res, { ...shop, user, token }, 'Shop registered successfully', 201);
+      return sendSuccess(res, { ...(shop ? withShopPhoto(shop) : {}), user, token }, 'Shop registered successfully', 201);
     } catch (error) {
       next(error);
     }
@@ -48,9 +49,9 @@ export class ShopController {
       }
       const data = registerShopSchema.parse(req).body;
       const updated = await prisma.shop.update({
-        where: { id: shopId }, data: { ...data, address: formatAddress(data) },
+        where: { id: shopId }, data: { ...data, address: formatAddress(data) }, include: { photo: shopPhotoSelection },
       });
-      return sendSuccess(res, updated, 'Shop details updated successfully');
+      return sendSuccess(res, withShopPhoto(updated), 'Shop details updated successfully');
     } catch (error) { next(error); }
   }
 
@@ -58,11 +59,12 @@ export class ShopController {
     try {
       const shops = await prisma.shop.findMany({
         include: {
+          photo: shopPhotoSelection,
           services: true,
           kiloPrices: true
         }
       });
-      return sendSuccess(res, shops, 'Shops retrieved successfully');
+      return sendSuccess(res, shops.map(withShopPhoto), 'Shops retrieved successfully');
     } catch (error) {
       next(error);
     }
@@ -73,9 +75,9 @@ export class ShopController {
       const shops = await prisma.shop.findMany({
         orderBy: { createdAt: 'desc' },
         take: 10,
-        include: { services: true }
+        include: { services: true, photo: shopPhotoSelection }
       });
-      return sendSuccess(res, shops, 'Recent shops retrieved successfully');
+      return sendSuccess(res, shops.map(withShopPhoto), 'Recent shops retrieved successfully');
     } catch (error) {
       next(error);
     }
@@ -87,6 +89,7 @@ export class ShopController {
       const shop = await prisma.shop.findUnique({
         where: { id: shopId },
         include: {
+          photo: shopPhotoSelection,
           services: true,
           kiloPrices: true,
           householdItems: true,
@@ -95,7 +98,7 @@ export class ShopController {
       });
 
       if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
-      return sendSuccess(res, shop, 'Shop details retrieved');
+      return sendSuccess(res, withShopPhoto(shop), 'Shop details retrieved');
     } catch (error) {
       next(error);
     }
@@ -106,11 +109,11 @@ export class ShopController {
       const userId = parseInt(req.params.userId);
       const shop = await prisma.shop.findUnique({
         where: { userId },
-        include: { services: true }
+        include: { services: true, photo: shopPhotoSelection }
       });
 
       if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
-      return sendSuccess(res, shop, 'Shop details retrieved');
+      return sendSuccess(res, withShopPhoto(shop), 'Shop details retrieved');
     } catch (error) {
       next(error);
     }

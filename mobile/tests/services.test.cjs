@@ -43,6 +43,7 @@ function harness({ confirmed = true, failure, services } = {}) {
   };
   for (const name of ['Screen', 'Button', 'View', 'FormError', 'Field', 'Txt', 'Card', 'Pressable',
     'Plus', 'Pencil', 'Trash2', 'QueryState', 'Section', 'Empty', 'MenuRow', 'Modal', 'ScrollView', 'Choice']) context[name] = name;
+  context.usePalette = () => context.palette;
   vm.runInNewContext(compiled, context);
   const render = () => { index = 0; return context.exports.ServicesDesign(); };
   const dialog = () => elements(render(), 'Modal')[0];

@@ -71,6 +71,7 @@ function harness({ guest = false, request, failure, saved = [] } = {}) {
   };
   for (const name of ['Screen', 'Button', 'View', 'FormError', 'Field', 'Txt', 'Card', 'Pressable', 'Asset',
     'Plus', 'Minus', 'Pencil', 'Section', 'Empty', 'QueryState', 'MenuRow', 'Modal', 'ScrollView', 'Choice', 'AddressFields', 'DeliveryDetails', 'ScheduleDesign', 'PriceRow', 'Totals']) context[name] = name;
+  context.usePalette = () => context.palette;
   vm.runInNewContext(compiled, context);
   const render = () => { index = 0; return context.exports.CheckoutDesign(); };
   const button = title => elements(render(), 'Button').find(item => item.props.title === title);

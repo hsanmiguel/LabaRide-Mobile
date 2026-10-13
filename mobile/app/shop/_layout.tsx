@@ -1,29 +1,40 @@
+import { InterfaceTheme } from "../../src/design/theme";
+import { View, useWindowDimensions } from "react-native";
 import { useEffect } from "react";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Asset, palette } from "../../src/design/ui";
+import { Asset, Brand, Txt, usePalette } from "../../src/design/ui";
 import { useOwnedShop } from "../../src/design/data";
 import { socketService } from "../../src/services/socket.service";
 export default function ShopTabs() {
+  const palette = usePalette();
+  const { width } = useWindowDimensions();
+  const desktop = width >= 1024;
   const insets = useSafeAreaInsets();
   const owned = useOwnedShop();
   useEffect(() => {
     if (owned.data) socketService.joinShopRoom(owned.data.id);
   }, [owned.data?.id]);
   return (
-    <Tabs
+    <InterfaceTheme role="shop"><Tabs
       initialRouteName="home"
       screenOptions={{
         headerShown: false,
+        tabBarBackground: desktop ? () => <View pointerEvents="none" style={{ position: "absolute", top: 24, left: 20 }}><Brand /><Txt style={{ color: palette.muted, marginTop: 8 }}>Shop management</Txt></View> : undefined,
+        tabBarPosition: desktop ? "left" : "bottom",
+        tabBarLabelPosition: desktop ? "beside-icon" : "below-icon",
+        tabBarActiveBackgroundColor: palette.soft,
+        tabBarItemStyle: { borderRadius: 12, marginHorizontal: desktop ? 8 : 2, marginVertical: desktop ? 4 : 0 },
         tabBarHideOnKeyboard: false,
         tabBarActiveTintColor: palette.navy,
-        tabBarInactiveTintColor: "#9CA3AF",
+        tabBarInactiveTintColor: palette.muted,
         tabBarLabelStyle: { fontFamily: "Inter-Medium", fontSize: 11 },
         tabBarStyle: {
-          backgroundColor: "white",
-          height: 64 + insets.bottom,
-          paddingTop: 10,
-          paddingBottom: insets.bottom,
+
+          backgroundColor: "white", borderTopWidth: 1, borderTopColor: palette.line,
+          borderRightColor: palette.line, width: desktop ? 224 : undefined, maxWidth: desktop ? 224 : undefined, minWidth: desktop ? 224 : undefined,
+          height: desktop ? undefined : 68 + insets.bottom,
+          paddingTop: desktop ? 116 : 8, paddingBottom: desktop ? 16 : Math.max(insets.bottom, 8),
         },
       }}
     >
@@ -79,6 +90,6 @@ export default function ShopTabs() {
       />
       <Tabs.Screen name="settings" options={{ href: null }} />
       <Tabs.Screen name="orders/[id]" options={{ href: null }} />
-    </Tabs>
+    </Tabs></InterfaceTheme>
   );
 }

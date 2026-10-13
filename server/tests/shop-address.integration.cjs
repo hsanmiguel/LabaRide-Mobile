@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const configuration = require('../dist/config/database');
 const { env } = require('../dist/config/env');
 const prisma = configuration.default;
-const models = ['user', 'shop', 'shopService', 'kiloPrice', 'transaction', 'transactionItem', 'householdItem', 'clothingType'];
+const models = ['user', 'shop', 'shopPhoto', 'shopService', 'kiloPrice', 'transaction', 'transactionItem', 'householdItem', 'clothingType'];
 const snapshot = async () => {
   const counts = {};
   for (const name of models) counts[name] = await prisma[name].count();
@@ -82,6 +82,21 @@ async function main() {
         assert.equal(updated.postal_code, '0080');
         assert.equal(Number(updated.latitude), 0);
         const stranger = await signupUser('Other Test User');
+        const photoInput = await require('sharp')({ create: { width: 80, height: 60, channels: 3, background: '#2457AD' } }).png().toBuffer();
+        await request(`/shops/${registration.id}/photo`, 'PUT', { imageBase64: photoInput.toString('base64') }, stranger.token, 403);
+        const photo = (await request(`/shops/${registration.id}/photo`, 'PUT', { imageBase64: photoInput.toString('base64') }, registration.token)).data;
+        assert.match(photo.photoUrl, /\/photo\?v=\d+$/);
+        const image = await fetch(root.replace(/\/api$/, '') + photo.photoUrl);
+        assert.equal(image.status, 200);
+        assert.equal(image.headers.get('content-type'), 'image/jpeg');
+        const savedPhoto = await tx.shopPhoto.findUnique({ where: { shopId: registration.id } });
+        assert.ok(savedPhoto.bytes.length > 0);
+        const listings = (await request('/shops', 'GET')).data;
+        assert.equal(listings.find(shop => shop.id === registration.id).photoUrl, photo.photoUrl);
+        assert.equal(listings.find(shop => shop.id === registration.id).photo, undefined);
+        await request(`/shops/${registration.id}/photo`, 'DELETE', undefined, stranger.token, 403);
+        await request(`/shops/${registration.id}/photo`, 'DELETE', undefined, registration.token);
+        assert.equal(await tx.shopPhoto.count({ where: { shopId: registration.id } }), 0);
         await request(`/shops/${registration.id}`, 'PUT', updatedInput, stranger.token, 403);
         const fetched = (await request(`/shops/user/${signup.user.id}`, 'GET', undefined, recovered.token)).data;
         assert.equal(fetched.postal_code, '0080');
@@ -156,7 +171,7 @@ async function main() {
   } finally { configuration.default = prisma; }
   const after = await snapshot();
   assert.deepEqual(after, before, 'All table counts must be unchanged after rolling back fixtures');
-  console.log('PASS: transaction rolled back; all 8 table counts are unchanged.');
+  console.log('PASS: transaction rolled back; all 9 table counts are unchanged.');
 }
 main().catch(error => {
   console.error(`FAIL: shop/address integration test (${error.code || error.name}). ${error instanceof assert.AssertionError ? error.message : 'Check database access and server configuration.'}`);

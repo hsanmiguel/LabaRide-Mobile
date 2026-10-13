@@ -7,7 +7,7 @@ import {
   Screen,
   Section,
   Txt,
-  palette,
+  usePalette,
   styles,
 } from "./ui";
 import { go, useOrders } from "./data";
@@ -18,6 +18,7 @@ export function NotificationsDesign({
 }: {
   shopMode?: boolean;
 }) {
+  const palette = usePalette();
   const orders = useOrders(shopMode);
   const today = new Date().toDateString();
   return (
@@ -39,7 +40,7 @@ export function NotificationsDesign({
             <View key={group}>
               <Section title={group} />
               {items.map((order) => (
-                <Pressable
+                <Pressable accessibilityRole="button"
                   key={order.id}
                   onPress={() =>
                     shopMode
@@ -56,7 +57,7 @@ export function NotificationsDesign({
                       width: 40,
                       height: 40,
                       borderRadius: 20,
-                      backgroundColor: shopMode ? palette.navy : "#1E54AB",
+                      backgroundColor: shopMode ? palette.navy : palette.primary,
                       alignItems: "center",
                       justifyContent: "center",
                     }}
@@ -74,7 +75,7 @@ export function NotificationsDesign({
                       style={{
                         fontFamily: "Poppins",
                         fontWeight: "700",
-                        color: "#4D3E8C",
+                        color: palette.primary,
                       }}
                     >
                       {shopMode

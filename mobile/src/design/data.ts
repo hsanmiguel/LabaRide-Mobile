@@ -12,6 +12,7 @@ export interface Profile extends AddressData {
   name: string;
   email: string;
   isShopOwner: boolean;
+  photoUrl?: string | null;
   phone?: string;
   birthdate?: string;
   gender?: string;
@@ -39,6 +40,7 @@ export interface Shop extends AddressData {
   id: number;
   userId: number;
   shopName: string;
+  photoUrl?: string | null;
   contactNumber?: string;
   address?: string;
   openingTime?: string;

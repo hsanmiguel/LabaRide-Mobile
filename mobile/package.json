@@ -16,7 +16,9 @@
     "test:schedule": "node tests/schedule.test.cjs",
     "test:services": "node tests/services.test.cjs",
     "test:review": "node tests/order-review.test.cjs",
-    "test:pricing": "node tests/order-pricing.test.cjs"
+    "test:pricing": "node tests/order-pricing.test.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "test:ui": "node tests/ui-browser.cjs"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -29,6 +31,7 @@
     "expo": "^57.0.0",
     "expo-constants": "~57.0.21",
     "expo-font": "~57.0.4",
+    "expo-image-picker": "~57.0.20",
     "expo-linear-gradient": "~57.0.2",
     "expo-linking": "~57.0.12",
     "expo-location": "~57.0.20",

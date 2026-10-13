@@ -1,7 +1,12 @@
+import { coordinates, nearestShops } from "./discovery";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import {
   Bell,
+  ArrowUpRight,
+  UserRound,
+  Store,
+  Check,
   ChevronRight,
   Clock,
   MapPin,
@@ -9,10 +14,11 @@ import {
   Info,
   ShoppingBasket,
 } from "lucide-react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useAuthStore } from "../store/authStore";
 import {
   Asset,
+  IconButton,
   Button,
   Card,
   Empty,
@@ -24,7 +30,7 @@ import {
   Txt,
   money,
   servicePriceLabel,
-  palette,
+  usePalette,
   styles,
 } from "./ui";
 import {
@@ -39,6 +45,7 @@ import {
 } from "./data";
 import { useLaundryDraft } from "./store";
 import LaundryMap from "./LaundryMap";
+import { ShopPhoto } from "./ShopPhoto";
 
 export function QueryState({
   loading,
@@ -49,164 +56,126 @@ export function QueryState({
   error: unknown;
   retry?: () => void;
 }) {
+  const palette = usePalette();
   if (loading)
     return (
-      <ActivityIndicator color={palette.blue} style={{ marginVertical: 24 }} />
+      <ActivityIndicator accessibilityLabel="Loading, please wait" color={palette.blue} style={{ marginVertical: 24 }} />
     );
   if (error)
     return (
-      <Empty
+      <View accessibilityRole="alert" accessibilityLiveRegion="polite"><Empty
         title="Unable to load"
         message={message(error)}
         action="Retry"
         onPress={retry}
-      />
+      /></View>
     );
   return null;
 }
-export function ShopCard({
-  shop,
-  horizontal = false,
-  onPress,
-}: {
-  shop: Shop;
-  horizontal?: boolean;
-  onPress?: () => void;
+export function ShopCard({ shop, horizontal = false, onPress, distance }: {
+  shop: Shop; horizontal?: boolean; onPress?: () => void; distance?: number;
 }) {
-  const user = useAuthStore((state) => state.user);
-  return (
-    <Pressable
-      onPress={
-        onPress ||
-        (() =>
-          router.push({
-            pathname: "/(user)/shops/[id]",
-            params: { id: String(shop.id) },
-          }))
-      }
-      style={horizontal ? { width: 220 } : undefined}
-    >
-      <Card style={horizontal ? { height: 110 } : { padding: 16 }}>
-        <View style={styles.row}>
-          {!horizontal && (
-            <Asset
-              name="lavanderaakoprfile.png"
-              size={70}
-              style={{ borderRadius: 12 }}
-            />
-          )}
-          <View style={styles.grow}>
-            <Txt
-              style={{
-                color: palette.navy,
-                fontSize: horizontal ? 18 : 20,
-                fontWeight: "700",
-              }}
-              numberOfLines={1}
-            >
-              {shop.shopName}
-            </Txt>
-            <Txt style={[styles.muted, { marginTop: 8 }]} numberOfLines={2}>
-              {address(shop) || "Address not provided"}
-            </Txt>
-            {!horizontal && shop.userId === user?.id && (
-              <Txt style={{ color: "#388E3C", fontSize: 12, marginTop: 8 }}>
-                Your Shop
-              </Txt>
-            )}
-          </View>
-          {!horizontal && <ChevronRight size={20} color={palette.navy} />}
+  const palette = usePalette();
+  const { width } = useWindowDimensions();
+  return <Pressable accessibilityRole="button" accessibilityLabel={"View " + shop.shopName}
+    onPress={onPress || (() => router.push({ pathname: "/(user)/shops/[id]", params: { id: String(shop.id) } }))}
+    style={({ pressed }) => ({ width: horizontal ? Math.min(296, width - 72) : undefined, opacity: pressed ? 0.86 : 1 })}>
+    <Card style={{ padding: 10, gap: 0, borderRadius: 24 }}>
+      <ShopPhoto name={shop.shopName} photoUrl={shop.photoUrl} />
+      <View style={{ padding: 8, paddingTop: 16, gap: 10 }}>
+        <Txt numberOfLines={2} style={{ fontSize: 18, fontWeight: "700" }}>{shop.shopName}</Txt>
+        <View style={[styles.row, { alignItems: "flex-start", gap: 6 }]}>
+          <MapPin size={14} color={palette.muted} />
+          <Txt numberOfLines={2} style={{ flex: 1, fontSize: 12, lineHeight: 18, color: palette.muted }}>{address(shop) || "Address not provided"}</Txt>
         </View>
-      </Card>
-    </Pressable>
-  );
+        {!!shop.openingTime && !!shop.closingTime && <View style={[styles.row, { gap: 6 }]}>
+          <Clock size={14} color={palette.muted} /><Txt style={{ color: palette.muted, fontSize: 12 }}>{shop.openingTime} – {shop.closingTime}</Txt>
+        </View>}
+        <View style={[styles.row, { justifyContent: "space-between", marginTop: 2 }]}>
+          <View style={styles.grow}>
+            {distance != null ? <><Txt style={{ color: palette.primary, fontWeight: "600" }}>{distance.toFixed(1)} km away</Txt><Txt style={{ fontSize: 11, color: palette.muted }}>Straight-line distance</Txt></>
+              : shop.services?.length ? <><Txt numberOfLines={1} style={{ color: palette.muted, fontSize: 11 }}>{shop.services[0].serviceName}</Txt><Txt numberOfLines={2} style={{ fontWeight: "600", color: palette.primary, fontSize: 12 }}>{servicePriceLabel(shop.services[0])}</Txt></>
+              : <Txt style={{ fontWeight: "600", color: palette.primary }}>Explore shop</Txt>}
+          </View>
+          <View pointerEvents="none" style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: palette.primary, alignItems: "center", justifyContent: "center" }}>
+            <ArrowUpRight size={20} color="white" />
+          </View>
+        </View>
+      </View>
+    </Card>
+  </Pressable>;
 }
 export function UserHomeDesign() {
+  const palette = usePalette();
+  const { width } = useWindowDimensions();
   const shops = useShops();
   const profile = useProfile();
-  const guest = useAuthStore((state) => state.isGuest);
-  const user = useAuthStore((state) => state.user);
-  const deliveryAddress = useLaundryDraft((state) => state.address);
-  const location = address(deliveryAddress || profile.data);
-  return (
-    <Screen background="#1E54AB" padded={false} back={false}>
-      <View style={{ padding: 16, gap: 16 }}>
-        <View style={styles.between}>
-          <Pressable
-            onPress={() => go("add-location")}
-            style={[styles.row, styles.grow]}
-          >
-            <MapPin size={24} color="white" />
-            <Txt style={{ color: "white", flex: 1 }} numberOfLines={1}>
-              {location ||
-                (guest ? "Choose your location" : "Set your delivery address")}
-            </Txt>
+  const guest = useAuthStore(state => state.isGuest);
+  const user = useAuthStore(state => state.user);
+  const deliveryAddress = useLaundryDraft(state => state.address);
+  const selectedAddress = deliveryAddress || profile.data;
+  const location = address(selectedAddress);
+  const nearby = nearestShops(shops.data || [], selectedAddress);
+  const point = coordinates(selectedAddress);
+  const [filter, setFilter] = useState("all");
+  const firstName = (profile.data?.name || user?.name || "").trim().split(/\s+/)[0];
+  const serviceFilters = Array.from(new Set((shops.data || []).flatMap(shop => (shop.services || []).map(service => service.serviceName)))).slice(0, 4);
+  const displayed = filter === "nearby" ? nearby.map(item => item.shop) :
+    (shops.data || []).filter(shop => filter === "all" || shop.services?.some(service => `service:${service.serviceName}` === filter));
+  return <Screen back={false}>
+    <View style={[styles.stack, { gap: 16 }]}>
+      <View style={styles.between}>
+        <View style={styles.grow}>
+          <Txt style={{ fontSize: width >= 768 ? 30 : 24, fontWeight: "700" }} numberOfLines={1}>{firstName ? `Hello, ${firstName}` : "Hello there"}</Txt>
+          <Pressable accessibilityRole="button" accessibilityLabel="Choose delivery location" onPress={() => go("add-location")}
+            style={[styles.row, { minHeight: 36, gap: 6 }]}>
+            <MapPin size={14} color={palette.primary} />
+            <Txt numberOfLines={1} style={{ flex: 1, color: palette.muted, fontSize: 12 }}>{location || "Choose your delivery location"}</Txt>
+            <ChevronRight size={14} color={palette.primary} />
           </Pressable>
-          {!guest && user && (
-            <Pressable
-              accessibilityLabel="Notifications"
-              onPress={() => go("notifications")}
-            >
-              <Bell size={24} color="white" />
-            </Pressable>
-          )}
         </View>
-        <SearchBox onPress={() => go("search")} />
-        <Section title="Explore Laundry Shop" light />
-        <Pressable
-          onPress={() => go("map")}
-          style={{ height: 150, borderRadius: 12, overflow: "hidden" }}
-        >
-          <Asset name="maps.png" style={{ width: "100%", height: "100%" }} />
-          <View
-            style={{
-              position: "absolute",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              backgroundColor: "#00000066",
-              padding: 16,
-            }}
-          >
-            <Txt style={{ color: "white", fontSize: 16, fontWeight: "700" }}>
-              View Map
-            </Txt>
-          </View>
-        </Pressable>
-        <QueryState
-          loading={shops.isLoading}
-          error={shops.error}
-          retry={() => shops.refetch()}
-        />
+        <IconButton label="Your profile" onPress={() => router.push("/(user)/profile")}><UserRound size={22} color={palette.primary} /></IconButton>
+        {!guest && user && <IconButton label="Notifications" onPress={() => go("notifications")}><Bell size={22} color={palette.primary} /></IconButton>}
       </View>
-      {["Laundry Shops", "Nearby Laundry Shops"].map((title) => (
-        <View key={title} style={{ marginBottom: 24 }}>
-          <View style={{ paddingHorizontal: 16 }}>
-            <Section
-              title={title}
-              action="View All"
-              light
-              onPress={() => router.push("/(user)/shops")}
-            />
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: 16, paddingHorizontal: 16 }}
-          >
-            {(shops.data || []).map((shop) => (
-              <ShopCard key={shop.id} shop={shop} horizontal />
-            ))}
-            {shops.data?.length === 0 && (
-              <Txt style={{ color: "white" }}>
-                No laundry shops available yet.
-              </Txt>
-            )}
+      <SearchBox onPress={() => go("search")} />
+      <View style={{ gap: 12 }}>
+        <Txt style={styles.heading}>Find your laundry care</Txt>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
+          {[{ value: "all", label: "All shops" }, { value: "nearby", label: "Nearby" }, ...serviceFilters.map(name => ({ value: `service:${name}`, label: name }))].map(item =>
+            <Pressable key={item.value} accessibilityRole="button" accessibilityState={{ selected: filter === item.value }} onPress={() => setFilter(item.value)}
+              style={{ minHeight: 44, paddingHorizontal: 18, justifyContent: "center", borderRadius: 24, borderWidth: 1,
+                borderColor: filter === item.value ? palette.primary : palette.line, backgroundColor: filter === item.value ? palette.primary : "white" }}>
+              <Txt style={{ color: filter === item.value ? "white" : palette.muted, fontWeight: "500" }}>{item.label}</Txt>
+            </Pressable>)}
+        </ScrollView>
+      </View>
+      <QueryState loading={shops.isLoading} error={shops.error} retry={() => shops.refetch()} />
+      {!shops.isLoading && !shops.error && <>
+        <View testID="customer-shop-discovery"><Section title={filter === "nearby" ? "Closest to you" : "Laundry shops"} action="View all" onPress={() => router.push({ pathname: "/(user)/shops", params: filter === "nearby" ? { nearby: "true" } : {} })} />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingBottom: 4 }}>
+            {displayed.slice(0, 8).map(shop => <ShopCard key={shop.id} shop={shop} horizontal
+              distance={filter === "nearby" ? nearby.find(item => item.shop.id === shop.id)?.distance : undefined} />)}
           </ScrollView>
+          {!displayed.length && <Empty title={!shops.data?.length ? "No shops available yet" : "No matching shops"}
+            message={filter === "nearby" && !point ? "Save a position with your delivery address to discover nearby shops." : "Try another laundry service or browse all shops."}
+            action={filter === "nearby" && !point ? "Choose location" : undefined} onPress={() => go("add-location")} />}
         </View>
-      ))}
-    </Screen>
-  );
+        <View><Section title="Nearby laundry shops" action="View all" onPress={() => router.push({ pathname: "/(user)/shops", params: { nearby: "true" } })} />
+          <Txt style={[styles.muted, { marginBottom: 16 }]}>{point ? "Closest to your selected location" : "Set a pinned location to find shops closest to you."}</Txt>
+          {nearby.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingBottom: 4 }}>
+            {nearby.slice(0, 6).map(({ shop, distance }) => <ShopCard key={shop.id} shop={shop} distance={distance} horizontal />)}
+          </ScrollView> : <Card><Empty title={point ? "No shops with a location yet" : "Find laundry near you"}
+            message={point ? "Shops need a saved map location to appear here." : "Choose your address and save your current position."}
+            action={!point ? "Choose location" : undefined} onPress={() => go("add-location")} /></Card>}
+        </View>
+      </>}
+      <Card style={{ padding: 0, overflow: "hidden" }}>
+        <View style={{ paddingHorizontal: 20, paddingTop: 8 }}><Section title="Explore the neighborhood" action="View map" onPress={() => go("map")} /></View>
+        <View style={{ height: width >= 768 ? 240 : 220 }}><LaundryMap shops={shops.data || []} latitude={point?.latitude} longitude={point?.longitude}
+          onSelect={shop => router.push({ pathname: "/(user)/shops/[id]", params: { id: String(shop.id) } })} /></View>
+      </Card>
+    </View>
+  </Screen>;
 }
 export function ShopsDesign({
   search = false,
@@ -215,11 +184,15 @@ export function ShopsDesign({
   search?: boolean;
   map?: boolean;
 }) {
+  const palette = usePalette();
   const { go: openFlow, inShop } = useFlowNavigation();
   const shops = useShops();
   const [query, setQuery] = useState("");
   const draft = useLaundryDraft();
-  const filtered = (shops.data || []).filter((s) =>
+  const { nearby } = useLocalSearchParams<{ nearby?: string }>();
+  const profile = useProfile();
+  const nearest = nearestShops(shops.data || [], draft.address || profile.data);
+  const filtered = (nearby === "true" ? nearest.map(item => item.shop) : shops.data || []).filter((s) =>
     `${s.shopName} ${address(s)}`.toLowerCase().includes(query.toLowerCase()),
   );
   function open(shop: Shop) {
@@ -238,25 +211,21 @@ export function ShopsDesign({
   }
   return (
     <Screen
-      title={map ? "Laundry Shops" : search ? undefined : "All Laundry Shops"}
-      dark={!search}
+      title={map ? "Explore the map" : search ? "Find a laundry shop" : nearby === "true" ? "Nearby laundry shops" : "All laundry shops"}
+      dark={false}
       background={map ? palette.surface : "white"}
-      scroll={!map}
+      scroll
       right={
-        !search && (
-          <Pressable accessibilityLabel="View map" onPress={() => openFlow("map")}>
-            <MapPin color="white" size={24} />
+        !search && !map && (
+          <Pressable accessibilityRole="button" accessibilityLabel="View map" onPress={() => openFlow("map")}>
+            <MapPin color={palette.primary} size={24} />
           </Pressable>
         )
       }
     >
       <View style={styles.stack}>
         <View style={styles.row}>
-          {search && (
-            <Pressable onPress={() => router.back()}>
-              <Asset name="backarrowblue.png" />
-            </Pressable>
-          )}
+
           <View style={styles.grow}>
             <SearchBox
               value={query}
@@ -268,7 +237,7 @@ export function ShopsDesign({
           </View>
         </View>
         {map && (
-          <View style={{ height: 320, borderRadius: 12, overflow: "hidden" }}>
+          <View style={{ height: 300, borderRadius: 16, overflow: "hidden" }}>
             <LaundryMap shops={filtered} onSelect={open} />
           </View>
         )}
@@ -277,7 +246,7 @@ export function ShopsDesign({
             <Section title="Search History" />
             {draft.searchHistory.length ? (
               draft.searchHistory.map((q) => (
-                <Pressable
+                <Pressable accessibilityRole="button"
                   key={q}
                   onPress={() => setQuery(q)}
                   style={styles.row}
@@ -312,7 +281,8 @@ export function ShopsDesign({
         )}
         {!shops.isLoading && !shops.error && !filtered.length && (
           <Empty
-            title={search ? "No laundry shop matched" : "No laundry shops yet"}
+            title={query ? "No laundry shops matched" : nearby === "true" ? "No nearby shops to show" : "No laundry shops yet"}
+            message={nearby === "true" ? "Save a current position with your address to find shops with map locations." : "Try a different shop name or location."}
           />
         )}
       </View>
@@ -326,6 +296,7 @@ export function ShopInfoDesign({
   id: number;
   about?: boolean;
 }) {
+  const palette = usePalette();
   const { go: openFlow, inShop } = useFlowNavigation();
   const result = useShop(id);
   const [tab, setTab] = useState("About");
@@ -346,7 +317,7 @@ export function ShopInfoDesign({
       title={about ? shop.shopName : "Shop Information"}
       footer={
         <Button
-          title="Open Shop"
+          title="Browse services"
           color={palette.navy}
           onPress={() =>
             inShop ? openFlow("shop-menu", { id: String(id) }) : router.push({
@@ -358,12 +329,8 @@ export function ShopInfoDesign({
       }
     >
       <View style={styles.stack}>
-        <View style={{ alignItems: "center", gap: 12, padding: 16 }}>
-          <Asset
-            name="lavanderaakoprfile.png"
-            size={112}
-            style={{ borderRadius: 16 }}
-          />
+        <ShopPhoto name={shop.shopName} photoUrl={shop.photoUrl} style={{ maxHeight: 360 }} />
+        <View style={{ gap: 8, paddingVertical: 8 }}>
           <Txt style={styles.title}>{shop.shopName}</Txt>
           <Txt style={styles.muted}>Shop ID: {shop.id}</Txt>
         </View>
@@ -382,7 +349,7 @@ export function ShopInfoDesign({
                 <Clock color={palette.navy} size={22} />
                 <Txt style={styles.heading}>Business Hours</Txt>
               </View>
-              <Txt>Monday to Sunday</Txt>
+
               <Txt style={styles.muted}>
                 {shop.openingTime || "—"} – {shop.closingTime || "—"}
               </Txt>
@@ -424,6 +391,7 @@ export function ShopInfoDesign({
   );
 }
 export function ShopMenuDesign({ id }: { id: number }) {
+  const palette = usePalette();
   const { go: openFlow, inShop } = useFlowNavigation();
   const result = useShop(id);
   const draft = useLaundryDraft();
@@ -472,10 +440,10 @@ export function ShopMenuDesign({ id }: { id: number }) {
     >
       <View style={styles.stack}>
         <View style={styles.between}>
-          <Pressable accessibilityLabel="Back" onPress={() => router.back()}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()}>
             <Asset name="circlebackarrow.png" size={40} />
           </Pressable>
-          <Pressable
+          <Pressable accessibilityRole="button"
             onPress={() =>
               draft.set({
                 deliveryType:
@@ -504,14 +472,10 @@ export function ShopMenuDesign({ id }: { id: number }) {
         />
         {shop && (
           <>
-            <Pressable onPress={() => openFlow("shop-about", { id: String(id) })}>
+            <Pressable accessibilityRole="button" onPress={() => openFlow("shop-about", { id: String(id) })}>
               <Card style={{ backgroundColor: "white" }}>
                 <View style={styles.row}>
-                  <Asset
-                    name="lavanderaakoprfile.png"
-                    size={60}
-                    style={{ borderRadius: 12 }}
-                  />
+                  <View style={{ padding: 20, backgroundColor: palette.soft, borderRadius: 16 }}><Store size={32} color={palette.primary} /></View>
                   <View style={styles.grow}>
                     <Txt style={styles.heading}>{shop.shopName}</Txt>
                     <Txt style={styles.muted}>ID: {shop.id}</Txt>
@@ -525,13 +489,13 @@ export function ShopMenuDesign({ id }: { id: number }) {
                 </View>
               </Card>
             </Pressable>
-            {(shop.services || []).map((s, index) => {
-              const colors = ["#98D8BF", "#64B5F6", "#BA68C8", "#FFB74D"];
-              const color =
-                s.color?.replace("0xFF", "#") || colors[index % colors.length];
+            {(shop.services || []).map((s) => {
+
               return (
-                <Pressable
+                <Pressable accessibilityRole="checkbox"
                   key={s.id}
+                  accessibilityLabel={`${s.serviceName}, ${servicePriceLabel(s)}`}
+                  accessibilityState={{ checked: selected.includes(s.id) }}
                   onPress={() =>
                     setSelected(
                       selected.includes(s.id)
@@ -542,9 +506,7 @@ export function ShopMenuDesign({ id }: { id: number }) {
                 >
                   <Card
                     style={{
-                      backgroundColor: /^#[\da-f]{6}$/i.test(color)
-                        ? color
-                        : colors[index % colors.length],
+                      backgroundColor: selected.includes(s.id) ? palette.soft : "white",
                       borderWidth: 2,
                       borderColor: selected.includes(s.id)
                         ? palette.navy
@@ -575,14 +537,12 @@ export function ShopMenuDesign({ id }: { id: number }) {
                         }}
                       >
                         {selected.includes(s.id) && (
-                          <Txt style={{ color: "white", textAlign: "center" }}>
-                            ✓
-                          </Txt>
+                          <Check color="white" size={20} />
                         )}
                       </View>
                     </View>
                     <Txt style={{ color: palette.navy }}>
-                      Standard laundering, folding.
+                      {s.packageKilos != null ? "Fixed price per load" : "Priced by laundry weight"}
                     </Txt>
                     <View
                       style={{

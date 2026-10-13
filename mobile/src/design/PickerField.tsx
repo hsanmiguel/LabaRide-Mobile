@@ -5,9 +5,10 @@ import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/d
 import { CalendarDays, Clock } from "lucide-react-native";
 import type { PickerFieldProps } from "./PickerField.types";
 import { displayTime, localDateString, timeInputValue } from "./form-values";
-import { Button, Card, Txt, palette, styles } from "./ui";
+import { Button, Card, Txt, usePalette, styles } from "./ui";
 
 export default function PickerField({ label, mode, value, onChange, initialValue, maximumDate }: PickerFieldProps) {
+  const palette = usePalette();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(new Date());
   function selectedDate() {
@@ -40,12 +41,12 @@ export default function PickerField({ label, mode, value, onChange, initialValue
       <Txt style={{ color: "#545454" }}>{label}</Txt>
       <Pressable accessibilityRole="button" accessibilityLabel={label}
         accessibilityValue={{ text: value || "Not selected" }} onPress={show}
-        style={{ minHeight: 50, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#F1F1F1",
-          backgroundColor: "#FAFAFA", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        style={{ minHeight: 50, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#8A94A6",
+          backgroundColor: "white", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <Txt style={{ color: value ? palette.ink : palette.muted }}>{value || (mode === "date" ? "Select date" : "Select time")}</Txt>
         <Icon size={20} color={palette.navy} />
       </Pressable>
-      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+      <Modal visible={open} transparent animationType="none" onRequestClose={() => setOpen(false)}>
         <View style={{ flex: 1, backgroundColor: "#00000066", justifyContent: "center", padding: 20 }}>
           <Card>
             <Txt style={styles.heading}>{label}</Txt>

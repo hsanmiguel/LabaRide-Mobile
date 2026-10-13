@@ -59,7 +59,7 @@ const mobileSource = fs.readFileSync(require('node:path').resolve(__dirname, '..
 new Function('module', 'exports', ts.transpileModule(mobileSource, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText)(moduleOutput, moduleOutput.exports);
 const { addressError, addressPayload, addressValues, formatAddress } = moduleOutput.exports;
 
-test('mobile addresses submit without coordinates, including addresses saved before their removal', () => {
+test('mobile addresses keep coordinates optional and preserve a saved location when editing', () => {
   const blank = addressValues();
   assert.equal('latitude' in blank, false);
   assert.equal('longitude' in blank, false);
@@ -67,8 +67,10 @@ test('mobile addresses submit without coordinates, including addresses saved bef
   const form = addressValues({ ...location, latitude: '13.6217', longitude: '123.1948' });
   assert.equal(addressError(form), null);
   const payload = addressPayload(form);
-  assert.equal('latitude' in payload, false);
-  assert.equal('longitude' in payload, false);
+  assert.equal(payload.latitude, 13.6217);
+  assert.equal(payload.longitude, 123.1948);
+  assert.equal('latitude' in addressPayload(location), false);
+  assert.equal('longitude' in addressPayload(location), false);
   assert.equal(payload.postal_code, '0044');
 });
 

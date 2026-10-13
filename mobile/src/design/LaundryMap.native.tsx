@@ -1,5 +1,8 @@
 import MapView, { Marker } from "react-native-maps";
 import { useEffect, useRef } from "react";
+import { AccessibilityInfo } from "react-native";
+import { coordinates } from "./discovery";
+import { usePalette } from "./theme";
 import type { MapProps } from "./LaundryMap";
 import { Asset } from "./ui";
 import { formatAddress } from "./address";
@@ -10,14 +13,17 @@ export default function LaundryMap({
   onSelect,
   onPin,
 }: MapProps) {
-  const latitude = suppliedLatitude == null ? 13.6217 : Number(suppliedLatitude);
-  const longitude = suppliedLongitude == null ? 123.1948 : Number(suppliedLongitude);
+  const palette = usePalette();
+  const point = coordinates({ latitude: suppliedLatitude, longitude: suppliedLongitude }) || coordinates(shops.find(shop => coordinates(shop)));
+  const latitude = point?.latitude ?? 13.6217;
+  const longitude = point?.longitude ?? 123.1948;
   const map = useRef<MapView>(null);
   useEffect(() => {
-    map.current?.animateToRegion(
-      { latitude, longitude, latitudeDelta: 0.035, longitudeDelta: 0.035 },
-      300,
-    );
+    let active = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(reduced => {
+      if (active) map.current?.animateToRegion({ latitude, longitude, latitudeDelta: 0.035, longitudeDelta: 0.035 }, reduced ? 0 : 300);
+    });
+    return () => { active = false; };
   }, [latitude, longitude]);
   return (
     <MapView
@@ -52,7 +58,7 @@ export default function LaundryMap({
             <Asset name="laundryiconmap.png" size={42} />
           </Marker>
         ))}
-      {onPin && <Marker coordinate={{ latitude, longitude }} />}
+      {onPin && point && <Marker pinColor={palette.primary} coordinate={{ latitude, longitude }} />}
     </MapView>
   );
 }

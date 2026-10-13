@@ -4,6 +4,9 @@ import helmet from 'helmet';
 import { env } from './config/env';
 import { errorHandler } from './middleware/error.middleware';
 import prisma from './config/database';
+import { authenticateToken } from './middleware/auth.middleware';
+import { ShopPhotoController } from './controllers/shop-photo.controller';
+import { UserPhotoController } from './controllers/user-photo.controller';
 
 // Import Routes
 import authRoutes from './routes/auth.routes';
@@ -16,6 +19,10 @@ const app = express();
 // Middleware
 app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN }));
+// The larger JSON limit is exclusive to authenticated photo uploads. Other
+// requests retain Express's standard body limit.
+app.put('/api/shops/:shopId/photo', authenticateToken, express.json({ limit: '9mb' }), ShopPhotoController.upload);
+app.put('/api/users/:userId/photo', authenticateToken, express.json({ limit: '9mb' }), UserPhotoController.upload);
 app.use(express.json());
 
 // Routes

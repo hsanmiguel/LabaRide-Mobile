@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { StatusBar } from "expo-status-bar";
 import { ArrowRight, UserRound, CheckCircle2 } from "lucide-react-native";
 import { router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -22,7 +23,7 @@ import {
   Field,
   Screen,
   Txt,
-  palette,
+  usePalette,
   styles,
 } from "./ui";
 import { api, fail, go, replaceFlow, unavailable, notify, message, type Profile } from "./data";
@@ -33,6 +34,7 @@ import PickerField from "./PickerField";
 import { signupError, validBirthdate } from "./form-values";
 
 export function OnboardingScreen({ how = false }: { how?: boolean }) {
+  const palette = usePalette();
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: palette.welcome }}>
       <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 60 }}>
@@ -68,7 +70,7 @@ export function OnboardingScreen({ how = false }: { how?: boolean }) {
           </View>
         ) : (
           <Txt style={{ color: "white", marginTop: 12, fontWeight: "500" }}>
-            Switch between rides and laundry in a tap.
+            Find local laundry shops and manage your laundry in one place.
           </Txt>
         )}
         <View style={{ flex: 1, marginVertical: 40, justifyContent: "center" }}>
@@ -78,12 +80,12 @@ export function OnboardingScreen({ how = false }: { how?: boolean }) {
           />
         </View>
         <View style={[styles.between, { paddingBottom: 40 }]}>
-          <Pressable onPress={() => router.replace("/(auth)/login")}>
+          <Pressable accessibilityRole="button" onPress={() => router.replace("/(auth)/login")}>
             <Txt style={{ color: "rgba(255,255,255,.7)", fontSize: 16 }}>
               Skip
             </Txt>
           </Pressable>
-          <Pressable
+          <Pressable accessibilityRole="button"
             accessibilityLabel={how ? "Continue to login" : "How it works"}
             onPress={() =>
               how ? router.replace("/(auth)/login") : go("how-it-works")
@@ -106,6 +108,7 @@ export function OnboardingScreen({ how = false }: { how?: boolean }) {
   );
 }
 export function SplashDesign() {
+  const palette = usePalette();
   const { user, isGuest } = useAuthStore();
   const proceed = () =>
     router.replace(
@@ -122,7 +125,7 @@ export function SplashDesign() {
     return () => clearTimeout(timer);
   }, [user, isGuest]);
   return (
-    <Pressable
+    <Pressable accessibilityRole="button"
       onPress={proceed}
       style={{
         flex: 1,
@@ -173,30 +176,32 @@ export function LoginDesign() {
   }
   return (
     <LinearGradient colors={["#0289E0", "#1B086D"]} style={{ flex: 1 }}>
+      <StatusBar style="light" />
       <SafeAreaView style={styles.grow}>
         <KeyboardAvoidingView
           style={styles.grow}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <View style={{ padding: 16, paddingBottom: 8 }}>
+          <View style={{ padding: 24, paddingVertical: 28 }}>
             <Brand white />
           </View>
           <ScrollView
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ padding: 16, paddingTop: 8, flexGrow: 1 }}
+            contentContainerStyle={{ padding: 20, paddingTop: 8, width: "100%", maxWidth: 520, alignSelf: "center", flexGrow: 1 }}
           >
             <View
               style={{
                 backgroundColor: "white",
-                borderRadius: 20,
+                borderRadius: 24,
                 padding: 24,
               }}
             >
               <View style={[styles.center, { marginBottom: 32 }]}>
-                <Asset name="Login.png" style={{ width: 120, height: 32 }} />
+                <Txt accessibilityRole="header" style={{ fontSize: 32, fontWeight: "700", color: "#1A0066" }}>Login</Txt>
               </View>
               <Field
                 label="Email"
+                appearance="soft"
                 placeholder="Enter email"
                 value={email}
                 onChangeText={setEmail}
@@ -206,6 +211,7 @@ export function LoginDesign() {
               />
               <Field
                 label="Password"
+                appearance="soft"
                 placeholder="Enter password"
                 value={password}
                 onChangeText={setPassword}
@@ -216,8 +222,9 @@ export function LoginDesign() {
                 title="Log In"
                 onPress={login}
                 busy={busy}
+                color="#375DFB"
                 round
-                style={{ marginTop: 8 }}
+                style={{ marginTop: 8, minHeight: 48 }}
               />
               <View style={[styles.between, { marginTop: 8 }]}>
                 <View style={{ flex: 1 }}>
@@ -228,8 +235,8 @@ export function LoginDesign() {
                     onPress={() => setRemember(!remember)}
                   />
                 </View>
-                <Pressable onPress={() => go("forgot-password")}>
-                  <Txt style={{ fontSize: 12, color: palette.blue }}>
+                <Pressable accessibilityRole="button" onPress={() => go("forgot-password")}>
+                  <Txt style={{ fontSize: 12, color: "#375DFB" }}>
                     Forgot Password?
                   </Txt>
                 </Pressable>
@@ -238,29 +245,31 @@ export function LoginDesign() {
                 style={[
                   styles.row,
                   styles.center,
-                  { marginTop: 24, flexWrap: "wrap", gap: 4 },
+                  { marginTop: 40, flexWrap: "wrap", gap: 8 },
                 ]}
               >
                 <Txt style={styles.muted}>Don't have an account?</Txt>
-                <Pressable onPress={() => router.push("/(auth)/signup")}>
-                  <Txt style={{ color: palette.blue, fontWeight: "600" }}>
+                <Pressable accessibilityRole="button" onPress={() => router.push("/(auth)/signup")}>
+                  <Txt style={{ color: "#375DFB", fontWeight: "600" }}>
                     Sign Up
                   </Txt>
                 </Pressable>
               </View>
-              <Button
-                title="Continue as Guest"
-                outline
-                round
-                color="#9CA3AF"
-                icon={<UserRound size={20} color="#6B7280" />}
-                style={{ marginTop: 32 }}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Continue as Guest"
+                style={({ pressed }) => ({ marginTop: 32, minHeight: 48, borderRadius: 24,
+                  borderWidth: 1, borderColor: "#C7D4F5", backgroundColor: pressed ? "#F5F7FC" : "white",
+                  flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 16, paddingVertical: 12 })}
                 onPress={() => {
                   cache.clear();
                   setGuest();
                   router.replace("/(user)/home");
                 }}
-              />
+              >
+                <UserRound size={20} color="#626B7D" />
+                <Txt style={{ color: "#626B7D", fontSize: 16, fontWeight: "500" }}>Continue as Guest</Txt>
+              </Pressable>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -269,6 +278,7 @@ export function LoginDesign() {
   );
 }
 export function SignupDesign() {
+  const palette = usePalette();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -297,7 +307,7 @@ export function SignupDesign() {
   return (
     <Screen>
       <View style={{ padding: 8, paddingTop: 40 }}>
-        <Pressable onPress={() => router.back()}>
+        <Pressable accessibilityRole="button" onPress={() => router.back()}>
           <Brand compact />
         </Pressable>
         <Txt
@@ -454,6 +464,7 @@ export function SuccessDesign({
   onPress?: () => void;
   purple?: boolean;
 }) {
+  const palette = usePalette();
   return (
     <Screen scroll={false}>
       <View style={[styles.grow, styles.center, { gap: 20, padding: 24 }]}>
@@ -484,6 +495,7 @@ export function RecoveryDesign({
   stage?: string;
   email?: string;
 }) {
+  const palette = usePalette();
   const [email, setEmail] = useState(initialEmail);
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -505,7 +517,7 @@ export function RecoveryDesign({
   return (
     <Screen>
       <View style={{ padding: 8, paddingTop: 40 }}>
-        <Pressable onPress={() => router.back()}>
+        <Pressable accessibilityRole="button" onPress={() => router.back()}>
           <Brand compact />
         </Pressable>
         <Txt style={[styles.title, { marginTop: 32, marginBottom: 8 }]}>
@@ -545,7 +557,7 @@ export function RecoveryDesign({
               onPress={() => unavailable("Verify email")}
               style={{ marginTop: 32 }}
             />
-            <Pressable
+            <Pressable accessibilityRole="button"
               onPress={() => unavailable("Resend email")}
               style={{ marginTop: 24 }}
             >
@@ -601,6 +613,7 @@ export function CodeInput({
   value: string;
   onChange: (value: string) => void;
 }) {
+  const palette = usePalette();
   return (
     <View style={{ position: "relative" }}>
       <View style={[styles.row, { gap: 8 }]}>

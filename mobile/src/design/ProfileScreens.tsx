@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { Alert, Modal, Pressable, Switch, View } from "react-native";
-import { MapPin, Pencil, UserRound } from "lucide-react-native";
+import { ArrowLeft, ChevronRight, LogOut, Pencil } from "lucide-react-native";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -17,7 +17,7 @@ import {
   Screen,
   Section,
   Txt,
-  palette,
+  usePalette,
   styles,
 } from "./ui";
 import {
@@ -39,8 +39,10 @@ import { message, notify } from "./data";
 import PickerField from "./PickerField";
 import { validBirthdate } from "./form-values";
 import { useLaundryDraft } from "./store";
+import { ProfilePhotoControl } from "./ProfilePhotoControl";
 
 export function UserProfileDesign() {
+  const palette = usePalette();
   const { go } = useFlowNavigation();
   const user = useAuthStore((state) => state.user);
   const profile = useProfile();
@@ -57,44 +59,30 @@ export function UserProfileDesign() {
         />
       ) : (
         <>
-          <View
-            style={[
-              styles.row,
-              { backgroundColor: "#000080", padding: 20, paddingVertical: 28 },
-            ]}
-          >
-            <View
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: 25,
-                backgroundColor: "white",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Asset name="profile.png" size={35} />
+          <View style={{ backgroundColor: palette.surface, alignItems: "center", paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24, gap: 12 }}>
+            <View style={{ width: "100%", maxWidth: 720, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Back to Home" onPress={() => router.replace("/(user)/home")}
+                style={({ pressed }) => ({ width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "white", opacity: pressed ? 0.8 : 1 })}>
+                <ArrowLeft size={20} color={palette.ink} />
+              </Pressable>
+              <Txt accessibilityRole="header" style={{ color: palette.ink, fontSize: 16, fontWeight: "600", textAlign: "center" }}>Settings</Txt>
+              <Pressable accessibilityRole="button" accessibilityLabel="Edit profile" onPress={() => go("edit-profile")}
+                style={({ pressed }) => ({ width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: "white", opacity: pressed ? 0.8 : 1 })}>
+                <Pencil size={18} color={palette.ink} />
+              </Pressable>
             </View>
-            <View style={styles.grow}>
-              <Txt style={{ color: "white", fontSize: 20, fontWeight: "600" }}>
-                {data?.name}
-              </Txt>
-              <Txt style={{ color: "white", marginTop: 4 }}>#{user.id}</Txt>
-            </View>
-            <Pressable
-              accessibilityLabel="Edit profile"
-              onPress={() => go("edit-profile")}
-            >
-              <Asset name="edit.png" tint="white" size={20} />
-            </Pressable>
+            <ProfilePhotoControl userId={user.id} photoUrl={data?.photoUrl} />
+            <Txt style={{ color: palette.ink, fontSize: 20, lineHeight: 26, fontWeight: "700", textAlign: "center" }}>{data?.name}</Txt>
+            <Txt style={{ color: palette.muted, textAlign: "center" }}>{data?.email}</Txt>
           </View>
-          <View style={{ padding: 16, gap: 12 }}>
-            <Section title="Personal Details" />
+          <View style={{ width: "100%", maxWidth: 720, alignSelf: "center", padding: 16, gap: 8 }}>
+            <Section title="Personal details" />
             <QueryState
               loading={profile.isLoading}
               error={profile.error}
               retry={() => profile.refetch()}
             />
+            <View style={{ backgroundColor: "white", borderWidth: 1, borderColor: palette.line, borderRadius: 14, overflow: "hidden" }}>
             {[
               {
                 icon: "locationblue.png" as const,
@@ -114,49 +102,27 @@ export function UserProfileDesign() {
                 text: profile.data?.gender || "No gender",
               },
             ].map((row) => (
-              <View
-                key={row.icon}
-                style={[
-                  styles.row,
-                  { padding: 16, backgroundColor: "white", borderRadius: 8 },
-                ]}
-              >
-                <Asset name={row.icon} size={24} />
-                <Txt style={styles.grow}>{row.text}</Txt>
+              <View key={row.icon} style={[styles.row, { minHeight: 54, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: "white", borderBottomWidth: row.icon === "gender.png" ? 0 : 1, borderBottomColor: palette.line }]}>
+                <Asset name={row.icon} size={21} />
+                <Txt style={[styles.grow, { color: palette.ink }]}>{row.text}</Txt>
               </View>
             ))}
-            <Button
-              title="Addresses"
-              color="#000080"
-              icon={<Asset name="locationwhite.png" tint="white" />}
-              onPress={() => go("addresses")}
-            />
-            <Button
-              title="Transactions"
-              color="#000080"
-              icon={<Asset name="transaction.png" tint="white" />}
-              onPress={() => go("history")}
-            />
+            </View>
+            <Section title="Account" />
+            <View style={{ backgroundColor: "white", borderWidth: 1, borderColor: palette.line, borderRadius: 14, overflow: "hidden" }}>
+              <ProfileAction title="Addresses" asset="locationblue.png" onPress={() => go("addresses")} />
+              <ProfileAction title="Transactions" asset="transaction.png" onPress={() => go("history")} />
+            </View>
             <Button
               title={owned.data ? "Switch to Shop Mode" : "Create Shop"}
-              color="#000080"
-              icon={<Asset name="shop.png" tint="white" />}
-              onPress={() =>
-                owned.data
-                  ? router.replace("/shop/profile")
-                  : go("register-shop")
-              }
+              color={palette.blue}
+              icon={<Asset name="shop.png" tint="white" size={20} />}
+              onPress={() => owned.data ? router.replace("/shop/profile") : go("register-shop")}
             />
-            <Pressable onPress={() => go("logout")} style={{ padding: 20 }}>
-              <Txt
-                style={{
-                  color: palette.danger,
-                  textAlign: "center",
-                  fontWeight: "600",
-                }}
-              >
-                Logout
-              </Txt>
+            <Pressable accessibilityRole="button" accessibilityLabel="Logout" onPress={() => go("logout")} style={({ pressed }) => [styles.row, { minHeight: 54, marginTop: 4, paddingHorizontal: 16, borderRadius: 12, backgroundColor: pressed ? "#FDECEC" : "white", borderWidth: 1, borderColor: palette.line }]}>
+              <LogOut size={20} color={palette.danger} />
+              <Txt style={[styles.grow, { color: palette.danger, fontWeight: "600" }]}>Logout</Txt>
+              <ChevronRight size={18} color={palette.muted} />
             </Pressable>
           </View>
         </>
@@ -164,7 +130,17 @@ export function UserProfileDesign() {
     </Screen>
   );
 }
+
+function ProfileAction({ title, asset, onPress }: { title: string; asset: "locationblue.png" | "transaction.png" | "shop.png"; onPress: () => void }) {
+  const palette = usePalette();
+  return <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress} style={({ pressed }) => [styles.row, { minHeight: 58, paddingHorizontal: 16, backgroundColor: pressed ? palette.soft : "white" }]}>
+    <Asset name={asset} size={21} />
+    <Txt style={[styles.grow, { color: palette.ink, fontWeight: "500" }]}>{title}</Txt>
+    <ChevronRight size={18} color={palette.muted} />
+  </Pressable>;
+}
 export function EditProfileDesign({ account = false }: { account?: boolean }) {
+  const palette = usePalette();
   const { go } = useFlowNavigation();
   const profile = useProfile();
   const auth = useAuthStore();
@@ -255,8 +231,8 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
           {account ? (
             <Section title="Account Details" />
           ) : (
-            <Pressable
-              onPress={() => unavailable("Change Photo")}
+            <Pressable accessibilityRole="button"
+              disabled accessibilityState={{ disabled: true }}
               style={[
                 styles.row,
                 {
@@ -266,9 +242,9 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
                 },
               ]}
             >
-              <Asset name="profile.png" tint="#000080" />
-              <Txt style={{ color: "#000080", fontWeight: "600" }}>
-                Change Photo
+              <Asset name="profile.png" tint={palette.primary} />
+              <Txt style={{ color: palette.primary, fontWeight: "600" }}>
+                Profile photo updates are unavailable
               </Txt>
             </Pressable>
           )}
@@ -304,7 +280,7 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
                 editable={field.key !== "email"}
               />
             ) : (
-              <Pressable
+              <Pressable accessibilityRole="button"
                 key={field.key}
                 disabled={field.key === "email"}
                 onPress={() => setEditKey(field.key)}
@@ -318,7 +294,7 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
                 ]}
               >
                 <View style={{ gap: 6, flex: 1 }}>
-                  <Txt style={{ color: "#000080", fontWeight: "600" }}>
+                  <Txt style={{ color: palette.primary, fontWeight: "600" }}>
                     {field.label}
                   </Txt>
                   <Txt style={styles.muted}>
@@ -326,7 +302,7 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
                   </Txt>
                 </View>
                 {field.key !== "email" && (
-                  <Asset name="edit.png" size={20} tint="#000080" />
+                  <Asset name="edit.png" size={20} tint={palette.primary} />
                 )}
               </Pressable>
             ),
@@ -346,8 +322,8 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
               <MenuRow
                 key={name}
                 title={name}
-                detail="Not submitted"
-                onPress={() => unavailable("Account verification")}
+                detail="Verification is not available"
+
               />
             ))}
           </Card>
@@ -360,30 +336,30 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
               elevation: 0,
             }}
           >
-            <Section title="Binded Accounts" />
+            <Section title="Connected accounts" />
             <View style={{ gap: 16 }}>
-              <Pressable
+              <Pressable accessibilityRole="button"
                 accessibilityLabel="Bind Google account"
-                onPress={() => unavailable("Google sign in")}
+                disabled accessibilityState={{ disabled: true }}
               >
                 <View style={styles.between}>
                   <View style={styles.row}>
                     <Asset name="google.png" size={24} />
-                    <Txt>Google Chrome</Txt>
+                    <Txt>Google</Txt>
                   </View>
-                  <Txt style={styles.muted}>Not linked</Txt>
+                  <Txt style={styles.muted}>Unavailable</Txt>
                 </View>
               </Pressable>
-              <Pressable
+              <Pressable accessibilityRole="button"
                 accessibilityLabel="Bind Facebook account"
-                onPress={() => unavailable("Facebook sign in")}
+                disabled accessibilityState={{ disabled: true }}
               >
                 <View style={styles.between}>
                   <View style={styles.row}>
                     <Asset name="facebook.png" size={24} />
                     <Txt>Facebook</Txt>
                   </View>
-                  <Txt style={styles.muted}>Not linked</Txt>
+                  <Txt style={styles.muted}>Unavailable</Txt>
                 </View>
               </Pressable>
             </View>
@@ -402,7 +378,7 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
       <Modal
         visible={!!editKey}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setEditKey(null)}
       >
         <View
@@ -459,6 +435,7 @@ export function ChangePasswordDesign({
 }: {
   security?: boolean;
 }) {
+  const palette = usePalette();
   const { go } = useFlowNavigation();
   const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
@@ -481,7 +458,7 @@ export function ChangePasswordDesign({
       setCurrent("");
       setPassword("");
       setConfirm("");
-      Alert.alert("Change Password", "Password updated successfully");
+      notify("Change Password", "Password updated successfully");
       if (!security) router.back();
     } catch (error) {
       fail(error);
@@ -503,11 +480,11 @@ export function ChangePasswordDesign({
               <Section title="Two-factor Authentication" />
               <View style={styles.between}>
                 <Txt style={styles.muted}>
-                  Enable or disable two factor{"\n"}authentication
+                  Two-factor authentication is not available yet.
                 </Txt>
                 <Switch
                   value={false}
-                  onValueChange={() => go("choose-2fa")}
+                  disabled accessibilityLabel="Two-factor authentication is not available"
                   trackColor={{ false: "#D1D5DB", true: palette.navy }}
                 />
               </View>
@@ -553,6 +530,7 @@ export function AccountConfirmationDesign({
 }: {
   logout?: boolean;
 }) {
+  const palette = usePalette();
   const { replaceFlow } = useFlowNavigation();
   const [busy, setBusy] = useState(false);
   const auth = useAuthStore();
@@ -572,7 +550,7 @@ export function AccountConfirmationDesign({
     }
   }
   return (
-    <Screen scroll={false} background={palette.lavender}>
+    <Screen scroll={false} background={palette.surface}>
       <View style={[styles.grow, styles.center]}>
         <Card style={{ width: "100%", padding: 24, gap: 24 }}>
           <Txt style={[styles.heading, { textAlign: "center" }]}>
@@ -613,11 +591,12 @@ export function TwoFactorDesign({
   stage?: string;
   method?: string;
 }) {
+  const palette = usePalette();
   const { go } = useFlowNavigation();
   const [method, setMethod] = useState(initialMethod);
   const [code, setCode] = useState("");
   return (
-    <Screen title="Security" background={palette.lavender}>
+    <Screen title="Security" background={palette.surface}>
       <View style={{ flex: 1, justifyContent: "center" }}>
         <Card style={{ padding: 24 }}>
           {stage === "choose-2fa" ? (
@@ -637,14 +616,14 @@ export function TwoFactorDesign({
                 { name: "SMS", icon: "Admin/SMS.png" as const },
                 { name: "Email", icon: "Admin/Email.png" as const },
               ].map((option) => (
-                <Pressable
+                <Pressable accessibilityRole="button"
                   key={option.name}
                   onPress={() => setMethod(option.name)}
                   style={[
                     styles.row,
                     {
                       backgroundColor:
-                        method === option.name ? "#F5F0FF" : "white",
+                        method === option.name ? palette.soft : "white",
                       padding: 16,
                       borderRadius: 12,
                       borderWidth: 1,
@@ -713,6 +692,7 @@ export function TwoFactorDesign({
   );
 }
 export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
+  const palette = usePalette();
   const { go } = useFlowNavigation();
   const profile = useProfile();
   const user = useAuthStore((state) => state.user);
@@ -770,6 +750,7 @@ export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
   );
 }
 export function LocationDesign({ stage = "add-location", checkout = false }: { stage?: string; checkout?: boolean }) {
+  const palette = usePalette();
   const { go, flowHref, inShop } = useFlowNavigation();
   const draft = useLaundryDraft();
   const profile = useProfile();
@@ -808,7 +789,7 @@ export function LocationDesign({ stage = "add-location", checkout = false }: { s
         cache.setQueryData(["user", user.id], result);
         draft.set({ address: null });
         router.dismissTo(inShop ? "/shop/profile" : "/(user)/profile");
-      } else router.replace("/(auth)/login");
+      } else { draft.set({ address: payload }); router.dismissTo("/(user)/home"); }
     } catch (failure) { setError(message(failure)); }
     finally { setBusy(false); }
   }
@@ -818,7 +799,7 @@ export function LocationDesign({ stage = "add-location", checkout = false }: { s
         onPress={() => go("confirm-location", { checkout: String(checkout) })} />
       <Section title="Other Locations" />
       <MenuRow title="Saved Addresses" asset="locationblue.png" onPress={() => go("addresses", { checkout: String(checkout) })} />
-      <Button title="Use Current Location" color={palette.navy} onPress={() => go("current-location", { checkout: String(checkout) })} />
+      <Button title="Set delivery address" color={palette.navy} onPress={() => go("current-location", { checkout: String(checkout) })} />
     </View>
   </Screen>;
   return <Screen title={stage === "add-address" ? "Add New Address" : "Confirm Location"} background={palette.surface}

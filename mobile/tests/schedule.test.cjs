@@ -38,6 +38,7 @@ function harness(now = new Date(2026, 9, 13, 10, 30), schedule = '', serviceName
     router: { back: () => { backs++; } }, palette: { navy: 'navy', muted: 'muted' }, styles: {},
   };
   for (const name of ['Screen', 'EmbeddedOrderPanel', 'EmbeddedTimePicker', 'Button', 'View', 'FormError', 'CalendarDays', 'ChevronUp', 'ChevronDown', 'Clock', 'Pencil', 'Modal', 'ScrollView', 'Field', 'Txt', 'TabsRow', 'Card', 'Pressable', 'Section']) context[name] = name;
+  context.usePalette = () => context.palette;
   vm.runInNewContext(compiled, context);
   const render = () => { index = 0; return context.exports.ScheduleDesign(screenProps); };
   const monthButton = label => elements(render(), 'Pressable').find(item => item.props.accessibilityLabel === label);

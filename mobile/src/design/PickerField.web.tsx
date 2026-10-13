@@ -2,9 +2,10 @@ import { useId, useRef } from "react";
 import { View } from "react-native";
 import type { PickerFieldProps } from "./PickerField.types";
 import { displayTime, localDateString, timeInputValue } from "./form-values";
-import { Txt, palette } from "./ui";
+import { Txt, usePalette } from "./ui";
 
 export default function PickerField({ label, mode, value, onChange, maximumDate }: PickerFieldProps) {
+  const palette = usePalette();
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   return (
@@ -25,7 +26,7 @@ export default function PickerField({ label, mode, value, onChange, maximumDate 
         }}
         style={{ boxSizing: "border-box", width: "100%", minWidth: 0, minHeight: 50,
           padding: "14px 16px", fontFamily: "Inter", fontSize: 14, color: palette.ink,
-          backgroundColor: "#FAFAFA", border: "1px solid #F1F1F1", borderRadius: 12 }}
+          backgroundColor: "white", border: "1px solid #8A94A6", borderRadius: 12 }}
       />
       {mode === "time" && !!value && <Txt style={{ fontSize: 12, color: palette.muted }}>{displayTime(value)}</Txt>}
     </View>

@@ -26,6 +26,7 @@ interface User {
   name: string;
   email: string;
   isShopOwner: boolean;
+  photoUrl?: string | null;
 }
 
 interface AuthState {

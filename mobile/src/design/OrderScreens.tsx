@@ -31,7 +31,7 @@ import {
   Txt,
   money,
   servicePriceLabel,
-  palette,
+  usePalette,
   styles,
 } from "./ui";
 import {
@@ -90,12 +90,13 @@ export function EmbeddedOrderPanel({ children, footer }: { children: ReactNode; 
 }
 
 export function EmbeddedTimePicker({ visible, children }: {
-  visible?: boolean; children?: ReactNode; transparent?: boolean; animationType?: "fade"; onRequestClose?: () => void;
+  visible?: boolean; children?: ReactNode; transparent?: boolean; animationType?: "fade" | "none"; onRequestClose?: () => void;
 }) {
   return visible ? children : null;
 }
 
 export function LaundryCountDesign({ embedded = false, onDone }: { embedded?: boolean; onDone?: () => void } = {}) {
+  const palette = usePalette();
   const draft = useLaundryDraft();
   const clothing = draft.shop?.clothingTypes?.length
     ? draft.shop.clothingTypes.map((i) => i.typeName || "Clothing")
@@ -182,6 +183,7 @@ export function OrderSummaryDesign() {
   return <CheckoutDesign />;
 }
 export function CheckoutDesign() {
+  const palette = usePalette();
   const { replaceFlow } = useFlowNavigation();
   const draft = useLaundryDraft();
   const user = useAuthStore(state => state.user);
@@ -406,7 +408,7 @@ export function CheckoutDesign() {
           <Totals />
         </Card>
       </View>
-      <Modal visible={!!dialog} transparent animationType="fade" onRequestClose={() => setDialog(null)}>
+      <Modal visible={!!dialog} transparent animationType="none" onRequestClose={() => setDialog(null)}>
         {dialog && <View style={{ flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
           <Card style={{ width: "100%", maxWidth: 540, maxHeight: "90%", padding: 24 }}>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16 }}>
@@ -432,6 +434,7 @@ export function CheckoutDesign() {
   );
 }
 export function ScheduleDesign({ embedded = false, inDialog = false, onDone }: { embedded?: boolean; inDialog?: boolean; onDone?: () => void } = {}) {
+  const palette = usePalette();
   const draft = useLaundryDraft();
   const [now, setNow] = useState(() => new Date());
   const [error, setError] = useState<string | null>(null);
@@ -575,7 +578,7 @@ export function ScheduleDesign({ embedded = false, inDialog = false, onDone }: {
             <Pencil size={18} color={palette.navy} />
           </Pressable>
         </Card>}
-        <TimePickerContainer visible={timeOpen} transparent animationType="fade" onRequestClose={() => setTimeOpen(false)}>
+        <TimePickerContainer visible={timeOpen} transparent animationType="none" onRequestClose={() => setTimeOpen(false)}>
           {timeOpen && <View style={inDialog ? {} : { flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
           <Card style={inDialog ? { padding: 0, borderWidth: 0, shadowOpacity: 0, elevation: 0 } : { width: "100%", maxWidth: 420, maxHeight: "90%", padding: 24 }}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16 }}>
@@ -722,6 +725,7 @@ export function ScheduleDesign({ embedded = false, inDialog = false, onDone }: {
   );
 }
 export function PaymentDesign() {
+  const palette = usePalette();
   const draft = useLaundryDraft();
   return (
     <Screen
@@ -744,94 +748,14 @@ export function PaymentDesign() {
     </Screen>
   );
 }
-export function VouchersDesign() {
-  return (
-    <Screen title="Your Vouchers" dark background="#003366">
-      <View style={{ gap: 20, paddingHorizontal: 16 }}>
-        {[
-          {
-            title: "− ₱150",
-            date: "April 4 – 7, 2025",
-            gift: "bluegift.png" as const,
-          },
-          {
-            title: "50% OFF",
-            date: "April 4 – 10, 2025",
-            gift: "pinkgift.png" as const,
-          },
-          {
-            title: "35% Shipping",
-            date: "April 4, 2025",
-            gift: "yellowgift.png" as const,
-          },
-        ].map((voucher) => (
-          <Pressable
-            key={voucher.title}
-            onPress={() =>
-              Alert.alert("Voucher expired", "This voucher is no longer valid.")
-            }
-          >
-            <View
-              style={{
-                height: 120,
-                borderRadius: 20,
-                backgroundColor: "white",
-                padding: 20,
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <View style={{ gap: 12 }}>
-                <View style={[styles.row, { gap: 8 }]}>
-                  <Asset name="Time.png" size={20} />
-                  <Txt style={{ fontSize: 12, color: palette.muted }}>
-                    {voucher.date}
-                  </Txt>
-                </View>
-                <Txt style={{ fontSize: 24, fontWeight: "700" }}>
-                  {voucher.title}
-                </Txt>
-                <Txt style={{ color: palette.muted, fontSize: 11 }}>
-                  Expired
-                </Txt>
-              </View>
-              <Asset name={voucher.gift} size={50} />
-              <View
-                style={{
-                  position: "absolute",
-                  left: -10,
-                  top: 50,
-                  width: 20,
-                  height: 20,
-                  borderRadius: 10,
-                  backgroundColor: "#003366",
-                }}
-              />
-              <View
-                style={{
-                  position: "absolute",
-                  right: -10,
-                  top: 50,
-                  width: 20,
-                  height: 20,
-                  borderRadius: 10,
-                  backgroundColor: "#003366",
-                }}
-              />
-            </View>
-          </Pressable>
-        ))}
-      </View>
-    </Screen>
-  );
-}
+export function VouchersDesign() { return <Screen title="Your vouchers"><Empty title="No vouchers available" message="There are no supported voucher offers to display." /></Screen>; }
 export function StatusBadge({ status }: { status: Order["status"] }) {
+  const palette = usePalette();
   const colors = {
-    Pending: "#FFA000",
-    Processing: "#1976D2",
-    Completed: "#388E3C",
-    Cancelled: "#D32F2F",
+    Pending: palette.warning,
+    Processing: palette.primary,
+    Completed: palette.successInk,
+    Cancelled: palette.danger,
   };
   return (
     <View
@@ -855,6 +779,7 @@ export function OrderCard({
   order: Order;
   shopMode?: boolean;
 }) {
+  const palette = usePalette();
   const { go } = useFlowNavigation();
   return (
     <Card>
@@ -871,7 +796,7 @@ export function OrderCard({
       <Txt style={styles.muted}>Service: {order.serviceName}</Txt>
       <View style={styles.between}>
         <View>
-          <Txt style={{ color: palette.muted, fontSize: 12 }}>Amount Paid</Txt>
+          <Txt style={{ color: palette.muted, fontSize: 12 }}>Order total</Txt>
           <Txt style={{ fontWeight: "600", marginTop: 4 }}>
             {money(order.totalAmount)}
           </Txt>
@@ -908,6 +833,7 @@ export function ActivitiesDesign({
   history?: boolean;
   past?: boolean;
 }) {
+  const palette = usePalette();
   const { go } = useFlowNavigation();
   const orders = useOrders();
   const user = useAuthStore((state) => state.user);
@@ -923,17 +849,17 @@ export function ActivitiesDesign({
     <Screen
       title={history ? "History" : "Activity"}
       dark={!history}
-      background={history ? palette.surface : "#1E54AB"}
+      background={palette.surface}
       back={history}
       right={
         !history && (
-          <Pressable
+          <Pressable accessibilityRole="button"
             onPress={() => go("history")}
             style={{ backgroundColor: "white", padding: 10, borderRadius: 12 }}
           >
             <View style={[styles.row, { gap: 6 }]}>
-              <History size={16} color="#4D3E8C" />
-              <Txt style={{ fontSize: 12, color: "#4D3E8C" }}>History</Txt>
+              <History size={16} color={palette.primary} />
+              <Txt style={{ fontSize: 12, color: palette.primary }}>History</Txt>
             </View>
           </Pressable>
         )
@@ -958,7 +884,7 @@ export function ActivitiesDesign({
                 onChange={setTab}
               />
             ) : (
-              <Section title="Recent" light />
+              <Section title="Recent" light={false} />
             )}
             <QueryState
               loading={orders.isLoading}
@@ -994,6 +920,7 @@ export function OrderDetailsDesign({
   delivered?: boolean;
   full?: boolean;
 }) {
+  const palette = usePalette();
   const { go, inShop } = useFlowNavigation();
   const orders = useOrders();
   const order = orders.data?.find((o) => o.id === id);
@@ -1126,6 +1053,7 @@ export function OrderDetailsDesign({
   );
 }
 export function CancelOrderDesign({ id }: { id: number }) {
+  const palette = usePalette();
   const { replaceFlow } = useFlowNavigation();
   const orders = useOrders();
   const order = orders.data?.find((o) => o.id === id);

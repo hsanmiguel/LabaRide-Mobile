@@ -39,6 +39,7 @@ model User {
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   shop                 Shop?
+  photo                UserPhoto?
   transactions         Transaction[]
   // Nullable for existing accounts and historical records; new address saves are validated by the API.
   address_line_1       String?
@@ -76,6 +77,7 @@ model Shop {
   transactions         Transaction[]
   householdItems       HouseholdItem[]
   clothingTypes        ClothingType[]
+  photo                ShopPhoto?
   // Nullable for existing accounts and historical records; new address saves are validated by the API.
   address_line_1       String?
   address_line_2       String?
@@ -90,6 +92,24 @@ model Shop {
   dropoff_instructions String?
 
   @@map("shops")
+}
+
+model ShopPhoto {
+  shopId    Int      @id @map("shop_id")
+  bytes     Bytes
+  updatedAt DateTime @updatedAt @map("updated_at")
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@map("shop_photos")
+}
+
+model UserPhoto {
+  userId    Int      @id @map("user_id")
+  bytes     Bytes
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_photos")
 }
 
 model ShopService {

@@ -6,7 +6,7 @@ import { env } from '../config/env';
 import { sendSuccess, sendError } from '../utils/response';
 import { signupSchema, loginSchema } from '../validators/auth.validator';
 import { AuthRequest } from '../middleware/auth.middleware';
-import { userProfileSelect } from '../utils/user-profile';
+import { userProfileSelect, withUserPhoto } from '../utils/user-profile';
 
 export class AuthController {
   
@@ -94,7 +94,7 @@ export class AuthController {
       }
 
       return sendSuccess(res, {
-        user,
+        user: withUserPhoto(user),
         token: jwt.sign({ userId: user.id, isShopOwner: user.isShopOwner }, env.JWT_SECRET, { expiresIn: '7d' }),
       }, 'Token is valid');
     } catch (error) {

@@ -57,6 +57,7 @@ function harness({ platform = 'web', confirmed = true, status = 'Pending', fail,
     palette: { navy: '#000' }, styles: {},
   };
   for (const name of ['Screen', 'Button', 'View', 'QueryState', 'Empty', 'FormError', 'Card', 'PriceRow', 'Txt', 'Choice']) context[name] = name;
+  context.usePalette = () => context.palette;
   vm.runInNewContext(compiled, context);
   function render() { index = 0; return context.exports.CancelOrderDesign({ id: 42 }); }
   function elements(element, type) {

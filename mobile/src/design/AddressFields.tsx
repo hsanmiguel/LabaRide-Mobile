@@ -1,6 +1,9 @@
-import { type Dispatch, type SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
+import * as Location from "expo-location";
 import { View } from "react-native";
-import { Choice, Field, Section, Txt, palette, styles } from "./ui";
+import { Button, Choice, Field, Section, Txt, usePalette, styles } from "./ui";
+import LaundryMap from "./LaundryMap";
+import { coordinates } from "./discovery";
 import type { AddressData } from "./address";
 
 export function DeliveryDetails({ value }: { value: AddressData }) {
@@ -14,6 +17,7 @@ export function DeliveryDetails({ value }: { value: AddressData }) {
 }
 
 export function FormError({ error }: { error?: string | null }) {
+  const palette = usePalette();
   if (!error) return null;
   return <View accessibilityRole="alert" accessibilityLiveRegion="assertive"
     style={{ padding: 14, borderRadius: 10, backgroundColor: "#FFF1F2", marginVertical: 12 }}>
@@ -24,6 +28,19 @@ export function AddressFields({ values, setValues }: {
   values: Record<string, string>;
   setValues: Dispatch<SetStateAction<Record<string, string>>>;
 }) {
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const point = coordinates(values);
+  async function locate() {
+    setLocating(true); setLocationError(null);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") { setLocationError("Location access is off. You can still enter your address manually."); return; }
+      const result = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setValues(current => ({ ...current, latitude: String(result.coords.latitude), longitude: String(result.coords.longitude) }));
+    } catch { setLocationError("Could not find your location. Please try again or enter your address manually."); }
+    finally { setLocating(false); }
+  }
   return <View>
     <Txt style={[styles.muted, { marginBottom: 12 }]}>Fields marked * are required.</Txt>
     {[
@@ -35,6 +52,13 @@ export function AddressFields({ values, setValues }: {
       ["country", "Country *", "Country"],
     ].map(([key, label, placeholder]) => <Field key={key} label={label} placeholder={placeholder}
       value={values[key] || ""} onChangeText={text => setValues(current => ({ ...current, [key]: text }))} />)}
+    <Section title="Map location (optional)" />
+    <Txt style={[styles.muted, { marginBottom: 12 }]}>If you are at this address, save your current position to help locate nearby shops. Check that it matches the address above.</Txt>
+    <Button title={point ? "Update current position" : "Use current position"} outline busy={locating} onPress={locate} />
+    <FormError error={locationError} />
+    {point && <View style={{ height: 240, marginVertical: 16, borderRadius: 12, overflow: "hidden" }}>
+      <LaundryMap latitude={point.latitude} longitude={point.longitude} onPin={coordinate => setValues(current => ({ ...current, latitude: String(coordinate.latitude), longitude: String(coordinate.longitude) }))} />
+    </View>}
     <Section title="Address type *" />
     <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16, gap: 12 }}>
       {["Home", "Work", "Hotel", "Apartment"].map(type => <View key={type} style={{ width: "45%" }}><Choice label={type}

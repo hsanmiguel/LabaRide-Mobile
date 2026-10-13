@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
-import { userProfileSelect } from '../utils/user-profile';
+import { userProfileSelect, withUserPhoto } from '../utils/user-profile';
 import prisma from '../config/database';
 import { sendSuccess, sendError } from '../utils/response';
 import { updateUserSchema, updatePasswordSchema } from '../validators/user.validator';
@@ -26,7 +26,7 @@ export class UserController {
         return sendError(res, 'User not found', 'NOT_FOUND', 404);
       }
 
-      return sendSuccess(res, user, 'User details fetched successfully');
+      return sendSuccess(res, withUserPhoto(user), 'User details fetched successfully');
     } catch (error) {
       next(error);
     }
@@ -51,7 +51,7 @@ export class UserController {
         select: userProfileSelect
       });
 
-      return sendSuccess(res, updatedUser, 'User updated successfully');
+      return sendSuccess(res, withUserPhoto(updatedUser), 'User updated successfully');
     } catch (error) {
       next(error);
     }

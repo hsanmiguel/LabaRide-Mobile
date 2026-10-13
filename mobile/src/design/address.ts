@@ -23,9 +23,9 @@ export const addressKeys = [
   "country", "address_type", "access_code", "dropoff_instructions",
 ] as const;
 export function addressValues(value?: AddressData | null, type: AddressType = "Home"): Record<string, string> {
-  return Object.fromEntries(addressKeys.map(key => [key,
+  return { ...Object.fromEntries(addressKeys.map(key => [key,
     String(value?.[key] ?? (key === "country" ? "Philippines" : key === "address_type" ? type : "")),
-  ]));
+  ])), ...(value?.latitude != null && value?.longitude != null ? { latitude: String(value.latitude), longitude: String(value.longitude) } : {}) };
 }
 export function addressError(value?: AddressData | Record<string, string> | null): string | null {
   const labels = {
@@ -42,6 +42,8 @@ export function addressError(value?: AddressData | Record<string, string> | null
 }
 export function addressPayload(value: AddressData | Record<string, string>) {
   return {
+    ...(value.latitude != null && value.longitude != null && value.latitude !== "" && value.longitude !== "" && Number.isFinite(Number(value.latitude)) && Number.isFinite(Number(value.longitude))
+      ? { latitude: Number(value.latitude), longitude: Number(value.longitude) } : {}),
     address_line_1: String(value.address_line_1 ?? "").trim(),
     address_line_2: String(value.address_line_2 ?? "").trim(),
     city: String(value.city ?? "").trim(),

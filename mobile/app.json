@@ -22,6 +22,7 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      ["expo-image-picker", { "photosPermission": "Choose a photo to display your laundry shop to customers.", "cameraPermission": false, "microphonePermission": false }],
       [
         "expo-location",
         {

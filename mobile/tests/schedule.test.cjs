@@ -37,13 +37,13 @@ function harness(now = new Date(2026, 9, 13, 10, 30), schedule = '', serviceName
     useLaundryDraft: () => ({ schedule, service: { serviceName }, deliveryType, set: value => saves.push(value) }),
     router: { back: () => { backs++; } }, palette: { navy: 'navy', muted: 'muted' }, styles: {},
   };
-  for (const name of ['Screen', 'EmbeddedOrderPanel', 'Button', 'View', 'FormError', 'CalendarDays', 'ChevronUp', 'ChevronDown', 'Clock', 'Pencil', 'Modal', 'ScrollView', 'Field', 'Txt', 'TabsRow', 'Card', 'Pressable', 'Section']) context[name] = name;
+  for (const name of ['Screen', 'EmbeddedOrderPanel', 'EmbeddedTimePicker', 'Button', 'View', 'FormError', 'CalendarDays', 'ChevronUp', 'ChevronDown', 'Clock', 'Pencil', 'Modal', 'ScrollView', 'Field', 'Txt', 'TabsRow', 'Card', 'Pressable', 'Section']) context[name] = name;
   vm.runInNewContext(compiled, context);
   const render = () => { index = 0; return context.exports.ScheduleDesign(screenProps); };
   const monthButton = label => elements(render(), 'Pressable').find(item => item.props.accessibilityLabel === label);
   const day = number => elements(render(), 'Pressable').find(item =>
     elements(item, 'Txt').some(text => text.props.children === number));
-  const modal = () => elements(render(), 'Modal')[0];
+  const modal = () => elements(render(), screenProps.inDialog ? 'EmbeddedTimePicker' : 'Modal')[0];
   const openTime = () => elements(render(), 'Pressable').find(item => item.props.accessibilityLabel === 'Change delivery time').props.onPress();
   const adjust = label => {
     if (!modal().props.visible) openTime();
@@ -254,5 +254,22 @@ test('embedded scheduling saves back to the review page without navigating away'
   app.confirm();
   assert.equal(app.saves.length, 1);
   assert.equal(done, 1);
+  assert.equal(app.backs(), 0);
+});
+
+test('the schedule popup edits time without opening a second native modal', () => {
+  let done = 0;
+  const app = harness(new Date(2026, 9, 13, 10, 30), '', 'Full Service', 'Deliver',
+    { embedded: true, inDialog: true, onDone: () => { done++; } });
+  app.openTime();
+  assert.equal(elements(app.render(), 'Modal').length, 0);
+  assert.equal(app.render().props.footer, undefined);
+  app.adjust('Increase hour');
+  app.saveTime();
+  assert.equal(app.preview(), '11:30 AM');
+  assert.ok(app.render().props.footer);
+  app.confirm();
+  assert.equal(done, 1);
+  assert.equal(app.saves.length, 1);
   assert.equal(app.backs(), 0);
 });

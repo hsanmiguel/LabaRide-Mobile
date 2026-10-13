@@ -89,6 +89,12 @@ export function EmbeddedOrderPanel({ children, footer }: { children: ReactNode; 
   return <View style={{ gap: 16 }}>{children}{footer}</View>;
 }
 
+export function EmbeddedTimePicker({ visible, children }: {
+  visible?: boolean; children?: ReactNode; transparent?: boolean; animationType?: "fade"; onRequestClose?: () => void;
+}) {
+  return visible ? children : null;
+}
+
 export function LaundryCountDesign({ embedded = false, onDone }: { embedded?: boolean; onDone?: () => void } = {}) {
   const draft = useLaundryDraft();
   const clothing = draft.shop?.clothingTypes?.length
@@ -384,9 +390,8 @@ export function CheckoutDesign() {
               : "Select Delivery Schedule"
           }
           asset="Time.png"
-          onPress={() => setDialog(dialog === "schedule" ? null : "schedule")}
+          onPress={() => setDialog("schedule")}
         />
-        {dialog === "schedule" && <ScheduleDesign embedded onDone={() => setDialog(null)} />}
         </Card>
         <Card>
           <Section title="Note to Laundry Shop" />
@@ -401,15 +406,16 @@ export function CheckoutDesign() {
           <Totals />
         </Card>
       </View>
-      <Modal visible={dialog === "items" || dialog === "address"} transparent animationType="fade" onRequestClose={() => setDialog(null)}>
-        {(dialog === "items" || dialog === "address") && <View style={{ flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
+      <Modal visible={!!dialog} transparent animationType="fade" onRequestClose={() => setDialog(null)}>
+        {dialog && <View style={{ flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
           <Card style={{ width: "100%", maxWidth: 540, maxHeight: "90%", padding: 24 }}>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16 }}>
               <View style={[styles.between, { flexWrap: "wrap" }]}>
-                <Txt style={styles.heading}>{dialog === "items" ? "Laundry Items" : "Delivery Address"}</Txt>
+                <Txt style={styles.heading}>{dialog === "items" ? "Laundry Items" : dialog === "schedule" ? "Delivery Schedule" : "Delivery Address"}</Txt>
                 <Button title="Close" compact outline color={palette.navy} onPress={() => setDialog(null)} />
               </View>
-              {dialog === "items" ? <LaundryCountDesign embedded onDone={() => setDialog(null)} /> : <View>
+              {dialog === "items" ? <LaundryCountDesign embedded onDone={() => setDialog(null)} /> :
+                dialog === "schedule" ? <ScheduleDesign embedded inDialog onDone={() => setDialog(null)} /> : <View>
                 {profile.data && !addressError(profile.data) && <Button title="Use Primary Address" compact outline color={palette.navy}
                   onPress={() => { setAddressForm(addressValues(profile.data)); setAddressFormError(null); }} />}
                 {savedAddresses.data?.map((item, index) => <MenuRow key={index} title={address(item)}
@@ -425,7 +431,7 @@ export function CheckoutDesign() {
     </Screen>
   );
 }
-export function ScheduleDesign({ embedded = false, onDone }: { embedded?: boolean; onDone?: () => void } = {}) {
+export function ScheduleDesign({ embedded = false, inDialog = false, onDone }: { embedded?: boolean; inDialog?: boolean; onDone?: () => void } = {}) {
   const draft = useLaundryDraft();
   const [now, setNow] = useState(() => new Date());
   const [error, setError] = useState<string | null>(null);
@@ -518,11 +524,12 @@ export function ScheduleDesign({ embedded = false, onDone }: { embedded?: boolea
     else router.back();
   }
   const Container = embedded ? EmbeddedOrderPanel : Screen;
+  const TimePickerContainer = inDialog ? EmbeddedTimePicker : Modal;
   return (
     <Container
       title="Select Delivery Schedule"
       background={palette.surface}
-      footer={
+      footer={inDialog && timeOpen ? undefined :
         <View style={{ width: "100%", maxWidth: 520, alignSelf: "center" }}>
           <FormError error={error} />
           <Button
@@ -535,7 +542,7 @@ export function ScheduleDesign({ embedded = false, onDone }: { embedded?: boolea
       }
     >
       <View style={[styles.stack, { width: "100%", maxWidth: 520, alignSelf: "center" }]}>
-        <View style={styles.row}>
+        {!(inDialog && timeOpen) && <View style={styles.row}>
           <View style={{ padding: 12, borderRadius: 14, backgroundColor: palette.lavender }}>
             <CalendarDays size={24} color={palette.navy} />
           </View>
@@ -543,8 +550,8 @@ export function ScheduleDesign({ embedded = false, onDone }: { embedded?: boolea
             <Txt style={styles.heading}>Choose your date and time</Txt>
             <Txt style={styles.muted}>Select today or a later date.</Txt>
           </View>
-        </View>
-        <Card style={{ padding: 20 }}>
+        </View>}
+        {!(inDialog && timeOpen) && <Card style={{ padding: 20 }}>
           <Section title="Delivery time" />
           {leadMinutes > 0 && <View style={{ gap: 4 }}>
             <Txt style={styles.muted}>Full Service delivery needs at least 2 hours for washing, drying, and preparation.</Txt>
@@ -567,10 +574,10 @@ export function ScheduleDesign({ embedded = false, onDone }: { embedded?: boolea
             </View>
             <Pencil size={18} color={palette.navy} />
           </Pressable>
-        </Card>
-        <Modal visible={timeOpen} transparent animationType="fade" onRequestClose={() => setTimeOpen(false)}>
-          {timeOpen && <View style={{ flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
-          <Card style={{ width: "100%", maxWidth: 420, maxHeight: "90%", padding: 24 }}>
+        </Card>}
+        <TimePickerContainer visible={timeOpen} transparent animationType="fade" onRequestClose={() => setTimeOpen(false)}>
+          {timeOpen && <View style={inDialog ? {} : { flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
+          <Card style={inDialog ? { padding: 0, borderWidth: 0, shadowOpacity: 0, elevation: 0 } : { width: "100%", maxWidth: 420, maxHeight: "90%", padding: 24 }}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16 }}>
           <Txt style={styles.heading}>Select delivery time</Txt>
           <Txt style={styles.muted}>Use the arrows to adjust the hour and minute.</Txt>
@@ -623,8 +630,8 @@ export function ScheduleDesign({ embedded = false, onDone }: { embedded?: boolea
           </ScrollView>
           </Card>
           </View>}
-        </Modal>
-        <Card style={{ padding: 16 }}>
+        </TimePickerContainer>
+        {!(inDialog && timeOpen) && <Card style={{ padding: 16 }}>
           <View style={styles.between}>
             <Pressable
               accessibilityLabel="Previous month"
@@ -703,13 +710,13 @@ export function ScheduleDesign({ embedded = false, onDone }: { embedded?: boolea
               );
             })}
           </View>
-        </Card>
-        <View style={{ padding: 16, borderRadius: 12, backgroundColor: palette.lavender }}>
+        </Card>}
+        {!(inDialog && timeOpen) && <View style={{ padding: 16, borderRadius: 12, backgroundColor: palette.lavender }}>
           <Txt style={{ color: palette.navy, fontWeight: "600" }}>Selected delivery date</Txt>
           <Txt style={{ color: palette.navy, marginTop: 4 }}>{new Date(
             month.getFullYear(), month.getMonth(), selected,
           ).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</Txt>
-        </View>
+        </View>}
       </View>
     </Container>
   );

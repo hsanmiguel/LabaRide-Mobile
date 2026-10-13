@@ -93,7 +93,7 @@ test('summary is the checkout form with all booking details and a direct Place O
   assert.ok(elements(app.render(), 'Field').some(item => item.props.label === 'Order Notes (optional)'));
 });
 
-test('address and laundry editors stay on the review page; the calendar expands inline', () => {
+test('address, laundry and schedule editors open in a modal on the review page', () => {
   const app = harness();
   app.menu('Delivery Address').props.onPress();
   let modal = elements(app.render(), 'Modal')[0];
@@ -111,10 +111,24 @@ test('address and laundry editors stay on the review page; the calendar expands 
   elements(editor.props.footer, 'Button')[0].props.onPress();
   assert.equal(elements(app.render(), 'Modal')[0].props.visible, false);
   app.menu('Delivery Schedule').props.onPress();
-  const calendar = elements(app.render(), 'ScheduleDesign')[0];
+  modal = elements(app.render(), 'Modal')[0];
+  assert.equal(modal.props.visible, true);
+  const calendar = elements(modal, 'ScheduleDesign')[0];
   assert.equal(calendar.props.embedded, true);
+  assert.equal(calendar.props.inDialog, true);
   calendar.props.onDone();
+  assert.equal(elements(app.render(), 'Modal')[0].props.visible, false);
   assert.equal(elements(app.render(), 'ScheduleDesign').length, 0);
+  assert.deepEqual(app.navigation, []);
+});
+
+test('closing the schedule popup preserves the previous schedule', () => {
+  const app = harness();
+  const previous = app.draft.schedule;
+  app.menu('Delivery Schedule').props.onPress();
+  app.button('Close').props.onPress();
+  assert.equal(elements(app.render(), 'Modal')[0].props.visible, false);
+  assert.equal(app.draft.schedule, previous);
   assert.deepEqual(app.navigation, []);
 });
 

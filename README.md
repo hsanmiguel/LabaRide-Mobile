@@ -89,8 +89,8 @@ other service names retain their future-time scheduling rule.
 
 Customers choose services and tap **Review Order** to open one **Order Summary**
 page containing service prices, weight, clothing quantities, delivery/pickup,
-addresses, schedule, notes, Cash on Delivery, fees, and the total. Address and
-quantity editors open on that page, and the calendar expands inline. After
+addresses, schedule, notes, Cash on Delivery, fees, and the total. Address,
+quantity, and delivery schedule editors open in popup dialogs on that page. After
 confirming those details, **Place Order** submits the booking directly; there
 is no separate checkout step.
 

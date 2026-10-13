@@ -27,12 +27,14 @@ import {
   TabsRow,
   Txt,
   money,
+  servicePriceLabel,
   palette,
   styles,
 } from "./ui";
 import {
   address,
   api,
+  confirmAction,
   fail,
   useFlowNavigation,
   unavailable,
@@ -925,16 +927,21 @@ export function ServicesDesign() {
   const [editing, setEditing] = useState<Service | KiloPrice | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [color, setColor] = useState("#98D8BF");
+  const [packagePricing, setPackagePricing] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const cache = useQueryClient();
   function open(kind: "service" | "price", item?: Service | KiloPrice) {
     setDialog(kind);
     setEditing(item || null);
+    setError(null);
+    setPackagePricing(!item || ("packageKilos" in item && item.packageKilos != null));
     setValues(
       kind === "service"
         ? {
           serviceName: item && "serviceName" in item ? item.serviceName : "",
           price: item && "price" in item ? String(item.price) : "",
+          packageKilos: item && "packageKilos" in item && item.packageKilos != null ? String(item.packageKilos) : "",
         }
         : {
           minKilo: item && "minKilo" in item ? String(item.minKilo) : "",
@@ -946,36 +953,36 @@ export function ServicesDesign() {
     setColor(item && "color" in item ? item.color || "#98D8BF" : "#98D8BF");
   }
   async function save() {
-    if (!shop) return;
-    if (editing)
-      return unavailable(
-        dialog === "service" ? "Edit service" : "Edit price range",
-      );
+    if (!shop || busy) return;
+    if (editing && dialog === "price") return unavailable("Edit price range");
+    const activeValues = Object.entries(values).filter(([key]) => key !== "packageKilos" || packagePricing);
     if (
-      Object.values(values).some((value) => !value.trim()) ||
-      Object.entries(values).some(
+      activeValues.some(([, value]) => !value.trim()) ||
+      activeValues.some(
         ([key, value]) =>
           key !== "serviceName" &&
           (!Number.isFinite(Number(value)) || Number(value) < 0),
       )
     )
-      return Alert.alert(
-        "Required fields",
-        "Please enter valid names and numbers.",
-      );
+      return setError("Please enter a service name and valid numbers in every required field.");
+    if (dialog === "service" && (Number(values.price) > 99999999.99 || Number(Number(values.price).toFixed(2)) !== Number(values.price)))
+      return setError("Enter a price with up to two decimal places, no higher than 99,999,999.99.");
+    if (dialog === "service" && packagePricing &&
+      (Number(values.packageKilos) <= 0 || Number(values.packageKilos) > 99999999.99 || Number(Number(values.packageKilos).toFixed(2)) !== Number(values.packageKilos)))
+      return setError("Enter a package weight above 0 kg with up to two decimal places, no higher than 99,999,999.99.");
     if (dialog === "price" && Number(values.maxKilo) <= Number(values.minKilo))
-      return Alert.alert(
-        "Price Range",
-        "Maximum kilo must be greater than minimum kilo",
-      );
+      return setError("Maximum weight must be greater than minimum weight.");
     setBusy(true);
+    setError(null);
     try {
-      await api.post(
-        `/shops/${shop.id}/${dialog === "service" ? "services" : "kilo-prices"}`,
+      const write = editing ? api.put : api.post;
+      await write(
+        `/shops/${shop.id}/${dialog === "service" ? "services" : "kilo-prices"}${editing ? `/${editing.id}` : ""}`,
         dialog === "service"
           ? {
-            serviceName: values.serviceName,
+            serviceName: values.serviceName.trim(),
             price: Number(values.price),
+            packageKilos: packagePricing ? Number(values.packageKilos) : null,
             color,
           }
           : {
@@ -987,26 +994,37 @@ export function ServicesDesign() {
       await cache.invalidateQueries({ queryKey: ["shop"] });
       await cache.invalidateQueries({ queryKey: ["shops"] });
       setDialog(null);
-    } catch (error) {
-      fail(error);
+    } catch (failure) {
+      setError(message(failure));
     } finally {
       setBusy(false);
     }
+  }
+  async function removeService(service: Service) {
+    if (!shop || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (!await confirmAction("Delete Service", `Delete "${service.serviceName}"? Existing orders will stay available.`)) return;
+      await api.delete(`/shops/${shop.id}/services/${service.id}`);
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: ["shop"] }),
+        cache.invalidateQueries({ queryKey: ["shops"] }),
+      ]);
+      if (editing?.id === service.id && dialog === "service") setDialog(null);
+    } catch (failure) { setError(message(failure)); }
+    finally { setBusy(false); }
   }
   return (
     <Screen
       title="SERVICES"
       back={false}
       right={
-        <Pressable
-          accessibilityLabel="Add service"
-          onPress={() => open("service")}
-        >
-          <Plus size={24} color={palette.navy} />
-        </Pressable>
+        <Button title="Add Service" compact color={palette.navy} disabled={busy}
+          icon={<Plus size={18} color="white" />} onPress={() => open("service")} />
       }
     >
-      <View style={styles.stack}>
+      <View style={[styles.stack, { width: "100%", maxWidth: 1100, alignSelf: "center" }]}>
         <QueryState
           loading={owned.isLoading || detail.isLoading}
           error={owned.error || detail.error}
@@ -1016,13 +1034,14 @@ export function ServicesDesign() {
           }}
         />
         <Section title="YOUR SERVICES" />
+        {!dialog && <FormError error={error} />}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
           {shop?.services?.map((service) => (
-            <Pressable
+            <View
               key={service.id}
-              onPress={() => open("service", service)}
               style={{
-                minWidth: 140,
+                flexBasis: 260,
+                maxWidth: 360,
                 flexGrow: 1,
                 padding: 18,
                 borderRadius: 12,
@@ -1034,30 +1053,14 @@ export function ServicesDesign() {
               <Txt style={{ fontWeight: "700", color: palette.navy }}>
                 {service.serviceName}
               </Txt>
-              <Txt>{money(service.price)}</Txt>
-              <View style={styles.between}>
-                <Pencil size={16} color={palette.navy} />
-                <Pressable
-                  accessibilityLabel={`Delete ${service.serviceName}`}
-                  onPress={() =>
-                    Alert.alert(
-                      "Delete Service",
-                      "Are you sure you want to delete this service?",
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Delete",
-                          style: "destructive",
-                          onPress: () => unavailable("Delete service"),
-                        },
-                      ],
-                    )
-                  }
-                >
-                  <Trash2 size={16} color={palette.navy} />
-                </Pressable>
+              <Txt>{servicePriceLabel(service)}</Txt>
+              <View style={[styles.row, { marginTop: 8, gap: 8, flexWrap: "wrap" }]}>
+                <Button title="Edit" compact outline color={palette.navy} disabled={busy}
+                  icon={<Pencil size={14} color={palette.navy} />} onPress={() => open("service", service)} />
+                <Button title="Delete" compact outline color={palette.danger} disabled={busy}
+                  icon={<Trash2 size={14} color={palette.danger} />} onPress={() => removeService(service)} />
               </View>
-            </Pressable>
+            </View>
           ))}
         </View>
         {!shop?.services?.length && (
@@ -1093,9 +1096,11 @@ export function ServicesDesign() {
           )}
           <Button
             title="Add Price Range"
+            compact
             outline
             color={palette.navy}
             onPress={() => open("price")}
+            style={{ alignSelf: "flex-start" }}
           />
         </Card>
       </View>
@@ -1103,7 +1108,7 @@ export function ServicesDesign() {
         visible={!!dialog}
         transparent
         animationType="fade"
-        onRequestClose={() => setDialog(null)}
+        onRequestClose={() => { if (!busy) setDialog(null); }}
       >
         <View
           style={{
@@ -1114,7 +1119,8 @@ export function ServicesDesign() {
             padding: 24,
           }}
         >
-          <Card style={{ width: "100%", maxWidth: 400, padding: 24 }}>
+          <Card style={{ width: "100%", maxWidth: 460, maxHeight: "90%", padding: 24 }}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
             <Txt style={styles.heading}>
               {editing ? "Edit" : "Add"}{" "}
               {dialog === "service" ? "Service" : "Price Range"}
@@ -1128,12 +1134,25 @@ export function ServicesDesign() {
                     setValues({ ...values, serviceName })
                   }
                 />
+                <Choice label="Fixed price per load" selected={packagePricing} onPress={() => setPackagePricing(true)} />
+                <Choice label="Price per kilogram" selected={!packagePricing} onPress={() => setPackagePricing(false)} />
+                {packagePricing && <Field
+                  label="Weight per Load (kg)"
+                  placeholder="e.g. 8"
+                  suffix="kg"
+                  value={values.packageKilos}
+                  keyboardType="decimal-pad"
+                  onChangeText={(packageKilos) => setValues({ ...values, packageKilos })}
+                />}
                 <Field
-                  label="Service Price"
+                  label={packagePricing ? "Price per Load" : "Price per Kilogram"}
+                  suffix={packagePricing ? "PHP / load" : "PHP / kg"}
+                  placeholder={packagePricing ? "e.g. 215" : "e.g. 25"}
                   value={values.price}
                   keyboardType="decimal-pad"
                   onChangeText={(price) => setValues({ ...values, price })}
                 />
+                {packagePricing && <Txt style={styles.muted}>Each load covers up to the weight above. Extra weight is charged as another full load.</Txt>}
                 <Txt>Select Color:</Txt>
                 <View style={styles.row}>
                   {["#98D8BF", "#64B5F6", "#BA68C8", "#FFB74D"].map((value) => (
@@ -1156,44 +1175,52 @@ export function ServicesDesign() {
               </>
             ) : (
               [
-                { key: "minKilo", label: "Minimum Kilo" },
-                { key: "maxKilo", label: "Maximum Kilo" },
-                { key: "pricePerKilo", label: "Price per Kilo" },
+                { key: "minKilo", label: "Minimum Weight (kg)" },
+                { key: "maxKilo", label: "Maximum Weight (kg)" },
+                { key: "pricePerKilo", label: "Price per Kilogram" },
               ].map((field) => (
                 <Field
                   key={field.key}
                   label={field.label}
                   keyboardType="decimal-pad"
-                  suffix={field.key === "pricePerKilo" ? undefined : "kg"}
+                  suffix={field.key === "pricePerKilo" ? "PHP / kg" : "kg"}
                   value={values[field.key]}
                   onChangeText={(v) => setValues({ ...values, [field.key]: v })}
                 />
               ))
             )}
-            <View style={styles.row}>
+            <FormError error={error} />
+            <View style={[styles.row, { justifyContent: "flex-end", flexWrap: "wrap" }]}>
               <Button
                 title="Cancel"
+                compact
+                disabled={busy}
                 outline
                 color={palette.navy}
                 onPress={() => setDialog(null)}
-                style={styles.grow}
               />
               <Button
-                title={editing ? "Save" : "Add"}
+                title={editing ? "Save Changes" : dialog === "service" ? "Add Service" : "Add Range"}
+                compact
                 busy={busy}
                 color={palette.navy}
                 onPress={save}
-                style={styles.grow}
               />
             </View>
             {editing && dialog === "price" && (
               <Button
                 title="Delete Price Range"
+                compact
                 outline
                 color={palette.danger}
                 onPress={() => unavailable("Delete price range")}
+                style={{ alignSelf: "flex-start" }}
               />
             )}
+            {editing && dialog === "service" && "serviceName" in editing && <Button
+              title="Delete Service" compact outline color={palette.danger} disabled={busy} style={{ alignSelf: "flex-start" }}
+              onPress={() => removeService(editing)} />}
+            </ScrollView>
           </Card>
         </View>
       </Modal>

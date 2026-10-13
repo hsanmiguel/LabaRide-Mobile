@@ -135,6 +135,38 @@ export class ShopController {
     }
   }
 
+  static async updateService(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const shopId = Number(req.params.shopId);
+      const serviceId = Number(req.params.serviceId);
+      const validatedData = createServiceSchema.parse(req).body;
+      const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { userId: true } });
+      if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
+      if (shop.userId !== req.user!.userId) return sendError(res, 'Only the shop owner can set service prices', 'FORBIDDEN', 403);
+      const updated = await prisma.shopService.updateMany({
+        where: { id: serviceId, shopId }, data: validatedData,
+      });
+      if (!updated.count) return sendError(res, 'Service not found', 'NOT_FOUND', 404);
+      return sendSuccess(res, await prisma.shopService.findUnique({ where: { id: serviceId } }), 'Service updated successfully');
+    } catch (error) { next(error); }
+  }
+
+  static async deleteService(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const shopId = Number(req.params.shopId);
+      const serviceId = Number(req.params.serviceId);
+      if (!Number.isSafeInteger(shopId) || shopId <= 0 || !Number.isSafeInteger(serviceId) || serviceId <= 0) {
+        return sendError(res, 'Choose a valid shop and service', 'BAD_REQUEST', 400);
+      }
+      const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { userId: true } });
+      if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
+      if (shop.userId !== req.user!.userId) return sendError(res, 'Only the shop owner can delete services', 'FORBIDDEN', 403);
+      const deleted = await prisma.shopService.deleteMany({ where: { id: serviceId, shopId } });
+      if (!deleted.count) return sendError(res, 'Service not found', 'NOT_FOUND', 404);
+      return sendSuccess(res, { id: serviceId }, 'Service deleted successfully');
+    } catch (error) { next(error); }
+  }
+
   // KILO PRICES
   static async addKiloPrice(req: AuthRequest, res: Response, next: NextFunction) {
     try {

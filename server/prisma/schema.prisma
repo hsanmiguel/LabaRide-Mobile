@@ -97,6 +97,7 @@ model ShopService {
   shopId      Int     @map("shop_id")
   serviceName String  @map("service_name")
   price       Decimal @default(0) @db.Decimal(10, 2)
+  packageKilos Decimal? @map("package_kilos") @db.Decimal(10, 2)
   color       String?
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)

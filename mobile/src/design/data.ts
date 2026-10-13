@@ -20,6 +20,7 @@ export interface Service {
   id: number;
   serviceName: string;
   price: string | number;
+  packageKilos?: string | number | null;
   color?: string;
 }
 export interface LaundryItem {
@@ -198,6 +199,7 @@ export function useOrders(shopMode = false) {
   return useQuery({
     queryKey: [shopMode ? "shop-orders" : "user-orders", ownerId],
     enabled: !!ownerId,
+    refetchInterval: process.env.EXPO_PUBLIC_REALTIME_MODE === "polling" ? 15000 : false,
     queryFn: () =>
       api.get<Order[]>(
         `/transactions/${shopMode ? "shop" : "user"}/${ownerId}`,

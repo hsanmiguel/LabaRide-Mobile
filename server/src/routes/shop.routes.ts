@@ -17,7 +17,8 @@ router.get('/user/:userId', ShopController.getShopByUserId);
 
 // Services
 router.post('/:shopId/services', ShopController.addService);
-// PUT/DELETE routes to be added for services
+router.put('/:shopId/services/:serviceId', ShopController.updateService);
+router.delete('/:shopId/services/:serviceId', ShopController.deleteService);
 
 // Kilo prices
 router.post('/:shopId/kilo-prices', ShopController.addKiloPrice);

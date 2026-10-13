@@ -71,6 +71,40 @@ Use `http://localhost:5001` for the API in a browser on this computer, or
 The mobile app supports Node.js 24. In PowerShell, use `npm.cmd install` and
 `npx.cmd expo start` if `.ps1` script execution is disabled.
 
+## Service packages
+
+In the shop's **Services** screen, choose **Add Service** (or **Edit** on an existing
+service), select **Fixed price per load**, and enter the service name, kilograms
+per load, and price per load. For example, **Full service**, **8 kg**, **215**
+charges ₱215 for up to 8 kg and ₱430 for more than 8 kg through 16 kg. Each
+additional partial load is charged as a full load. Delivery fees are added
+separately. Shops can create multiple services with different weights and prices.
+Use **Delete** on a service card or **Delete Service** in its edit dialog to remove
+it from the shop's menu after confirmation. Existing orders remain available.
+
+Deliveries for services named **Full Service** require at least two hours from
+order placement. The time picker displays the earliest available delivery time;
+checkout and the API recheck the minimum when an order is submitted. Pickup and
+other service names retain their future-time scheduling rule.
+
+Customers choose services and tap **Review Order** to open one **Order Summary**
+page containing service prices, weight, clothing quantities, delivery/pickup,
+addresses, schedule, notes, Cash on Delivery, fees, and the total. Address and
+quantity editors open on that page, and the calendar expands inline. After
+confirming those details, **Place Order** submits the booking directly; there
+is no separate checkout step.
+
+Package prices are specific to their service and take precedence over general
+kilogram price ranges. **Price per kilogram** remains available; existing
+services retain their kilogram rates. If a customer selects multiple services,
+each package is charged for the laundry's weight, and any kilogram services use
+the shop's matching weight rate or their combined base rates.
+
+Apply the service-package migration with `npm run prisma:deploy` from `server/`
+and regenerate the Prisma client with `npm run prisma:generate` before starting
+the updated backend. Run pricing checks with `npm run test:pricing` in both
+`server/` and `mobile/`.
+
 ## Migration Notes
 
 The original Flutter screen designs and assets are recreated in `mobile/src/design`

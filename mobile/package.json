@@ -8,10 +8,14 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "build:web": "expo export --platform web",
     "typecheck": "tsc --noEmit",
     "test:navigation": "node tests/shop-navigation.test.cjs",
     "test:network": "node tests/api-address.test.cjs",
     "test:cancel": "node tests/cancel-order.test.cjs",
+    "test:schedule": "node tests/schedule.test.cjs",
+    "test:services": "node tests/services.test.cjs",
+    "test:review": "node tests/order-review.test.cjs",
     "test:pricing": "node tests/order-pricing.test.cjs"
   },
   "dependencies": {

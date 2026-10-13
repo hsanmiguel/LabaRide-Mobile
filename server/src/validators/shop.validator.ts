@@ -18,8 +18,13 @@ export const registerShopSchema = z.object({
 
 export const createServiceSchema = z.object({
   body: z.object({
-    serviceName: z.string().min(1, 'Service name is required'),
-    price: z.number().min(0, 'Price must be positive'),
+    serviceName: z.string().trim().min(1, 'Service name is required'),
+    price: z.number().finite().min(0, 'Price cannot be negative').max(99999999.99).refine(
+      (value) => Number(value.toFixed(2)) === value, 'Enter a price with up to two decimal places',
+    ),
+    packageKilos: z.number().finite().positive('Package weight must be above 0 kg').max(99999999.99).refine(
+      (value) => Number(value.toFixed(2)) === value, 'Enter a weight with up to two decimal places',
+    ).nullable().optional(),
     color: z.string().optional(),
   })
 });

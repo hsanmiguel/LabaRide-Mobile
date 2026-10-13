@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { addressSchema } from './address.validator';
 
+const futureSchedule = z.string().datetime({ offset: true, message: 'Choose a valid delivery date and time' }).refine(
+  (value) => Date.parse(value) > Date.now(), 'Choose a delivery date and time in the future',
+);
+
 export const createTransactionSchema = z.object({
   body: z.object({
     shopId: z.number().int().positive(),
@@ -19,8 +23,8 @@ export const createTransactionSchema = z.object({
     totalAmount: z.number().optional(),
     deliveryType: z.enum(['Deliver', 'Pickup']),
     ...addressSchema.shape,
-    scheduledDate: z.string(), // ISO String
-    scheduledTime: z.string(), // ISO String
+    scheduledDate: futureSchedule,
+    scheduledTime: futureSchedule,
     paymentMethod: z.string().default('Cash on Delivery'),
     notes: z.string().optional(),
     items: z.array(z.object({

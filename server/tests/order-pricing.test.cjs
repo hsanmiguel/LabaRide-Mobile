@@ -12,6 +12,7 @@ new Function('module', 'exports', ts.transpileModule(mobilePricingSource, {
   compilerOptions: { module: ts.ModuleKind.CommonJS },
 }).outputText)(mobilePricingModule, mobilePricingModule.exports);
 const { orderPricing } = mobilePricingModule.exports;
+const { createServiceSchema } = require('../dist/validators/shop.validator');
 
 const decimal = value => new Prisma.Decimal(value);
 const input = {
@@ -66,4 +67,48 @@ test('the checkout preview matches the server for fractional kilograms and rates
       assert.equal(mobilePrice.total, Number(serverPrice.totalAmount), `${kilos} kg at ${rate}/kg`);
     }
   }
+});
+
+test('8 kg full service costs 215 per load and ignores general kilogram ranges', () => {
+  const services = [{ id: 3, serviceName: 'Full service', price: decimal(215), packageKilos: decimal(8) }];
+  for (const [kilos, expected] of [[0.01, 215], [7.99, 215], [8, 215], [8.01, 430], [16, 430], [16.01, 645]]) {
+    const priced = priceOrder({ ...input, kilos, serviceIds: [3], services });
+    assert.equal(Number(priced.subtotal), expected);
+    assert.equal(Number(priced.totalAmount), expected + 30);
+  }
+  const priced = priceOrder({ ...input, kilos: 8, serviceIds: [3], services, ranges: [...input.ranges, ...input.ranges] });
+  assert.equal(Number(priced.subtotal), 215);
+});
+
+test('package and per-kilogram combinations match the checkout preview', () => {
+  const services = [
+    { id: 1, serviceName: 'Full service', price: decimal('215.15'), packageKilos: decimal(8) },
+    { id: 2, serviceName: 'Iron', price: decimal('0.01'), packageKilos: null },
+    { id: 3, serviceName: 'Dry', price: decimal('30.15'), packageKilos: decimal('0.1') },
+  ];
+  const mobileServices = services.map(item => ({ ...item, price: String(item.price), packageKilos: item.packageKilos === null ? null : String(item.packageKilos) }));
+  for (const serviceIds of [[1], [1, 2], [1, 3], [1, 2, 3], [3]]) {
+    for (const kilos of [0.1, 0.3, 1.5, 7.99, 8, 8.01, 16.01]) {
+      for (const ranges of [[], input.ranges]) {
+        const server = priceOrder({ ...input, kilos, services, serviceIds, ranges });
+        const mobile = orderPricing(String(kilos), mobileServices[0], { services: mobileServices, kiloPrices: ranges }, 'Deliver', serviceIds);
+        assert.equal(mobile.subtotal, Number(server.subtotal), `${kilos} kg, services ${serviceIds}`);
+        assert.equal(mobile.total, Number(server.totalAmount));
+      }
+    }
+  }
+});
+
+test('service creation accepts packages and validates weight and price precision', () => {
+  const body = { serviceName: ' Full service ', price: 215, packageKilos: 8 };
+  assert.deepEqual(createServiceSchema.parse({ body }).body, { ...body, serviceName: 'Full service' });
+  for (const packageKilos of [0, -1, Infinity, NaN, 0.001, 100000000]) {
+    assert.equal(createServiceSchema.safeParse({ body: { ...body, packageKilos } }).success, false);
+  }
+  for (const price of [-1, Infinity, NaN, 215.001, 100000000]) {
+    assert.equal(createServiceSchema.safeParse({ body: { ...body, price } }).success, false);
+  }
+  assert.equal(createServiceSchema.safeParse({ body: { ...body, serviceName: ' ' } }).success, false);
+  assert.equal(createServiceSchema.safeParse({ body: { serviceName: 'Wash', price: 25 } }).success, true);
+  assert.equal(createServiceSchema.safeParse({ body: { ...body, packageKilos: null } }).success, true);
 });

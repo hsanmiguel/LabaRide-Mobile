@@ -109,8 +109,8 @@ export default function DesignFlow() {
   if (screen === "order-complete")
     return (
       <SuccessDesign
-        title="Order Complete"
-        subtitle="Thank you for your order! You can track the status in the Activity tab."
+        title="Order Placed"
+        subtitle="Your booking has been sent to the shop. Track its status in the Activity tab."
         action="Proceed"
         onPress={() =>
           inShop ? replaceFlow("history") : router.replace({

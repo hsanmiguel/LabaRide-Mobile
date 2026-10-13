@@ -30,6 +30,13 @@ import {
 import { router, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { flutterAssets } from "./assets";
+import type { Service } from "./data";
+
+export function servicePriceLabel(service: Service) {
+  return service.packageKilos != null
+    ? `${money(service.price)} / load (up to ${Number(service.packageKilos)} kg)`
+    : `${money(service.price)} / kg`;
+}
 
 export const palette = {
   navy: "#1A0066",
@@ -143,6 +150,7 @@ export function Button({
   color = palette.blue,
   outline = false,
   round = false,
+  compact = false,
   icon,
   style,
 }: {
@@ -153,6 +161,7 @@ export function Button({
   color?: string;
   outline?: boolean;
   round?: boolean;
+  compact?: boolean;
   icon?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -164,16 +173,16 @@ export function Button({
       onPress={onPress}
       style={({ pressed }) => [
         {
-          minHeight: 48,
-          paddingHorizontal: 18,
-          paddingVertical: 12,
-          borderRadius: round ? 24 : 12,
+          minHeight: compact ? 36 : 48,
+          paddingHorizontal: compact ? 12 : 18,
+          paddingVertical: compact ? 6 : 12,
+          borderRadius: round ? 24 : compact ? 8 : 12,
           backgroundColor: outline ? "transparent" : color,
           borderColor: color,
           borderWidth: outline ? 1 : 0,
           opacity: disabled ? 0.4 : pressed ? 0.75 : 1,
           flexDirection: "row",
-          gap: 10,
+          gap: compact ? 6 : 10,
           justifyContent: "center",
           alignItems: "center",
         },
@@ -189,7 +198,7 @@ export function Button({
             style={{
               color: outline ? color : "white",
               fontWeight: "600",
-              fontSize: 16,
+              fontSize: compact ? 14 : 16,
             }}
           >
             {title}

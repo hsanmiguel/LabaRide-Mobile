@@ -23,6 +23,7 @@ import {
   TabsRow,
   Txt,
   money,
+  servicePriceLabel,
   palette,
   styles,
 } from "./ui";
@@ -410,7 +411,7 @@ export function ShopInfoDesign({
                 {service.serviceName}
               </Txt>
               <Txt style={{ color: palette.navy }}>
-                {money(service.price)} / kilo
+                {servicePriceLabel(service)}
               </Txt>
             </View>
           </Card>
@@ -446,12 +447,12 @@ export function ShopMenuDesign({ id }: { id: number }) {
             <Txt style={styles.muted}>{service ? "Laundry rate" : "Basket"}</Txt>
             <Txt style={styles.heading}>
               {service
-                ? shop?.kiloPrices?.length ? "Based on weight" : `${money(service.price)}/kg`
+                ? chosen.length === 1 && chosen[0].packageKilos != null ? `${money(chosen[0].price)}/load` : chosen.some((item) => item.packageKilos != null) || shop?.kiloPrices?.length ? "Based on weight" : `${money(service.price)}/kg`
                 : money(0)}
             </Txt>
           </View>
           <Button
-            title="Basket"
+            title="Review Order"
             color={palette.navy}
             icon={<ShoppingBasket size={18} color="white" />}
             disabled={!service}
@@ -594,7 +595,7 @@ export function ShopMenuDesign({ id }: { id: number }) {
                       }}
                     >
                       <Txt style={{ color: palette.navy, fontWeight: "600" }}>
-                        Base rate: {money(s.price)} per kg
+                        {servicePriceLabel(s)}
                       </Txt>
                     </View>
                   </Card>

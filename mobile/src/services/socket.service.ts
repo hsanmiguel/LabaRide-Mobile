@@ -8,6 +8,7 @@ class SocketService {
   private shopId: number | null = null;
 
   initialize() {
+    if (process.env.EXPO_PUBLIC_REALTIME_MODE === "polling") return;
     if (this.socket) return;
 
     this.socket = io(API_URL, {

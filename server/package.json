@@ -16,7 +16,8 @@
     "test:forms": "npm run build && node --test tests/form-inputs.test.cjs",
     "test:shop:integration": "npm run build && node tests/shop-address.integration.cjs",
     "test:cancel": "npm run build && node tests/cancel-order.test.cjs",
-    "test:pricing": "npm run build && node tests/order-pricing.test.cjs"
+    "test:schedule": "npm run build && node tests/order-schedule.test.cjs",
+    "test:pricing": "npm run build && node --test tests/order-pricing.test.cjs tests/service-packages.test.cjs"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",

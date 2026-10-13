@@ -6,6 +6,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import type { Server } from 'socket.io';
 import { Prisma } from '@prisma/client';
 import { priceOrder } from '../utils/order-pricing';
+import { deliveryScheduleError } from '../utils/order-schedule';
 
 export class TransactionController {
   
@@ -36,6 +37,10 @@ export class TransactionController {
           !new Prisma.Decimal(validatedData[field]!).equals(pricing[field]));
       if (changedQuote) return sendError(res, 'Shop prices changed. Review the updated total and try again.', 'PRICE_CHANGED', 409);
       const { items, serviceIds, subtotal, deliveryFee, voucherDiscount, totalAmount, ...transactionData } = validatedData;
+      const scheduleError = deliveryScheduleError({
+        ...validatedData, serviceName: pricing.serviceName,
+      });
+      if (scheduleError) return sendError(res, scheduleError, 'INVALID_SCHEDULE', 400);
 
       const transaction = await prisma.transaction.create({
         data: {

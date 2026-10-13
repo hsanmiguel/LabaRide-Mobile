@@ -43,9 +43,10 @@ test('profile edits do not require an address, but an address save must be compl
 });
 
 test('order addresses retain delivery instructions without requiring coordinates', () => {
+  const schedule = new Date(Date.now() + 86400000).toISOString();
   const body = { ...location, access_code: '0123', dropoff_instructions: 'Porch pickup',
     shopId: 1, serviceName: 'Wash', kiloAmount: 2, subtotal: 100, deliveryFee: 30, totalAmount: 130,
-    deliveryType: 'Deliver', scheduledDate: '2026-10-10T08:00:00Z', scheduledTime: '2026-10-10T08:00:00Z' };
+    deliveryType: 'Deliver', scheduledDate: schedule, scheduledTime: schedule };
   assert.equal(createTransactionSchema.parse({ body }).body.dropoff_instructions, 'Porch pickup');
   assert.equal(createTransactionSchema.safeParse({ body }).success, true);
 });

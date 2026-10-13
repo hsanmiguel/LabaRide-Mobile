@@ -52,3 +52,27 @@ test('overlapping ranges and missing service prices block an order', () => {
   assert.equal(overlap.total, null);
   assert.match(orderPricing('2', null, shop, 'Pickup').pricingError, /valid price/);
 });
+
+test('fixed package prices round weight up to whole loads', () => {
+  const fullService = { id: 2, serviceName: 'Full service', price: '215', packageKilos: '8' };
+  for (const [weight, loads] of [['0.01', 1], ['8', 1], ['8.01', 2], ['16', 2], ['16.01', 3]]) {
+    const priced = orderPricing(weight, fullService, shop, 'Pickup');
+    assert.equal(priced.subtotal, 215 * loads);
+    assert.equal(priced.packageLoads[0].loads, loads);
+    assert.equal(priced.rate, null);
+  }
+  assert.equal(orderPricing('', fullService, shop, 'Deliver').total, null);
+  assert.equal(orderPricing('', fullService, shop, 'Deliver').packageLoads[0].loads, null);
+  assert.equal(orderPricing('8', fullService, shop, 'Deliver').total, 245);
+});
+
+test('checkout uses each selected service rather than multiplying an aggregated package price', () => {
+  const packageService = { id: 2, serviceName: 'Full service', price: 215, packageKilos: 8 };
+  const selectedShop = { ...shop, services: [service, packageService] };
+  const priced = orderPricing('8', { ...packageService, price: 238 }, selectedShop, 'Pickup', [1, 2]);
+  assert.equal(priced.subtotal, 215 + 8 * 25);
+  assert.equal(orderPricing('8', packageService, selectedShop, 'Pickup', [3]).total, null);
+  for (const packageKilos of [0, -1, 'bad']) {
+    assert.equal(orderPricing('8', { ...packageService, packageKilos }, shop, 'Pickup').total, null);
+  }
+});

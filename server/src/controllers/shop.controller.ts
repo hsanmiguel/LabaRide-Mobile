@@ -17,10 +17,29 @@ export class ShopController {
         return sendError(res, 'User already has a registered shop', 'CONFLICT', 409);
       }
 
+      // Auto-geocode if coordinates not provided
+      let latitude = validatedData.latitude;
+      let longitude = validatedData.longitude;
+      if (!latitude || !longitude) {
+        const query = validatedData.address || `${validatedData.barangay || ''}, ${validatedData.street || ''}, Camarines Sur, Philippines`;
+        try {
+          const resGeo = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`, {
+            headers: { 'User-Agent': 'LabaRide-Mobile/1.0 (contact@labaride.local)' }
+          });
+          const geoData = await resGeo.json() as any[];
+          if (geoData && geoData.length > 0) {
+            latitude = parseFloat(geoData[0].lat);
+            longitude = parseFloat(geoData[0].lon);
+          }
+        } catch (e) {
+          console.warn('Auto-geocoding failed:', e);
+        }
+      }
+
       // Create shop and update user isShopOwner flag in transaction
       const result = await prisma.$transaction(async (tx) => {
         const shop = await tx.shop.create({
-          data: { ...validatedData, userId }
+          data: { ...validatedData, latitude, longitude, userId }
         });
         
         await tx.user.update({

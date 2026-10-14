@@ -41,12 +41,12 @@ model Shop {
   userId        Int       @unique @map("user_id")
   shopName      String    @map("shop_name")
   contactNumber String    @map("contact_number")
-  zone          String
-  street        String
-  barangay      String
-  building      String?
-  openingTime   String    @map("opening_time")
-  closingTime   String    @map("closing_time")
+  zone          String?
+  street        String?   
+  barangay      String?   
+  building      String?   
+  openingTime   String?   @map("opening_time")
+  closingTime   String?   @map("closing_time")
   latitude      Float?
   longitude     Float?
   address       String?

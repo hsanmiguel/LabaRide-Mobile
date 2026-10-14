@@ -7,8 +7,11 @@ import {
   Modal,
   ScrollView,
   TextInput,
+  NativeModules,
+  Platform,
+  StatusBar,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 import {
   Maximize2,
@@ -20,13 +23,37 @@ import {
 } from "lucide-react-native";
 import type { MapProps } from "./LaundryMap";
 import { Txt } from "./ui";
+import { LOGO_SPLASH_B64 } from "./mapLogo";
+// MapboxMap is lazy-loaded via require() to avoid crashing Expo Go.
+// @rnmapbox/maps throws at import-time when native code isn't linked.
+let MapboxMapComponent: React.ComponentType<MapProps> | null = null;
+
+const isMapboxNativeAvailable = Boolean(
+  NativeModules.RNMBXModule ||
+  NativeModules.RNMBXLocationModule ||
+  (typeof globalThis !== "undefined" && (globalThis as any).__turboModuleProxy?.("RNMBXModule"))
+);
+
+if (isMapboxNativeAvailable) {
+  try {
+    // Only require when we're sure native modules are linked
+    MapboxMapComponent = require("./MapboxMap").default;
+  } catch {
+    // Still not available — fall back to Leaflet WebView
+    MapboxMapComponent = null;
+  }
+}
 
 const CAMSUR_CENTER = { latitude: 13.6217, longitude: 123.1948 };
 
-const WASHING_MACHINE_B64 =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAUCAYAAACEYr13AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAEESURBVHgBtVMBDcIwEPwWBFQACcUJOAAFDAUEBXQOwEFxgAScUAgCKoAw7qEkZbRLtoVLmv2vf5f7/01otVpWVO2ISFE7OEHCiLEqzkg0dYOXPcgMJeNMEE341OMmSOqJYZxUROdU/FcHOYEj+p9dvBV8OIajQ6qQ11jFL5CUV29NqlirwuB+m3WAS9tAVu59d8wKPDI2Qd7yUFkE7eyzAjdvTxmyofenrl2tpnELEfmFe+J/+RIYqWKaIwOOHeqo5kdgQLQOZA1yEZPR+4IDzGkZc1JrNNhEGYSmeHgWQO8+4epXIIhY3shnqNxacDev1yYF2kAGi13hJIaz4YDaw4NbPgFmc2MkMzudKgAAAABJRU5ErkJggg==";
+export default function LaundryMap(props: MapProps) {
+  if (MapboxMapComponent) {
+    return <MapboxMapComponent {...props} />;
+  }
+  return <LaundryMapLeaflet {...props} />;
+}
 
-export default function LaundryMap({
+function LaundryMapLeaflet({
   shops = [],
   latitude = CAMSUR_CENTER.latitude,
   longitude = CAMSUR_CENTER.longitude,
@@ -34,25 +61,39 @@ export default function LaundryMap({
   onPin,
   showExpand = true,
 }: MapProps) {
+  const insets = useSafeAreaInsets();
   const webViewRef = useRef<WebView>(null);
   const fullWebViewRef = useRef<WebView>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Filter valid shops with numerical coordinates
+  // Extra top padding for Android status bar in modal
+  const statusBarHeight =
+    Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) : 0;
+
+  // Parse and filter valid shops (handles both number and string decimal coords from API)
   const validShops = useMemo(
     () =>
-      shops.filter(
-        (s) =>
-          typeof s.latitude === "number" &&
-          typeof s.longitude === "number" &&
-          Number.isFinite(s.latitude) &&
-          Number.isFinite(s.longitude),
-      ),
+      shops
+        .map((s) => {
+          const lat =
+            typeof s.latitude === "number"
+              ? s.latitude
+              : parseFloat(String(s.latitude));
+          const lng =
+            typeof s.longitude === "number"
+              ? s.longitude
+              : parseFloat(String(s.longitude));
+          return { ...s, parsedLat: lat, parsedLng: lng };
+        })
+        .filter(
+          (s) =>
+            Number.isFinite(s.parsedLat) && Number.isFinite(s.parsedLng),
+        ),
     [shops],
   );
 
-  // Search results for full screen search bar
+  // Search results for floating search bar
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const q = searchQuery.toLowerCase().trim();
@@ -65,15 +106,15 @@ export default function LaundryMap({
     );
   }, [validShops, searchQuery]);
 
-  // Build HTML containing Leaflet & OpenStreetMap tiles locked to Camarines Sur
+  // Build Leaflet HTML — logo embedded via CSS background-image for reliable Android WebView rendering
   const htmlContent = useMemo(() => {
     const shopsJson = JSON.stringify(
       validShops.map((s) => ({
         id: s.id,
         name: s.shopName,
         address: s.address || s.barangay || "Laundry Shop",
-        lat: s.latitude,
-        lng: s.longitude,
+        lat: s.parsedLat,
+        lng: s.parsedLng,
       })),
     );
 
@@ -86,12 +127,14 @@ export default function LaundryMap({
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: https: http:;">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     * { box-sizing: border-box; }
     html, body, #map { height: 100%; width: 100%; margin: 0; padding: 0; background-color: #d1d5db; }
-    
+
+    /* Logo marker — white bubble with blue border and blue arrow */
     .shop-marker-pin {
       display: flex;
       flex-direction: column;
@@ -100,19 +143,23 @@ export default function LaundryMap({
       cursor: pointer;
     }
     .shop-marker-bubble {
-      background: #1E54AB;
-      border: 2px solid white;
+      background-color: #FFFFFF;
+      border: 2.5px solid #1E54AB;
       border-radius: 50%;
-      width: 40px;
-      height: 40px;
+      width: 44px;
+      height: 44px;
       display: flex;
       align-items: center;
       justify-content: center;
+      overflow: hidden;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
     }
     .shop-marker-bubble img {
-      width: 22px;
-      height: 22px;
+      width: 36px;
+      height: 36px;
       object-fit: contain;
+      border-radius: 18px;
+      display: block;
     }
     .shop-marker-arrow {
       width: 0;
@@ -192,8 +239,8 @@ export default function LaundryMap({
     const map = L.map('map', {
       zoomControl: true,
       attributionControl: false,
-      minZoom: 9
-    }).setView(defaultCenter, 11);
+      minZoom: 10
+    }).setView(defaultCenter, 13);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -203,13 +250,13 @@ export default function LaundryMap({
       className: '',
       html: '<div class="shop-marker-pin">' +
               '<div class="shop-marker-bubble">' +
-                '<img src="' + '${WASHING_MACHINE_B64}' + '" alt="laundry" />' +
+                '<img src="' + '${LOGO_SPLASH_B64}' + '" width="36" height="36" alt="LabaRide" onerror="this.style.display=\\'none\\'; this.parentElement.innerHTML=\\'<svg width=\\\\\\'26\\\\\\' height=\\\\\\'26\\\\\\' viewBox=\\\\\\'0 0 24 24\\\\\\' fill=\\\\\\'none\\\\\\' stroke=\\\\\\'#1E54AB\\\\\\' stroke-width=\\\\\\'2\\\\\\' stroke-linecap=\\\\\\'round\\\\\\' stroke-linejoin=\\\\\\'round\\\\\\'><rect x=\\\\\\'2\\\\\\' y=\\\\\\'2\\\\\\' width=\\\\\\'20\\\\\\' height=\\\\\\'20\\\\\\' rx=\\\\\\'4\\\\\\'/><circle cx=\\\\\\'12\\\\\\' cy=\\\\\\'13\\\\\\' r=\\\\\\'5\\\\\\'/><circle cx=\\\\\\'12\\\\\\' cy=\\\\\\'6\\\\\\' r=\\\\\\'1\\\\\\'/></svg>\\';" />' +
               '</div>' +
               '<div class="shop-marker-arrow"></div>' +
             '</div>',
-      iconSize: [40, 48],
-      iconAnchor: [20, 48],
-      popupAnchor: [0, -48]
+      iconSize: [44, 52],
+      iconAnchor: [22, 52],
+      popupAnchor: [0, -52]
     });
 
     const pinIcon = L.divIcon({
@@ -225,7 +272,6 @@ export default function LaundryMap({
 
     const markers = [];
 
-    // Render shops with washingmachine icon
     shops.forEach(function(shop) {
       const marker = L.marker([shop.lat, shop.lng], { icon: shopIcon }).addTo(map);
       marker.shopId = shop.id;
@@ -245,7 +291,6 @@ export default function LaundryMap({
     let pinMarker = null;
     if (isPinMode) {
       pinMarker = L.marker(defaultCenter, { icon: pinIcon }).addTo(map);
-
       map.on('click', function(e) {
         const lat = e.latlng.lat;
         const lng = e.latlng.lng;
@@ -260,17 +305,9 @@ export default function LaundryMap({
       });
     }
 
-    // Camarines Sur view adjustment
     function fitCamSur() {
       map.invalidateSize();
-      if (!isPinMode && markers.length > 1) {
-        const group = new L.featureGroup(markers);
-        map.fitBounds(group.getBounds().pad(0.3), { maxZoom: 13, minZoom: 10 });
-      } else if (!isPinMode && markers.length === 1) {
-        map.setView([shops[0].lat, shops[0].lng], 13);
-      } else {
-        map.setView(defaultCenter, 11);
-      }
+      map.setView(defaultCenter, 13);
     }
 
     setTimeout(fitCamSur, 150);
@@ -278,18 +315,14 @@ export default function LaundryMap({
 
     window.updatePosition = function(lat, lng) {
       map.setView([lat, lng], 13);
-      if (pinMarker) {
-        pinMarker.setLatLng([lat, lng]);
-      }
+      if (pinMarker) pinMarker.setLatLng([lat, lng]);
     };
 
     window.flyToShop = function(lat, lng, id) {
       map.flyTo([lat, lng], 15, { duration: 1.2 });
       markers.forEach(function(m) {
         if (m.shopId === id) {
-          setTimeout(function() {
-            m.openPopup();
-          }, 600);
+          setTimeout(function() { m.openPopup(); }, 600);
         }
       });
     };
@@ -330,9 +363,9 @@ export default function LaundryMap({
 
   function handleSelectSearchResult(shop: (typeof validShops)[0]) {
     setSearchQuery("");
-    if (fullWebViewRef.current && shop.latitude && shop.longitude) {
+    if (fullWebViewRef.current && Number.isFinite(shop.parsedLat) && Number.isFinite(shop.parsedLng)) {
       fullWebViewRef.current.injectJavaScript(
-        `if (window.flyToShop) { window.flyToShop(${shop.latitude}, ${shop.longitude}, ${shop.id}); } true;`,
+        `if (window.flyToShop) { window.flyToShop(${shop.parsedLat}, ${shop.parsedLng}, ${shop.id}); } true;`,
       );
     }
   }
@@ -375,7 +408,8 @@ export default function LaundryMap({
         animationType="slide"
         onRequestClose={() => setFullscreen(false)}
       >
-        <SafeAreaView style={styles.fullscreenContainer}>
+        <View style={[styles.fullscreenContainer, { paddingTop: statusBarHeight }]}>
+          {/* Header */}
           <View style={styles.fullscreenHeader}>
             <Pressable
               style={styles.closeButton}
@@ -398,66 +432,7 @@ export default function LaundryMap({
             </Pressable>
           </View>
 
-          {/* Search bar inside full screen map */}
-          <View style={styles.searchWrapper}>
-            <View style={styles.searchBar}>
-              <Search size={18} color="#9CA3AF" />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search laundry shop or location..."
-                placeholderTextColor="#9CA3AF"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                returnKeyType="search"
-              />
-              {searchQuery.length > 0 && (
-                <Pressable
-                  onPress={() => setSearchQuery("")}
-                  hitSlop={8}
-                  style={{ padding: 4 }}
-                >
-                  <X size={18} color="#6B7280" />
-                </Pressable>
-              )}
-            </View>
-
-            {/* Search results dropdown */}
-            {searchQuery.trim().length > 0 && (
-              <View style={styles.resultsContainer}>
-                {searchResults.length > 0 ? (
-                  <ScrollView
-                    keyboardShouldPersistTaps="handled"
-                    style={{ maxHeight: 220 }}
-                  >
-                    {searchResults.map((shop) => (
-                      <Pressable
-                        key={shop.id}
-                        style={styles.resultItem}
-                        onPress={() => handleSelectSearchResult(shop)}
-                      >
-                        <View style={styles.resultIcon}>
-                          <MapPin size={16} color="white" />
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Txt style={styles.resultName}>{shop.shopName}</Txt>
-                          <Txt style={styles.resultAddress} numberOfLines={1}>
-                            {shop.address || shop.barangay || "Camarines Sur"}
-                          </Txt>
-                        </View>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                ) : (
-                  <View style={styles.noResults}>
-                    <Txt style={{ color: "#6B7280", fontSize: 13 }}>
-                      No shops found matching "{searchQuery}"
-                    </Txt>
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-
+          {/* Map + Floating Search Bar */}
           <View style={{ flex: 1, position: "relative" }}>
             <WebView
               ref={fullWebViewRef}
@@ -474,8 +449,68 @@ export default function LaundryMap({
               )}
               onMessage={handleMessage}
             />
+
+            {/* Floating search bar overlaid on map */}
+            <View style={styles.floatingSearchWrapper}>
+              <View style={styles.floatingSearchBar}>
+                <Search size={17} color="#6B7280" />
+                <TextInput
+                  style={styles.floatingSearchInput}
+                  placeholder="Search laundry shop..."
+                  placeholderTextColor="#9CA3AF"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  returnKeyType="search"
+                />
+                {searchQuery.length > 0 && (
+                  <Pressable
+                    onPress={() => setSearchQuery("")}
+                    hitSlop={8}
+                    style={{ padding: 2 }}
+                  >
+                    <X size={16} color="#6B7280" />
+                  </Pressable>
+                )}
+              </View>
+
+              {/* Floating results dropdown */}
+              {searchQuery.trim().length > 0 && (
+                <View style={styles.resultsContainer}>
+                  {searchResults.length > 0 ? (
+                    <ScrollView
+                      keyboardShouldPersistTaps="handled"
+                      style={{ maxHeight: 240 }}
+                    >
+                      {searchResults.map((shop) => (
+                        <Pressable
+                          key={shop.id}
+                          style={styles.resultItem}
+                          onPress={() => handleSelectSearchResult(shop)}
+                        >
+                          <View style={styles.resultIcon}>
+                            <MapPin size={15} color="white" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Txt style={styles.resultName}>{shop.shopName}</Txt>
+                            <Txt style={styles.resultAddress} numberOfLines={1}>
+                              {shop.address || shop.barangay || "Camarines Sur"}
+                            </Txt>
+                          </View>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  ) : (
+                    <View style={styles.noResults}>
+                      <Txt style={{ color: "#6B7280", fontSize: 13 }}>
+                        No shops found for "{searchQuery}"
+                      </Txt>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
           </View>
-        </SafeAreaView>
+        </View>
       </Modal>
     </View>
   );
@@ -521,6 +556,8 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#1E54AB",
   },
+
+  // ── Fullscreen modal ──────────────────────────────────────────
   fullscreenContainer: {
     flex: 1,
     backgroundColor: "white",
@@ -530,7 +567,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
     backgroundColor: "white",
@@ -553,45 +590,46 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6B7280",
   },
-  searchWrapper: {
-    position: "relative",
-    zIndex: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "white",
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
+
+  // ── Floating search bar (overlaid on map) ─────────────────────
+  floatingSearchWrapper: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    right: 12,
+    zIndex: 20,
   },
-  searchBar: {
+  floatingSearchBar: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: "white",
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  searchInput: {
+  floatingSearchInput: {
     flex: 1,
     fontSize: 14,
     color: "#1F2937",
     padding: 0,
   },
   resultsContainer: {
-    position: "absolute",
-    top: 56,
-    left: 16,
-    right: 16,
+    marginTop: 6,
     backgroundColor: "white",
-    borderRadius: 14,
+    borderRadius: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
     elevation: 8,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    zIndex: 20,
     overflow: "hidden",
   },
   resultItem: {
@@ -599,7 +637,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 11,
     borderBottomWidth: 1,
     borderBottomColor: "#F3F4F6",
   },

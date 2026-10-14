@@ -191,6 +191,7 @@ export function ShopsDesign({
   const draft = useLaundryDraft();
   const { nearby } = useLocalSearchParams<{ nearby?: string }>();
   const profile = useProfile();
+  const point = coordinates(draft.address || profile.data);
   const nearest = nearestShops(shops.data || [], draft.address || profile.data);
   const filtered = (nearby === "true" ? nearest.map(item => item.shop) : shops.data || []).filter((s) =>
     `${s.shopName} ${address(s)}`.toLowerCase().includes(query.toLowerCase()),
@@ -238,7 +239,7 @@ export function ShopsDesign({
         </View>
         {map && (
           <View style={{ height: 300, borderRadius: 16, overflow: "hidden" }}>
-            <LaundryMap shops={filtered} onSelect={open} />
+            <LaundryMap shops={filtered} latitude={point?.latitude} longitude={point?.longitude} onSelect={open} />
           </View>
         )}
         {search && !query && (

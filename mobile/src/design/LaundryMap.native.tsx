@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react-native";
 import type { MapProps } from "./LaundryMap";
-import { Txt, palette } from "./ui";
+import { Txt } from "./ui";
 
 const CAMSUR_CENTER = { latitude: 13.6217, longitude: 123.1948 };
 

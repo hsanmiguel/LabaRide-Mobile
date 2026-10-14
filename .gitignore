@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.expo/
+.vercel/
+.env
+.env.*
+!.env.example
+*.log
+
+# Additional build outputs
+server/dist/
+expo-env.d.ts
+
+# System files
+.DS_Store
+Thumbs.db

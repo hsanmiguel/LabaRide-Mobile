@@ -1,26 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
-import { Alert } from "react-native";
+import { router, useSegments } from "expo-router";
+import { Alert, Platform } from "react-native";
 import apiClient from "../api/client";
 import { useAuthStore } from "../store/authStore";
 
-export interface Profile {
+import { formatAddress, type AddressData } from "./address";
+import { flowTarget } from "../navigation/flow-target";
+
+export interface Profile extends AddressData {
   id: number;
   name: string;
   email: string;
   isShopOwner: boolean;
+  photoUrl?: string | null;
   phone?: string;
   birthdate?: string;
   gender?: string;
-  zone?: string;
-  street?: string;
-  barangay?: string;
-  building?: string;
 }
 export interface Service {
   id: number;
   serviceName: string;
   price: string | number;
+  packageKilos?: string | number | null;
   color?: string;
 }
 export interface LaundryItem {
@@ -35,26 +36,21 @@ export interface KiloPrice {
   maxKilo: string | number;
   pricePerKilo: string | number;
 }
-export interface Shop {
+export interface Shop extends AddressData {
   id: number;
   userId: number;
   shopName: string;
+  photoUrl?: string | null;
   contactNumber?: string;
-  zone?: string;
-  street?: string;
-  barangay?: string;
-  building?: string;
   address?: string;
   openingTime?: string;
   closingTime?: string;
-  latitude?: number;
-  longitude?: number;
   services?: Service[];
   kiloPrices?: KiloPrice[];
   clothingTypes?: LaundryItem[];
   householdItems?: LaundryItem[];
 }
-export interface Order {
+export interface Order extends AddressData {
   id: number;
   userId: number;
   shopId: number;
@@ -68,10 +64,6 @@ export interface Order {
   voucherDiscount: string | number;
   totalAmount: string | number;
   deliveryType: string;
-  zone?: string;
-  street?: string;
-  barangay?: string;
-  building?: string;
   scheduledDate: string;
   scheduledTime: string;
   paymentMethod: string;
@@ -102,11 +94,29 @@ export const api = {
 };
 export function message(error: unknown) {
   if (typeof error === "string") return error;
-  const e = error as { error?: { message?: string }; message?: string };
+  const e = error as { error?: { message?: string; details?: { path?: (string | number)[]; message?: string }[] }; message?: string };
+  if (Array.isArray(e?.error?.details)) {
+    return e.error.details.map(detail => [detail.path?.filter(key => key !== "body").join("."), detail.message].filter(Boolean).join(": ")).join("\n");
+  }
   return e?.error?.message || e?.message || "Please try again.";
 }
+export function notify(title: string, text: string) {
+  if (Platform.OS === "web" && typeof window !== "undefined") window.alert(title + "\n" + text);
+  else Alert.alert(title, text);
+}
+export function confirmAction(title: string, text: string): Promise<boolean> {
+  if (Platform.OS === "web") {
+    return Promise.resolve(typeof window !== "undefined" && window.confirm(title + "\n\n" + text));
+  }
+  return new Promise((resolve) => {
+    Alert.alert(title, text, [
+      { text: "No", style: "cancel", onPress: () => resolve(false) },
+      { text: "Yes", style: "destructive", onPress: () => resolve(true) },
+    ], { cancelable: true, onDismiss: () => resolve(false) });
+  });
+}
 export function fail(error: unknown) {
-  Alert.alert("Something went wrong", message(error));
+  notify("Something went wrong", message(error));
 }
 export function unavailable(feature: string) {
   Alert.alert(
@@ -129,19 +139,19 @@ export function replaceFlow(
     params: { ...params, flow: screen },
   });
 }
-export const address = (
-  value?: {
-    zone?: string;
-    street?: string;
-    barangay?: string;
-    building?: string;
-    address?: string;
-  } | null,
-) =>
-  value?.address ||
-  [value?.building, value?.zone, value?.street, value?.barangay]
-    .filter(Boolean)
-    .join(", ");
+export function useFlowNavigation() {
+  const segments = useSegments() as string[];
+  return {
+    inShop: segments[0] === "shop",
+    flowHref: (screen: string, params: Record<string, string> = {}) =>
+      flowTarget(screen, params, segments),
+    go: (screen: string, params: Record<string, string> = {}) =>
+      router.push(flowTarget(screen, params, segments)),
+    replaceFlow: (screen: string, params: Record<string, string> = {}) =>
+      router.replace(flowTarget(screen, params, segments)),
+  };
+}
+export const address = formatAddress;
 export function useProfile() {
   const user = useAuthStore((state) => state.user);
   return useQuery({
@@ -191,6 +201,7 @@ export function useOrders(shopMode = false) {
   return useQuery({
     queryKey: [shopMode ? "shop-orders" : "user-orders", ownerId],
     enabled: !!ownerId,
+    refetchInterval: process.env.EXPO_PUBLIC_REALTIME_MODE === "polling" ? 15000 : false,
     queryFn: () =>
       api.get<Order[]>(
         `/transactions/${shopMode ? "shop" : "user"}/${ownerId}`,

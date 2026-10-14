@@ -1,0 +1,95 @@
+import { InterfaceTheme } from "../../src/design/theme";
+import { View, useWindowDimensions } from "react-native";
+import { useEffect } from "react";
+import { Tabs } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Asset, Brand, Txt, usePalette } from "../../src/design/ui";
+import { useOwnedShop } from "../../src/design/data";
+import { socketService } from "../../src/services/socket.service";
+export default function ShopTabs() {
+  const palette = usePalette();
+  const { width } = useWindowDimensions();
+  const desktop = width >= 1024;
+  const insets = useSafeAreaInsets();
+  const owned = useOwnedShop();
+  useEffect(() => {
+    if (owned.data) socketService.joinShopRoom(owned.data.id);
+  }, [owned.data?.id]);
+  return (
+    <InterfaceTheme role="shop"><Tabs
+      initialRouteName="home"
+      screenOptions={{
+        headerShown: false,
+        tabBarBackground: desktop ? () => <View pointerEvents="none" style={{ position: "absolute", top: 24, left: 20 }}><Brand /><Txt style={{ color: palette.muted, marginTop: 8 }}>Shop management</Txt></View> : undefined,
+        tabBarPosition: desktop ? "left" : "bottom",
+        tabBarLabelPosition: desktop ? "beside-icon" : "below-icon",
+        tabBarActiveBackgroundColor: palette.soft,
+        tabBarItemStyle: { borderRadius: 12, marginHorizontal: desktop ? 8 : 2, marginVertical: desktop ? 4 : 0 },
+        tabBarHideOnKeyboard: false,
+        tabBarActiveTintColor: palette.navy,
+        tabBarInactiveTintColor: palette.muted,
+        tabBarLabelStyle: { fontFamily: "Inter-Medium", fontSize: 11 },
+        tabBarStyle: {
+
+          backgroundColor: "white", borderTopWidth: 1, borderTopColor: palette.line,
+          borderRightColor: palette.line, width: desktop ? 224 : undefined, maxWidth: desktop ? 224 : undefined, minWidth: desktop ? 224 : undefined,
+          height: desktop ? undefined : 68 + insets.bottom,
+          paddingTop: desktop ? 116 : 8, paddingBottom: desktop ? 16 : Math.max(insets.bottom, 8),
+        },
+      }}
+    >
+      <Tabs.Screen
+        name="home"
+        options={{
+          title: "Home",
+          href: "/shop/home",
+          tabBarIcon: ({ color }) => (
+            <Asset name="OrderScreenIcon/Home.png" tint={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="transactions"
+        options={{
+          title: "Orders",
+          href: "/shop/transactions",
+          tabBarIcon: ({ color }) => (
+            <Asset name="OrderScreenIcon/Orders.png" tint={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="services"
+        options={{
+          title: "Services",
+          href: "/shop/services",
+          tabBarIcon: ({ color }) => (
+            <Asset name="OrderScreenIcon/Services.png" tint={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="customers"
+        options={{
+          title: "Customers",
+          href: "/shop/customers",
+          tabBarIcon: ({ color }) => (
+            <Asset name="OrderScreenIcon/Customers.png" tint={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          href: "/shop/profile",
+          tabBarIcon: ({ color }) => (
+            <Asset name="OrderScreenIcon/Profile.png" tint={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="orders/[id]" options={{ href: null }} />
+    </Tabs></InterfaceTheme>
+  );
+}

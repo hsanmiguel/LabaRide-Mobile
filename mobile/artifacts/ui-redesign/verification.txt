@@ -1,0 +1,4 @@
+Chrome production UI checks passed.
+Viewports: 320, 390, 768, 1440.
+Both themes, shared flows, long text, search, filters, service dialog, order review, loading, empty and error states verified with intercepted fixtures.
+Live API, native maps, geolocation permission and physical-device behavior require device verification.

@@ -1,25 +1,30 @@
 import { z } from 'zod';
+import { addressSchema } from './address.validator';
+
+const businessTime = z.string().trim().regex(
+  /^(?:(?:[01]?\d|2[0-3]):[0-5]\d|(?:0?[1-9]|1[0-2]):[0-5]\d\s*(?:AM|PM))$/i,
+  'Choose a valid business time',
+);
 
 export const registerShopSchema = z.object({
   body: z.object({
-    shopName: z.string().min(2, 'Shop name is required'),
-    contactNumber: z.string().min(1, 'Contact number is required'),
-    zone: z.string().min(1, 'Zone is required'),
-    street: z.string().min(1, 'Street is required'),
-    barangay: z.string().min(1, 'Barangay is required'),
-    building: z.string().optional(),
-    openingTime: z.string().min(1, 'Opening time is required'),
-    closingTime: z.string().min(1, 'Closing time is required'),
-    latitude: z.number().optional(),
-    longitude: z.number().optional(),
-    address: z.string().optional(),
+    shopName: z.string().trim().min(2, 'Shop name must have at least 2 characters'),
+    contactNumber: z.string().trim().min(1, 'Contact number is required'),
+    openingTime: businessTime,
+    closingTime: businessTime,
+    ...addressSchema.shape,
   })
 });
 
 export const createServiceSchema = z.object({
   body: z.object({
-    serviceName: z.string().min(1, 'Service name is required'),
-    price: z.number().min(0, 'Price must be positive'),
+    serviceName: z.string().trim().min(1, 'Service name is required'),
+    price: z.number().finite().min(0, 'Price cannot be negative').max(99999999.99).refine(
+      (value) => Number(value.toFixed(2)) === value, 'Enter a price with up to two decimal places',
+    ),
+    packageKilos: z.number().finite().positive('Package weight must be above 0 kg').max(99999999.99).refine(
+      (value) => Number(value.toFixed(2)) === value, 'Enter a weight with up to two decimal places',
+    ).nullable().optional(),
     color: z.string().optional(),
   })
 });
@@ -29,6 +34,9 @@ export const createKiloPriceSchema = z.object({
     minKilo: z.number().min(0),
     maxKilo: z.number().min(0),
     pricePerKilo: z.number().min(0),
+  }).refine((range) => range.maxKilo > range.minKilo, {
+    message: 'Maximum weight must be greater than minimum weight',
+    path: ['maxKilo'],
   })
 });
 

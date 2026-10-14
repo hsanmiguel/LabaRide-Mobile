@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../config/database';
 import { sendSuccess, sendError } from '../utils/response';
-import { registerShopSchema, createServiceSchema, createKiloPriceSchema, createItemSchema } from '../validators/shop.validator';
+import { registerShopSchema, createServiceSchema, createKiloPriceSchema } from '../validators/shop.validator';
 import { AuthRequest } from '../middleware/auth.middleware';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';

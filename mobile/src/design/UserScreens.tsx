@@ -150,26 +150,12 @@ export function UserHomeDesign() {
         </View>
         <SearchBox onPress={() => go("search")} />
         <Section title="Explore Laundry Shop" light />
-        <View
-          style={{
-            height: 180,
-            borderRadius: 12,
-            overflow: "hidden",
-            position: "relative",
-          }}
+        <Pressable
+          onPress={() => go("map")}
+          style={{ height: 150, borderRadius: 12, overflow: "hidden" }}
         >
-          <LaundryMap
-            shops={shops.data || []}
-            showExpand={false}
-            onSelect={(shop) =>
-              router.push({
-                pathname: "/(user)/shops/[id]",
-                params: { id: String(shop.id) },
-              })
-            }
-          />
-          <Pressable
-            onPress={() => go("map")}
+          <Asset name="maps.png" style={{ width: "100%", height: "100%" }} />
+          <View
             style={{
               position: "absolute",
               bottom: 0,
@@ -182,8 +168,8 @@ export function UserHomeDesign() {
             <Txt style={{ color: "white", fontSize: 16, fontWeight: "700" }}>
               View Map
             </Txt>
-          </Pressable>
-        </View>
+          </View>
+        </Pressable>
         <QueryState
           loading={shops.isLoading}
           error={shops.error}

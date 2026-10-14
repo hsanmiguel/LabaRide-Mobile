@@ -7,7 +7,6 @@ export interface MapProps {
   longitude?: number;
   onSelect?: (shop: Shop) => void;
   onPin?: (coordinate: { latitude: number; longitude: number }) => void;
-  showExpand?: boolean;
 }
 export default function LaundryMap(_props: MapProps) {
   return (

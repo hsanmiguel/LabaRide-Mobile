@@ -132,8 +132,8 @@ export default function DesignFlow() {
     return <EditProfileDesign account={screen === "account-information"} />;
   if (screen === "change-password" || screen === "security")
     return <ChangePasswordDesign security={screen === "security"} />;
-  if (screen === "delete-account" || screen === "logout")
-    return <AccountConfirmationDesign logout={screen === "logout"} />;
+  if (screen === "logout") return <Redirect href={inShop ? "/shop/profile" : "/(user)/profile"} />;
+  if (screen === "delete-account") return <AccountConfirmationDesign />;
   if (screen === "account-deleted")
     return (
       <SuccessDesign

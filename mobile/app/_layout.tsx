@@ -3,7 +3,8 @@ import { interfaceRole, rolePalette } from "../src/design/theme-tokens";
 import { useSegments } from "expo-router";
 import { PanelAccess } from "../src/navigation/PanelAccess";
 import { AppDialogHost } from "../src/design/AppDialogHost";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { BlurTargetView } from "expo-blur";
 import { useAuthStore } from "../src/store/authStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -18,6 +19,7 @@ import { socketService } from "../src/services/socket.service";
 const queryClient = new QueryClient();
 
 export default function RootLayout() {
+  const blurTarget = useRef<View | null>(null);
   const segments = useSegments();
   const { checkAuth, isLoading, user } = useAuthStore();
   const [fontsLoaded, fontError] = useFonts({
@@ -65,7 +67,10 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <InterfaceTheme role={interfaceRole(segments)}><PanelAccess /><AppDialogHost /></InterfaceTheme>
+        <InterfaceTheme role={interfaceRole(segments)}>
+          <BlurTargetView ref={blurTarget} style={{ flex: 1 }}><PanelAccess /></BlurTargetView>
+          <AppDialogHost blurTarget={blurTarget} />
+        </InterfaceTheme>
       </QueryClientProvider>
     </SafeAreaProvider>
   );

@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Modal, View, useWindowDimensions } from "react-native";
 import { ArrowRight, Check, CheckCircle2, Clock3, LockKeyhole, MapPin, Phone, RefreshCw, ShoppingBag, Store, TriangleAlert, type LucideIcon } from "lucide-react-native";
-import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/authStore";
 import { address, api, message, useProfile, type Shop } from "./data";
 import { Button, Card, Empty, Field, Screen, SearchBox, TabsRow, Txt, styles, usePalette } from "./ui";
 import { FormError } from "./AddressFields";
 import { QueryState } from "./UserScreens";
+import { useLogout } from "./useLogout";
 
 type Status = Shop["approvalStatus"];
 const statuses: Status[] = ["Pending", "Approved", "Rejected", "Suspended"];
@@ -128,6 +128,7 @@ interface Application extends Shop {
 }
 
 export function AdminDashboardDesign() {
+  const logout = useLogout();
   const palette = usePalette();
   const auth = useAuthStore();
   const profile = useProfile();
@@ -171,7 +172,7 @@ export function AdminDashboardDesign() {
       <View style={styles.between}>
         <View><Txt style={styles.title}>Shop approvals</Txt><Txt style={styles.muted}>Review applications before shops go live.</Txt></View>
         <View style={[styles.row, { flexWrap: "wrap" }]}>
-          <Button title="Sign Out" outline onPress={async () => { await auth.logout(); cache.clear(); router.replace("/(auth)/login"); }} />
+          <Button title="Sign Out" outline onPress={logout} />
         </View>
       </View>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>

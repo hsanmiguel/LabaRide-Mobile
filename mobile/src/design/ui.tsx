@@ -152,7 +152,7 @@ export function TabsRow({ items, value, onChange, color }: { items: string[]; va
   const palette = usePalette();
   const accent = color || palette.primary;
   return <View accessibilityRole="tablist" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>{items.map(item =>
-    <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: value === item }} onPress={() => onChange(item)} style={{ minHeight: 44, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
+    <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: value === item }} aria-selected={value === item} onPress={() => onChange(item)} style={{ minHeight: 44, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
       backgroundColor: value === item ? palette.soft : "white", borderColor: value === item ? accent : palette.line }}><Txt style={{ fontWeight: "600", color: value === item ? accent : palette.muted }}>{item}</Txt></Pressable>)}
   </View>;
 }

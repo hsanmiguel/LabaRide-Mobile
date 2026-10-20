@@ -11,6 +11,7 @@ const photoTest = process.argv.includes('--photos');
 const approvalTest = process.argv.includes('--approvals');
 const applicationTest = process.argv.includes('--application');
 const dialogTest = process.argv.includes('--dialogs');
+const logoutTest = process.argv.includes('--logout');
 const nativeDialogs = [], dialogWrites = [];
 let failServiceDelete = false;
 let photoBytes, hasPhoto = false, brokenPhoto = false;
@@ -164,6 +165,50 @@ async function clickText(text) {
   });
   await command('Page.enable'); await command('Runtime.enable');
   await command('Fetch.enable',{ patterns:[{urlPattern:'*/api/*'}] });
+  if (logoutTest) {
+    const visible = '!!document.querySelector("[data-testid=app-dialog]")';
+    const closed = '!document.querySelector("[data-testid=app-dialog]")';
+    async function openLogout(label='Logout') {
+      await evaluate(`(()=>{const e=Array.from(document.querySelectorAll('[role="button"]')).find(e=>e.innerText.trim()===${JSON.stringify(label)});e.focus();e.click();})()`);
+      await waitFor(visible);await waitFor('document.activeElement?.getAttribute("aria-label")==="Cancel"');
+      await waitFor('Number(getComputedStyle(document.querySelector("[data-testid=app-dialog]").parentElement).opacity)>.99');
+      assert.ok((await evaluate('document.querySelector("[data-testid=app-dialog]").innerText')).includes('Are you sure you want to log out?'));
+      const blur=await evaluate('getComputedStyle(document.querySelector("[data-testid=dialog-backdrop-blur]")).backdropFilter');
+      assert.ok(blur.includes('blur('),'Backdrop actually applies blur');
+    }
+    for(const width of [320,390,768,1440]) {
+      await visit('/profile',width,'Settings');
+      const before=await evaluate('({path:location.href,token:sessionStorage.getItem("auth_token"),user:sessionStorage.getItem("auth_user"),history:history.length})');
+      await openLogout();
+      assert.equal(await evaluate('location.href'),before.path,'Opening logout keeps the same page');
+      const bounds=await evaluate('(()=>{const r=document.querySelector("[data-testid=app-dialog]").getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};})()');
+      assert.ok(bounds.left>=0&&bounds.right<=width&&bounds.top>=0,'Modal fits viewport');
+      if(width===390||width===1440){const shot=await command('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(artifacts,`logout-modal-${width}.png`),Buffer.from(shot.data,'base64'));}
+      await clickText('Cancel');await waitFor(closed);
+      assert.deepEqual(await evaluate('({path:location.href,token:sessionStorage.getItem("auth_token"),user:sessionStorage.getItem("auth_user"),history:history.length})'),before,'Cancel preserves page, credentials and history');
+    }
+    await openLogout();for(let i=0;i<8;i++){await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await command('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});}
+    assert.ok(await evaluate('document.querySelector("[data-testid=app-dialog]").contains(document.activeElement)'),'Focus remains trapped');
+    await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await command('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await waitFor(closed);
+    await waitFor('document.activeElement?.getAttribute("aria-label")==="Logout"');
+    assert.equal(await evaluate('location.pathname'),'/profile');
+    await openLogout();await evaluate(`document.querySelector('[aria-label="Dismiss dialog"]').click()`);await waitFor(closed);
+    await evaluate(`window.originalRemoveItem=Storage.prototype.removeItem;Storage.prototype.removeItem=function(key){if(key==='auth_user')throw new Error('Simulated storage failure');return window.originalRemoveItem.call(this,key);};`);
+    await openLogout();await clickText('Log Out');await waitFor('document.body.innerText.includes("We couldn\'t log you out")');
+    assert.equal(await evaluate('location.pathname'),'/profile');assert.equal(await evaluate('sessionStorage.getItem("auth_token")'),'isolated-ui-test','Failed logout restores partially removed credentials');
+    await evaluate('Storage.prototype.removeItem=window.originalRemoveItem');
+    await evaluate(`(()=>{const e=document.querySelector('[data-testid=app-dialog] [aria-label="Log Out"]');e.click();e.click();})()`);
+    await waitFor('location.pathname==="/login"');await waitFor(closed);
+    assert.equal(await evaluate('sessionStorage.getItem("auth_token")'),null);assert.equal(await evaluate('sessionStorage.getItem("auth_user")'),null);
+    await visit('/shop/profile',390,'Account Information');await openLogout();assert.equal(await evaluate('location.pathname'),'/shop/profile');await clickText('Cancel');await waitFor(closed);assert.equal(await evaluate('location.pathname'),'/shop/profile');
+    user.isAdmin=true;await visit('/admin',1440,'Shop approvals');await clickText('Approved');await openLogout('Sign Out');await clickText('Cancel');await waitFor(closed);
+    const selectedTabs=await evaluate('Array.from(document.querySelectorAll("[role=tab]")).map(e=>({text:e.innerText.trim(),selected:e.getAttribute("aria-selected")}))');
+    assert.ok(selectedTabs.some(tab=>tab.text==='Approved'&&tab.selected==='true'),'Admin filters remain selected after cancelling: '+JSON.stringify(selectedTabs));
+    await openLogout('Sign Out');await clickText('Log Out');await waitFor('location.pathname==="/login"');await waitFor(closed);
+    assert.equal(await evaluate('sessionStorage.getItem("auth_token")'),null);assert.deepEqual(nativeDialogs,[]);assert.deepEqual(errors,[]);
+    console.log('PASS logout blur at four sizes; customer/shop/admin current-page cancellation, focus, Escape, backdrop, storage failure, retry and success-only redirect');
+    return;
+  }
   if (dialogTest) {
     const dialogVisible = '!!document.querySelector("[data-testid=app-dialog]")';
     const dialogClosed = '!document.querySelector("[data-testid=app-dialog]")';
@@ -268,7 +313,7 @@ async function clickText(text) {
     user.isAdmin=false; await visit('/admin',390,'Admin access required','admin-denied');
     assert.equal(await evaluate(`!!document.querySelector('[role="tab"][aria-label="Dashboard"]')`),false,'Customers do not receive admin navigation');
     user.isAdmin=true; await visit('/admin',390,'Shop approvals');
-    await clickText('Sign Out'); await waitFor('document.body.innerText.includes("Log In")');
+    await clickText('Sign Out'); await waitFor('!!document.querySelector("[data-testid=app-dialog]")'); await clickText('Log Out'); await waitFor('document.body.innerText.includes("Log In")');
     assert.equal(await evaluate('sessionStorage.getItem("auth_token")'),null,'Admin sign out clears the session');
     assert.deepEqual(reviews.map(review => review.status),['Rejected','Approved','Suspended']);
     console.log('PASS approval dashboard, reason validation, rejection, resubmission, direct URL guards, approval, suspension and admin denial');

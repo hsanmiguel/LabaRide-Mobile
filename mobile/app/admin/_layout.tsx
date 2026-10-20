@@ -1,29 +1,29 @@
-import { Tabs, Redirect, router } from "expo-router";
+import { Tabs, Redirect } from "expo-router";
 import { View, useWindowDimensions } from "react-native";
 import { LayoutDashboard } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQueryClient } from "@tanstack/react-query";
 import { InterfaceTheme } from "../../src/design/theme";
 import { Brand, Button, Empty, Screen, Txt, usePalette } from "../../src/design/ui";
 import { useProfile } from "../../src/design/data";
 import { QueryState } from "../../src/design/UserScreens";
 import { useAuthStore } from "../../src/store/authStore";
+import { useLogout } from "../../src/design/useLogout";
 
 export default function AdminTabs() {
+  const logout = useLogout();
   const palette = usePalette();
   const { width } = useWindowDimensions();
   const desktop = width >= 1024;
   const insets = useSafeAreaInsets();
   const auth = useAuthStore();
   const profile = useProfile();
-  const cache = useQueryClient();
   if (!auth.user) return <Redirect href="/(auth)/login" />;
   if (!profile.data || profile.isError) return <Screen title="Admin Panel" back={false}>
     <QueryState loading={profile.isLoading} error={profile.error} retry={() => profile.refetch()} />
   </Screen>;
   if (!profile.data.isAdmin) return <Screen title="Admin Panel" back={false}>
     <Empty title="Admin access required" message="Only an administrator can open this panel." />
-    <Button title="Sign Out" onPress={async () => { await auth.logout(); cache.clear(); router.replace("/(auth)/login"); }} />
+    <Button title="Sign Out" onPress={logout} />
   </Screen>;
   return <InterfaceTheme role="admin"><Tabs initialRouteName="index" screenOptions={{
     headerShown: false,

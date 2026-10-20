@@ -68,6 +68,7 @@ import { timeInputValue } from "./form-values";
 import { ShopPhotoEditor } from "./ShopPhotoEditor";
 import { ShopPhoto } from "./ShopPhoto";
 import { ShopApplicationStatus } from "./ShopApprovalScreens";
+import { useLogout } from "./useLogout";
 
 const statusLabels: Record<Order["status"], string> = {
   Pending: "New Orders",
@@ -773,6 +774,7 @@ export function DeclineOrderDesign({
   );
 }
 export function ShopProfileDesign() {
+  const logout = useLogout();
   const palette = usePalette();
   const { go } = useFlowNavigation();
   const owned = useOwnedShop();
@@ -808,7 +810,7 @@ export function ShopProfileDesign() {
         <MenuRow title="Shop Details" asset="ProfileScreen/Shop.png" onPress={() => go("shop-details")} />
         <MenuRow title="Security" asset="ProfileScreen/Security.png" onPress={() => go("security")} />
         <Button title="Switch to User Mode" icon={<UserRound size={18} color="white" />} onPress={() => router.replace("/(user)/profile")} />
-        <MenuRow title="Logout" color={palette.danger} asset="ProfileScreen/Logout.png" onPress={() => go("logout")} />
+        <MenuRow title="Logout" color={palette.danger} asset="ProfileScreen/Logout.png" onPress={logout} />
       </View>
     </Screen>
   );

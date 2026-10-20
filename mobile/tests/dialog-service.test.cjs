@@ -54,3 +54,25 @@ test('navigation cancels stale confirmations while keeping a success notice read
   settleDialog(getDialog().id, true);
   assert.equal(await notice, true);
 });
+
+test('async confirmation stays open and prevents duplicate or cancelled actions while busy', async () => {
+  let finish, calls = 0;
+  const action = new Promise(resolve => { finish = resolve; });
+  const result = showDialog({ ...options, onConfirm: async () => { calls++; await action; } });
+  const id = getDialog().id;
+  settleDialog(id, true);
+  assert.equal(getDialog().busy, true);
+  settleDialog(id, true); settleDialog(id, false);
+  assert.equal(calls, 1); assert.equal(getDialog().id, id);
+  finish(); assert.equal(await result, true); assert.equal(getDialog(), null);
+});
+
+test('failed logout actions keep the dialog open with an error and allow retry', async () => {
+  let calls = 0;
+  const result = showDialog({ ...options, onConfirm: async () => { if (++calls === 1) throw new Error('Try again'); } });
+  const id = getDialog().id;
+  settleDialog(id, true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(getDialog().busy, false); assert.equal(getDialog().error, 'Try again');
+  settleDialog(id, true); assert.equal(await result, true); assert.equal(calls, 2);
+});

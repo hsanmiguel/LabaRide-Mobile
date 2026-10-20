@@ -40,8 +40,10 @@ import PickerField from "./PickerField";
 import { validBirthdate } from "./form-values";
 import { useLaundryDraft } from "./store";
 import { ProfilePhotoControl } from "./ProfilePhotoControl";
+import { useLogout } from "./useLogout";
 
 export function UserProfileDesign() {
+  const logout = useLogout();
   const palette = usePalette();
   const { go } = useFlowNavigation();
   const user = useAuthStore((state) => state.user);
@@ -119,7 +121,7 @@ export function UserProfileDesign() {
               icon={<Asset name="shop.png" tint="white" size={20} />}
               onPress={() => owned.data?.approvalStatus === "Approved" ? router.replace("/shop/profile") : go("register-shop")}
             />
-            <Pressable accessibilityRole="button" accessibilityLabel="Logout" onPress={() => go("logout")} style={({ pressed }) => [styles.row, { minHeight: 54, marginTop: 4, paddingHorizontal: 16, borderRadius: 12, backgroundColor: pressed ? "#FDECEC" : "white", borderWidth: 1, borderColor: palette.line }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Logout" onPress={logout} style={({ pressed }) => [styles.row, { minHeight: 54, marginTop: 4, paddingHorizontal: 16, borderRadius: 12, backgroundColor: pressed ? "#FDECEC" : "white", borderWidth: 1, borderColor: palette.line }]}>
               <LogOut size={20} color={palette.danger} />
               <Txt style={[styles.grow, { color: palette.danger, fontWeight: "600" }]}>Logout</Txt>
               <ChevronRight size={18} color={palette.muted} />
@@ -525,11 +527,7 @@ export function ChangePasswordDesign({
     </Screen>
   );
 }
-export function AccountConfirmationDesign({
-  logout = false,
-}: {
-  logout?: boolean;
-}) {
+export function AccountConfirmationDesign() {
   const palette = usePalette();
   const { replaceFlow } = useFlowNavigation();
   const [busy, setBusy] = useState(false);
@@ -538,11 +536,10 @@ export function AccountConfirmationDesign({
   async function confirm() {
     setBusy(true);
     try {
-      if (!logout && auth.user) await api.delete(`/users/${auth.user.id}`);
+      if (auth.user) await api.delete(`/users/${auth.user.id}`);
       await auth.logout();
       cache.clear();
-      if (logout) router.replace("/(auth)/login");
-      else replaceFlow("account-deleted");
+      replaceFlow("account-deleted");
     } catch (error) {
       fail(error);
     } finally {
@@ -554,15 +551,11 @@ export function AccountConfirmationDesign({
       <View style={[styles.grow, styles.center]}>
         <Card style={{ width: "100%", padding: 24, gap: 24 }}>
           <Txt style={[styles.heading, { textAlign: "center" }]}>
-            {logout
-              ? "Are you sure want to logout your account?"
-              : "Are you sure want to delete\nyour account?"}
+            Are you sure want to delete your account?
           </Txt>
-          {!logout && (
-            <Txt style={[styles.muted, { textAlign: "center" }]}>
-              All data and binded accounts will be removed from the application
-            </Txt>
-          )}
+          <Txt style={[styles.muted, { textAlign: "center" }]}>
+            All data and binded accounts will be removed from the application
+          </Txt>
           <View style={styles.row}>
             <Button
               title="Cancel"
@@ -572,7 +565,7 @@ export function AccountConfirmationDesign({
               style={styles.grow}
             />
             <Button
-              title={logout ? "Confirm" : "Continue"}
+              title="Continue"
               busy={busy}
               color={palette.navy}
               onPress={confirm}

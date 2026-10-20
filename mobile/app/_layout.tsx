@@ -1,6 +1,8 @@
 import { InterfaceTheme } from "../src/design/theme";
 import { interfaceRole, rolePalette } from "../src/design/theme-tokens";
-import { Stack, useSegments } from "expo-router";
+import { useSegments } from "expo-router";
+import { PanelAccess } from "../src/navigation/PanelAccess";
+import { AppDialogHost } from "../src/design/AppDialogHost";
 import { useEffect } from "react";
 import { useAuthStore } from "../src/store/authStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -63,7 +65,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <InterfaceTheme role={interfaceRole(segments)}><Stack screenOptions={{ headerShown: false }} /></InterfaceTheme>
+        <InterfaceTheme role={interfaceRole(segments)}><PanelAccess /><AppDialogHost /></InterfaceTheme>
       </QueryClientProvider>
     </SafeAreaProvider>
   );

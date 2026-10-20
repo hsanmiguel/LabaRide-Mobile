@@ -49,9 +49,10 @@ export function ProfilePhotoControl({ userId, photoUrl }: { userId: number; phot
 
   async function remove() {
     if (active.current) return;
-    if (!await confirmAction("Remove profile photo", "Your profile will show the default avatar again.")) return;
-    active.current = true; setBusy(true); setError(null); setNotice(null);
+    active.current = true;
     try {
+      if (!await confirmAction("Remove profile photo", "Your profile will show the default avatar again.", { confirmLabel: "Remove Photo", destructive: true })) return;
+      setBusy(true); setError(null); setNotice(null);
       await api.delete(`/users/${userId}/photo`);
       await refresh(null);
       setFailedUrl(undefined);

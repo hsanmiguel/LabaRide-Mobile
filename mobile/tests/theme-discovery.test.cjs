@@ -26,6 +26,8 @@ test('role is determined by the active layout, including shared flows and mode s
   }
   assert.equal(interfaceRole(['(user)', 'shops', '[id]']), 'customer');
   assert.equal(interfaceRole(['(flows)', '[flow]']), 'customer');
+  assert.equal(interfaceRole(['admin', 'index']), 'admin');
+  assert.equal(rolePalette(interfaceRole(['admin', 'index'])).primary, '#0F4766');
   assert.equal(rolePalette(interfaceRole(['shop', 'profile'])).primary, '#321078');
   assert.equal(rolePalette(interfaceRole(['(user)', 'profile'])).primary, '#2457AD');
 });

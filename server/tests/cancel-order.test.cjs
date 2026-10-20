@@ -10,7 +10,7 @@ const { TransactionController } = require('../dist/controllers/transaction.contr
 
 async function invoke({ method = 'cancelTransaction', status = 'Pending', userId = 1,
   body = { reason: '  I changed my mind  ' }, race, missing = false, id = '42' } = {}) {
-  let row = missing ? null : { id: 42, userId: 1, shopId: 5, status, notes: '', totalAmount: 130, shop: { userId: 2 } };
+  let row = missing ? null : { id: 42, userId: 1, shopId: 5, status, notes: '', totalAmount: 130, shop: { userId: 2, approvalStatus: 'Approved' } };
   let writes = 0, error;
   const events = [];
   database.transaction = {
@@ -18,7 +18,7 @@ async function invoke({ method = 'cancelTransaction', status = 'Pending', userId
     updateMany: async ({ where, data }) => {
       writes++;
       if (race) row.status = race;
-      if (!row || Object.entries(where).some(([key, value]) => row[key] !== value)) return { count: 0 };
+      if (!row || Object.entries(where).some(([key, value]) => key === 'shop' ? row.shop.approvalStatus !== value.approvalStatus : row[key] !== value)) return { count: 0 };
       for (const [key, value] of Object.entries(data)) if (value !== undefined) row[key] = value;
       return { count: 1 };
     },

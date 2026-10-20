@@ -4,7 +4,7 @@ import { addressSelect } from '../validators/address.validator';
 export const userProfileSelect = {
   id: true, name: true, email: true, phone: true, birthdate: true,
   gender: true, zone: true, street: true, barangay: true, building: true,
-  ...addressSelect, isShopOwner: true, createdAt: true, updatedAt: true,
+  ...addressSelect, isShopOwner: true, isAdmin: true, createdAt: true, updatedAt: true,
   photo: { select: { updatedAt: true } },
 } as const;
 

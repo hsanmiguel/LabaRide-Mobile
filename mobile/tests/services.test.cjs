@@ -32,6 +32,11 @@ function harness({ confirmed = true, failure, services } = {}) {
       if (!(slot in hooks)) hooks[slot] = initial;
       return [hooks[slot], value => { hooks[slot] = typeof value === 'function' ? value(hooks[slot]) : value; }];
     },
+    useRef(initial) {
+      const slot = index++;
+      if (!(slot in hooks)) hooks[slot] = { current: initial };
+      return hooks[slot];
+    },
     useOwnedShop: () => result, useShop: () => result,
     useQueryClient: () => ({ invalidateQueries: async ({ queryKey }) => invalidations.push(queryKey[0]) }),
     api: { post: request('POST'), put: request('PUT'), delete: request('DELETE') },

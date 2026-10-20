@@ -5,8 +5,12 @@
   "main": "dist/server.js",
   "scripts": {
     "start": "node dist/server.js",
+    "predev": "npm run prisma:generate",
     "dev": "nodemon src/server.ts",
     "build": "tsc",
+    "admin:set": "ts-node src/scripts/set-admin.ts",
+    "admin:create": "ts-node src/scripts/create-admin.ts",
+    "test:approval": "npm run build && node --test tests/shop-approval.test.cjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",

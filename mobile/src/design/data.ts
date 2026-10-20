@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { router, useSegments } from "expo-router";
-import { Alert, Platform } from "react-native";
+import { showDialog } from "./dialog-service";
 import apiClient from "../api/client";
 import { useAuthStore } from "../store/authStore";
 
@@ -12,6 +12,7 @@ export interface Profile extends AddressData {
   name: string;
   email: string;
   isShopOwner: boolean;
+  isAdmin?: boolean;
   photoUrl?: string | null;
   phone?: string;
   birthdate?: string;
@@ -37,6 +38,10 @@ export interface KiloPrice {
   pricePerKilo: string | number;
 }
 export interface Shop extends AddressData {
+  approvalStatus: "Pending" | "Approved" | "Rejected" | "Suspended";
+  applicationVersion: number;
+  reviewReason?: string | null;
+  reviewedAt?: string | null;
   id: number;
   userId: number;
   shopName: string;
@@ -101,25 +106,16 @@ export function message(error: unknown) {
   return e?.error?.message || e?.message || "Please try again.";
 }
 export function notify(title: string, text: string) {
-  if (Platform.OS === "web" && typeof window !== "undefined") window.alert(title + "\n" + text);
-  else Alert.alert(title, text);
+  void showDialog({ title, message: text, kind: "notice" });
 }
-export function confirmAction(title: string, text: string): Promise<boolean> {
-  if (Platform.OS === "web") {
-    return Promise.resolve(typeof window !== "undefined" && window.confirm(title + "\n\n" + text));
-  }
-  return new Promise((resolve) => {
-    Alert.alert(title, text, [
-      { text: "No", style: "cancel", onPress: () => resolve(false) },
-      { text: "Yes", style: "destructive", onPress: () => resolve(true) },
-    ], { cancelable: true, onDismiss: () => resolve(false) });
-  });
+export function confirmAction(title: string, text: string, options: { confirmLabel?: string; destructive?: boolean } = {}): Promise<boolean> {
+  return showDialog({ title, message: text, kind: "confirm", ...options });
 }
 export function fail(error: unknown) {
   notify("Something went wrong", message(error));
 }
 export function unavailable(feature: string) {
-  Alert.alert(
+  notify(
     feature,
     "This service is currently unavailable. Please try again later.",
   );
@@ -171,6 +167,7 @@ export function useOwnedShop() {
   return useQuery({
     queryKey: ["shop", "owner", user?.id],
     enabled: !!user,
+    refetchInterval: 15000,
     queryFn: async () => {
       try {
         return await api.get<Shop>(`/shops/user/${user!.id}`);

@@ -16,6 +16,9 @@ export default function LaundryMap({
   useEffect(() => {
     // If running in browser environment
     if (typeof window === "undefined" || !containerRef.current) return;
+    const container = containerRef.current;
+    let disposed = false;
+    let activeMap: any = null;
 
     // Load leaflet CSS if not present
     if (!document.getElementById("leaflet-css")) {
@@ -28,15 +31,17 @@ export default function LaundryMap({
 
     function initMap() {
       const L = (window as any).L;
-      if (!L || !containerRef.current) return;
+      if (!L || disposed) return;
 
       // Clean up previous map if exists
-      if ((containerRef.current as any)._leaflet_map) {
-        (containerRef.current as any)._leaflet_map.remove();
+      if ((container as any)._leaflet_map) {
+        (container as any)._leaflet_map.stop();
+        (container as any)._leaflet_map.remove();
       }
 
-      const map = L.map(containerRef.current).setView([latitude, longitude], 14);
-      (containerRef.current as any)._leaflet_map = map;
+      const map = L.map(container, { zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false }).setView([latitude, longitude], 14);
+      activeMap = map;
+      (container as any)._leaflet_map = map;
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
@@ -106,11 +111,11 @@ export default function LaundryMap({
         });
       } else if (markers.length > 1) {
         const group = new L.featureGroup(markers);
-        map.fitBounds(group.getBounds().pad(0.3), { maxZoom: 13, minZoom: 10 });
+        map.fitBounds(group.getBounds().pad(0.3), { maxZoom: 13, minZoom: 10, animate: false });
       } else if (markers.length === 1) {
-        map.setView([validShops[0].parsedLat, validShops[0].parsedLng], 13);
+        map.setView([validShops[0].parsedLat, validShops[0].parsedLng], 13, { animate: false });
       } else {
-        map.setView([13.6217, 123.1948], 11);
+        map.setView([13.6217, 123.1948], 11, { animate: false });
       }
     }
 
@@ -124,9 +129,11 @@ export default function LaundryMap({
     }
 
     return () => {
-      if (containerRef.current && (containerRef.current as any)._leaflet_map) {
-        (containerRef.current as any)._leaflet_map.remove();
-        (containerRef.current as any)._leaflet_map = null;
+      disposed = true;
+      if (activeMap) {
+        activeMap.stop();
+        activeMap.remove();
+        if ((container as any)._leaflet_map === activeMap) (container as any)._leaflet_map = null;
       }
     };
   }, [shops, latitude, longitude, onSelect, onPin]);

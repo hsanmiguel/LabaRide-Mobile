@@ -44,7 +44,7 @@ export function ShopPhotoEditor({ shop }: { shop: Shop }) {
     if (active.current) return;
     active.current = true; setError(null); setSuccess(null);
     try {
-      if (!await confirmAction("Remove shop photo", "Customers will see the photo placeholder until you upload another photo.")) return;
+      if (!await confirmAction("Remove shop photo", "Customers will see the photo placeholder until you upload another photo.", { confirmLabel: "Remove Photo", destructive: true })) return;
       setBusy(true);
       await api.delete(`/shops/${shop.id}/photo`);
       await refresh(null);

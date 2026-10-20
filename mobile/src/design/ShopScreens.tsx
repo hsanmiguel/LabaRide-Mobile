@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Alert, Modal, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
+import { Modal, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import {
   Bell,
   ClipboardList,
@@ -17,7 +17,7 @@ import {
   XCircle,
   Trash2,
 } from "lucide-react-native";
-import { router } from "expo-router";
+import { router, Redirect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/authStore";
@@ -67,6 +67,7 @@ import PickerField from "./PickerField";
 import { timeInputValue } from "./form-values";
 import { ShopPhotoEditor } from "./ShopPhotoEditor";
 import { ShopPhoto } from "./ShopPhoto";
+import { ShopApplicationStatus } from "./ShopApprovalScreens";
 
 const statusLabels: Record<Order["status"], string> = {
   Pending: "New Orders",
@@ -83,6 +84,15 @@ export function RegisterShopDesign() {
   const auth = useAuthStore();
   const owned = useOwnedShop();
   const cache = useQueryClient();
+  const applicationPalette = usePalette();
+  const { width: applicationWidth } = useWindowDimensions();
+  const [editingRejected, setEditingRejected] = useState(false);
+  function editRejected() {
+    if (!owned.data) return;
+    setValues({ ...addressValues(owned.data, "Work"), shopName: owned.data.shopName,
+      contactNumber: owned.data.contactNumber || "", openingTime: owned.data.openingTime || "", closingTime: owned.data.closingTime || "" });
+    setEditingRejected(true);
+  }
   async function openExistingShop() {
     setBusy(true); setError(null);
     try {
@@ -105,31 +115,49 @@ export function RegisterShopDesign() {
     if (!auth.user) return router.replace("/(auth)/login");
     setBusy(true); setError(null);
     try {
-      const result = await api.post<Shop & { user: Profile; token: string }>("/shops", {
+      const payload = {
         shopName: values.shopName.trim(), contactNumber: values.contactNumber.trim(),
         openingTime: values.openingTime.trim(), closingTime: values.closingTime.trim(), ...addressPayload(values),
-      });
-      await auth.setAuth(result.user, result.token);
-      cache.setQueryData(["user", result.user.id], result.user);
-      const { user, token, ...shop } = result;
-      cache.setQueryData(["shop", "owner", user.id], shop);
+      };
+      if (editingRejected && owned.data) {
+        const shop = await api.put<Shop>(`/shops/${owned.data.id}/application`, payload);
+        cache.setQueryData(["shop", "owner", auth.user.id], shop);
+        setEditingRejected(false);
+      } else {
+        const result = await api.post<Shop & { user: Profile; token: string }>("/shops", payload);
+        await auth.setAuth(result.user, result.token);
+        cache.setQueryData(["user", result.user.id], result.user);
+        const { user, token, ...shop } = result;
+        cache.setQueryData(["shop", "owner", user.id], shop);
+      }
       void cache.invalidateQueries({ queryKey: ["shops"] });
-      router.replace("/shop/home");
     } catch (failure) {
       setError(message(failure));
       void owned.refetch();
     } finally { setBusy(false); }
   }
+  if (!auth.user) return <Redirect href="/(auth)/login" />;
   return <Screen>
-    <View style={{ padding: 8, paddingTop: 24 }}>
-      <Brand compact />
-      <Txt style={[styles.title, { fontSize: 30, marginVertical: 24 }]}>Register your shop</Txt>
-      {owned.data ? <Card>
-        <Txt style={styles.heading}>Your shop is already registered</Txt>
-        <Txt style={styles.muted}>{owned.data.shopName}</Txt>
+    <View style={{ width: "100%", maxWidth: 1040, alignSelf: "center", paddingTop: 8, gap: 24 }}>
+      <View style={[styles.between, { marginBottom: 4 }]}>
+        <Brand />
+        <Pressable accessibilityRole="button" accessibilityLabel="Back to Profile" onPress={() => router.replace("/(user)/profile")}
+          style={({ pressed }) => ({ minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, opacity: pressed ? 0.6 : 1 })}>
+          <UserRound size={17} color={applicationPalette.muted} /><Txt style={{ fontSize: 12, color: applicationPalette.muted }}>My account</Txt>
+        </Pressable>
+      </View>
+      <View style={{ gap: 6 }}>
+        <Txt accessibilityRole="header" style={{ fontSize: applicationWidth < 480 ? 27 : 32, lineHeight: 42, fontWeight: "700", color: applicationPalette.ink }}>Shop application</Txt>
+        <Txt style={{ color: applicationPalette.muted, lineHeight: 22 }}>{owned.data && !editingRejected ? "Track your progress on the way to opening your shop." : "Bring your laundry business to LabaRide."}</Txt>
+      </View>
+      <QueryState loading={owned.isLoading} error={owned.error} retry={() => owned.refetch()} />
+      {owned.data && !editingRejected ? <>
+        <ShopApplicationStatus shop={owned.data} onRefresh={() => { void owned.refetch(); }} onEdit={editRejected}
+          onContinue={() => router.replace("/(user)/profile")} onOpen={openExistingShop} busy={busy}
+          refreshing={owned.isFetching} lastCheckedAt={owned.dataUpdatedAt} />
         <FormError error={error} />
-        <Button title="Open My Shop" busy={busy} onPress={openExistingShop} />
-      </Card> : <>
+      </> : !owned.isLoading && !owned.error && <>
+        <Txt style={[styles.muted, { marginBottom: 20 }]}>An admin must approve your application before your shop appears to customers and shop mode becomes available.</Txt>
         <Section title="Shop Information" />
         {[["shopName", "Shop Name *"], ["contactNumber", "Contact Number *"]].map(([key, label]) =>
           <Field key={key} label={label} value={values[key]} onChangeText={value => setValues(current => ({ ...current, [key]: value }))} />)}
@@ -142,7 +170,8 @@ export function RegisterShopDesign() {
               onChange={value => setValues(current => ({ ...current, [key]: value }))} /></View>)}
         </View>
         <FormError error={error} />
-        <Button title="Register Shop" busy={busy} onPress={submit} style={{ marginVertical: 24 }} />
+        <Button title={editingRejected ? "Resubmit for Approval" : "Submit for Approval"} busy={busy} onPress={submit} style={{ marginVertical: 24 }} />
+        {editingRejected && <Button title="Cancel" outline onPress={() => setEditingRejected(false)} />}
       </>}
     </View>
   </Screen>;
@@ -528,7 +557,7 @@ export function ShopOrderDetailsDesign({
             title="Complete Order"
             color={palette.primary}
             busy={busy}
-            onPress={async () => { if (await confirmAction("Complete order", "Mark this order as completed?")) await update("Completed"); }}
+            onPress={async () => { if (await confirmAction("Complete order", "Mark this order as completed?", { confirmLabel: "Complete Order" })) await update("Completed"); }}
           />
         ) : undefined
       }
@@ -813,7 +842,9 @@ export function ShopDetailsFormDesign() {
       });
       await cache.invalidateQueries({ queryKey: ["shop"] });
       await cache.invalidateQueries({ queryKey: ["shops"] });
-      router.back();
+      const auth = useAuthStore.getState();
+      if (auth.user && auth.token) await auth.setAuth({ ...auth.user, isShopOwner: false }, auth.token);
+      router.replace({ pathname: "/(flows)/[flow]", params: { flow: "register-shop" } });
     } catch (failure) { setError(message(failure)); }
     finally { setBusy(false); }
   }
@@ -823,6 +854,7 @@ export function ShopDetailsFormDesign() {
     <View style={styles.stack}>
       <QueryState loading={owned.isLoading} error={owned.error} retry={() => owned.refetch()} />
       {owned.data && <ShopPhotoEditor shop={owned.data} />}
+      <Txt style={styles.muted}>Changes to shop details require admin approval again. Your listing and shop mode will be paused while the changes are reviewed.</Txt>
       <Card>
         <Field label="Shop ID" value={String(owned.data?.id || "")} editable={false} />
         {[["shopName", "Shop Name *"], ["contactNumber", "Contact Number *"]].map(([key, label]) =>
@@ -851,6 +883,7 @@ export function ServicesDesign() {
   const [packagePricing, setPackagePricing] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const deleting = useRef(false);
   const cache = useQueryClient();
   function open(kind: "service" | "price", item?: Service | KiloPrice) {
     setDialog(kind);
@@ -922,11 +955,12 @@ export function ServicesDesign() {
     }
   }
   async function removeService(service: Service) {
-    if (!shop || busy) return;
-    setBusy(true);
+    if (!shop || busy || deleting.current) return;
+    deleting.current = true;
     setError(null);
     try {
-      if (!await confirmAction("Delete Service", `Delete "${service.serviceName}"? Existing orders will stay available.`)) return;
+      if (!await confirmAction("Delete Service", `Delete "${service.serviceName}"? Existing orders will stay available.`, { confirmLabel: "Delete Service", destructive: true })) return;
+      setBusy(true);
       await api.delete(`/shops/${shop.id}/services/${service.id}`);
       await Promise.all([
         cache.invalidateQueries({ queryKey: ["shop"] }),
@@ -934,7 +968,7 @@ export function ServicesDesign() {
       ]);
       if (editing?.id === service.id && dialog === "service") setDialog(null);
     } catch (failure) { setError(message(failure)); }
-    finally { setBusy(false); }
+    finally { deleting.current = false; setBusy(false); }
   }
   return (
     <Screen

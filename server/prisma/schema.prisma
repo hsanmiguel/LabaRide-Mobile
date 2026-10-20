@@ -22,6 +22,13 @@ enum AddressType {
   Apartment
 }
 
+enum ShopApprovalStatus {
+  Pending
+  Approved
+  Rejected
+  Suspended
+}
+
 model User {
   id          Int       @id @default(autoincrement())
   name        String
@@ -35,10 +42,12 @@ model User {
   barangay    String?
   building    String?
   isShopOwner Boolean   @default(false) @map("is_shop_owner")
+  isAdmin     Boolean   @default(false) @map("is_admin")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   shop                 Shop?
+  reviewedShops        Shop[] @relation("ShopReviewer")
   photo                UserPhoto?
   transactions         Transaction[]
   // Nullable for existing accounts and historical records; new address saves are validated by the API.
@@ -70,6 +79,12 @@ model Shop {
   closingTime   String   @map("closing_time")
   address       String?
   createdAt     DateTime @default(now()) @map("created_at")
+  approvalStatus ShopApprovalStatus @default(Pending) @map("approval_status")
+  applicationVersion Int @default(1) @map("application_version")
+  reviewReason   String? @map("review_reason")
+  reviewedAt     DateTime? @map("reviewed_at")
+  reviewedById   Int? @map("reviewed_by_id")
+  reviewedBy     User? @relation("ShopReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   services             ShopService[]
@@ -91,6 +106,7 @@ model Shop {
   access_code          String?
   dropoff_instructions String?
 
+  @@index([approvalStatus, createdAt])
   @@map("shops")
 }
 

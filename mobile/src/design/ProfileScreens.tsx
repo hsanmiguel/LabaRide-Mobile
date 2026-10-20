@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Alert, Modal, Pressable, Switch, View } from "react-native";
+import { Modal, Pressable, Switch, View } from "react-native";
 import { ArrowLeft, ChevronRight, LogOut, Pencil } from "lucide-react-native";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -114,10 +114,10 @@ export function UserProfileDesign() {
               <ProfileAction title="Transactions" asset="transaction.png" onPress={() => go("history")} />
             </View>
             <Button
-              title={owned.data ? "Switch to Shop Mode" : "Create Shop"}
+              title={owned.data?.approvalStatus === "Approved" ? "Switch to Shop Mode" : owned.data ? "Shop Application Status" : "Apply to Open a Shop"}
               color={palette.blue}
               icon={<Asset name="shop.png" tint="white" size={20} />}
-              onPress={() => owned.data ? router.replace("/shop/profile") : go("register-shop")}
+              onPress={() => owned.data?.approvalStatus === "Approved" ? router.replace("/shop/profile") : go("register-shop")}
             />
             <Pressable accessibilityRole="button" accessibilityLabel="Logout" onPress={() => go("logout")} style={({ pressed }) => [styles.row, { minHeight: 54, marginTop: 4, paddingHorizontal: 16, borderRadius: 12, backgroundColor: pressed ? "#FDECEC" : "white", borderWidth: 1, borderColor: palette.line }]}>
               <LogOut size={20} color={palette.danger} />
@@ -445,7 +445,7 @@ export function ChangePasswordDesign({
   async function save() {
     if (!user) return;
     if (!current || password.length < 6 || (!security && password !== confirm))
-      return Alert.alert(
+      return notify(
         "Change Password",
         "Enter your current password and matching new passwords with at least 6 characters.",
       );

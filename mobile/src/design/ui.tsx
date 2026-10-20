@@ -109,7 +109,7 @@ export function Screen({ title, children, footer, dark = false, background, back
   const palette = usePalette();
   const { width } = useWindowDimensions();
   const segments = useSegments() as string[];
-  const inTab = segments[0] === "shop" || (segments[0] === "(user)" && !segments.some(s => ["order", "orders", "shops"].includes(s)));
+  const inTab = segments[0] === "admin" || segments[0] === "shop" || (segments[0] === "(user)" && !segments.some(s => ["order", "orders", "shops"].includes(s)));
   useWebAccessibility(palette.primary);
   const content = { width: "100%" as const, maxWidth: 1200, alignSelf: "center" as const, padding: padded ? width >= 768 ? 32 : 20 : 0, paddingBottom: padded ? 32 : 0, flexGrow: 1 };
   return <SafeAreaView style={{ flex: 1, backgroundColor: dark ? palette.primary : background || palette.surface }} edges={inTab ? ["top", "left", "right"] : ["top", "left", "right", "bottom"]}>

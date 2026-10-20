@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { test, before, after } = require('node:test');
 const sharp = require('sharp');
 const jwt = require('jsonwebtoken');
-const database = { shop: {}, shopPhoto: {} };
+const database = { user: {}, shop: {}, shopPhoto: {} };
 const databasePath = require.resolve('../dist/config/database');
 require.cache[databasePath] = { id: databasePath, filename: databasePath, loaded: true, exports: { __esModule: true, default: database } };
 const envPath = require.resolve('../dist/config/env');
@@ -10,16 +10,17 @@ require.cache[envPath] = { id: envPath, filename: envPath, loaded: true, exports
 const { prepareShopPhoto, MAX_PHOTO_BYTES } = require('../dist/utils/shop-photo');
 const app = require('../dist/app').default;
 let server, root, input, stored, writes = 0, revision = 0;
-const shop = { id: 5, userId: 1, shopName: 'Photo test shop', services: [] };
+const shop = { id: 5, userId: 1, shopName: 'Photo test shop', approvalStatus: 'Approved', services: [] };
 const token = userId => jwt.sign({ userId, isShopOwner: true }, 'photo-test-only-secret');
 before(async () => {
+  database.user.findUnique = async ({ where }) => ({ id: where.id, isShopOwner: where.id === 1, isAdmin: false });
   input = await sharp({ create: { width: 1800, height: 1200, channels: 3, background: '#2457AD' } }).png().toBuffer();
   database.shop.findUnique = async ({ where }) => where.id === 5 || where.userId === 1 ? { ...shop, photo: stored ? { updatedAt: stored.updatedAt } : null } : null;
   database.shop.findMany = async ({ include }) => {
     assert.deepEqual(include.photo, { select: { updatedAt: true } }, 'Listing must not load image bytes');
     return [{ ...shop, photo: stored ? { updatedAt: stored.updatedAt } : null }];
   };
-  database.shopPhoto.findUnique = async ({ where }) => where.shopId === 5 ? stored : null;
+  database.shopPhoto.findFirst = async ({ where }) => where.shopId === 5 && shop.approvalStatus === 'Approved' ? stored : null;
   database.shopPhoto.upsert = async ({ create, update }) => { writes++; stored = { shopId: 5, bytes: stored ? update.bytes : create.bytes, updatedAt: new Date(1700000000000 + ++revision) }; return { updatedAt: stored.updatedAt }; };
   database.shopPhoto.deleteMany = async () => { writes++; stored = null; return { count: 1 }; };
   server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });

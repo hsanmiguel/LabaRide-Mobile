@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -113,7 +112,7 @@ export function SplashDesign() {
   const proceed = () =>
     router.replace(
       user
-        ? user.isShopOwner
+        ? user.isAdmin ? "/admin" : user.isShopOwner
           ? "/shop/home"
           : "/(user)/home"
         : isGuest
@@ -167,7 +166,7 @@ export function LoginDesign() {
       );
       cache.clear();
       await setAuth(result.user, result.token);
-      router.replace(result.user.isShopOwner ? "/shop/home" : "/(user)/home");
+      router.replace(result.user.isAdmin ? "/admin" : result.user.isShopOwner ? "/shop/home" : "/(user)/home");
     } catch (error) {
       fail(error);
     } finally {

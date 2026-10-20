@@ -26,6 +26,7 @@ interface User {
   name: string;
   email: string;
   isShopOwner: boolean;
+  isAdmin?: boolean;
   photoUrl?: string | null;
 }
 

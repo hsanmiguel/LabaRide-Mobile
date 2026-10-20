@@ -1,9 +1,11 @@
 import { InterfaceTheme } from "../../src/design/theme";
 import { View, useWindowDimensions } from "react-native";
 import { useEffect } from "react";
-import { Tabs } from "expo-router";
+import { Tabs, Redirect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Asset, Brand, Txt, usePalette } from "../../src/design/ui";
+import { Asset, Brand, Txt, Screen, usePalette } from "../../src/design/ui";
+import { QueryState } from "../../src/design/UserScreens";
+import { useAuthStore } from "../../src/store/authStore";
 import { useOwnedShop } from "../../src/design/data";
 import { socketService } from "../../src/services/socket.service";
 export default function ShopTabs() {
@@ -12,9 +14,13 @@ export default function ShopTabs() {
   const desktop = width >= 1024;
   const insets = useSafeAreaInsets();
   const owned = useOwnedShop();
+  const user = useAuthStore(state => state.user);
   useEffect(() => {
-    if (owned.data) socketService.joinShopRoom(owned.data.id);
+    if (owned.data?.approvalStatus === "Approved") socketService.joinShopRoom(owned.data.id);
   }, [owned.data?.id]);
+  if (!user) return <Redirect href="/(auth)/login" />;
+  if (owned.isLoading || owned.isError) return <Screen><QueryState loading={owned.isLoading} error={owned.error} retry={() => owned.refetch()} /></Screen>;
+  if (owned.data?.approvalStatus !== "Approved") return <Redirect href={{ pathname: "/(flows)/[flow]", params: { flow: "register-shop" } }} />;
   return (
     <InterfaceTheme role="shop"><Tabs
       initialRouteName="home"

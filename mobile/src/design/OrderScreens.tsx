@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Alert, Modal, Pressable, ScrollView, View } from "react-native";
+import { Modal, Pressable, ScrollView, View } from "react-native";
 import {
   CalendarDays,
   ChevronUp,
@@ -1073,9 +1073,10 @@ export function CancelOrderDesign({ id }: { id: number }) {
       return;
     }
     submitting.current = true;
-    setBusy(true); setError(null);
+    setError(null);
     try {
-      if (!await confirmAction("Cancel Order", "Are you sure you want to cancel your order?")) return;
+      if (!await confirmAction("Cancel Order", "Are you sure you want to cancel your order?", { confirmLabel: "Cancel Order", destructive: true })) return;
+      setBusy(true);
       const cancelled = await api.put<Order>(`/transactions/${id}/cancel`, { reason: reason.trim() });
       for (const key of ["user-orders", "shop-orders"]) {
         cache.setQueriesData<Order[]>({ queryKey: [key] }, (current) =>

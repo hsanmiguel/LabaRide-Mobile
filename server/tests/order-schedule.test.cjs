@@ -50,10 +50,12 @@ async function invoke({ minutes, serviceName = '8Kg Full Service Laundry', deliv
   Date.now = () => now + waitingMinutes * 60000;
   let writes = 0, error;
   database.user = { findUnique: async () => ({ id: 1, name: 'Test User', email: 'test@example.invalid' }) };
-  database.shop = { findUnique: async () => ({ id: 1, services: [
+  database.shop = { findUnique: async () => ({ id: 1, approvalStatus: 'Approved', services: [
     { id: 1, serviceName, price: new Prisma.Decimal(215), packageKilos: new Prisma.Decimal(8) },
   ], kiloPrices: [] }) };
   database.transaction = { create: async ({ data }) => { writes++; return { ...data, id: 1 }; } };
+  database.$transaction = async callback => callback(database);
+  database.$queryRaw = async () => [];
   const schedule = new Date(now + minutes * 60000).toISOString();
   const req = { body: { ...input(schedule), serviceName: 'Client claims Wash Only', serviceIds: [1], deliveryType },
     user: { userId: 1 }, app: { get: () => undefined } };

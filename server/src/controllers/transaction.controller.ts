@@ -23,6 +23,7 @@ export class TransactionController {
         include: { services: true, kiloPrices: true },
       });
       if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
+      if (shop.approvalStatus !== 'Approved') return sendError(res, 'This shop is not approved to receive orders', 'SHOP_NOT_APPROVED', 403);
       const pricing = priceOrder({
         kilos: validatedData.kiloAmount,
         serviceIds: validatedData.serviceIds,
@@ -42,7 +43,13 @@ export class TransactionController {
       });
       if (scheduleError) return sendError(res, scheduleError, 'INVALID_SCHEDULE', 400);
 
-      const transaction = await prisma.transaction.create({
+      const transaction = await prisma.$transaction(async tx => {
+        // Hold the approval row until the booking commits so a simultaneous
+        // suspension cannot slip between the approval check and order creation.
+        await tx.$queryRaw`SELECT id FROM shops WHERE id = ${shop.id} FOR SHARE`;
+        const current = await tx.shop.findUnique({ where: { id: shop.id }, select: { approvalStatus: true } });
+        if (current?.approvalStatus !== 'Approved') return null;
+        return tx.transaction.create({
         data: {
           ...transactionData,
           ...pricing,
@@ -57,7 +64,9 @@ export class TransactionController {
           } : undefined
         },
         include: { items: true }
+        });
       });
+      if (!transaction) return sendError(res, 'This shop is not approved to receive orders', 'SHOP_NOT_APPROVED', 403);
 
       // Emit socket event to shop room
       (req.app.get('io') as Server | undefined)?.to(`shop_${transaction.shopId}`).emit('new_transaction', transaction);
@@ -112,17 +121,18 @@ export class TransactionController {
       const transactionId = parseInt(req.params.id);
       const { status, notes } = updateStatusSchema.parse(req).body;
       const existing = await prisma.transaction.findUnique({
-        where: { id: transactionId }, include: { shop: { select: { userId: true } } },
+        where: { id: transactionId }, include: { shop: { select: { userId: true, approvalStatus: true } } },
       });
       if (!existing) return sendError(res, 'Order not found', 'NOT_FOUND', 404);
       if (existing.shop.userId !== req.user!.userId) {
         return sendError(res, 'Only the shop owner can update order status', 'FORBIDDEN', 403);
       }
+      if (existing.shop.approvalStatus !== 'Approved') return sendError(res, 'Admin approval is required to manage shop orders', 'SHOP_NOT_APPROVED', 403);
       if (existing.status === 'Cancelled' && status !== 'Cancelled') {
         return sendError(res, 'A cancelled order cannot be accepted or completed', 'CONFLICT', 409);
       }
       const updated = await prisma.transaction.updateMany({
-        where: { id: transactionId, status: existing.status },
+        where: { id: transactionId, status: existing.status, shop: { approvalStatus: 'Approved' } },
         data: { status, notes: notes || undefined },
       });
       if (!updated.count) return sendError(res, 'Order status changed. Refresh and try again.', 'CONFLICT', 409);

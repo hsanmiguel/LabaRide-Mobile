@@ -26,20 +26,28 @@ export class ShopController {
       const result = await prisma.user.update({
         where: { id: userId },
         data: {
-          isShopOwner: true,
-          shop: { create: { ...validatedData, address: formatAddress(validatedData) } },
+          isShopOwner: false,
+          shop: { create: { ...validatedData, address: formatAddress(validatedData), approvalStatus: 'Pending' } },
         },
         select: { ...userProfileSelect, shop: true },
       });
       const { shop, ...user } = result;
-      const token = jwt.sign({ userId, isShopOwner: true }, env.JWT_SECRET, { expiresIn: '7d' });
-      return sendSuccess(res, { ...(shop ? withShopPhoto(shop) : {}), user, token }, 'Shop registered successfully', 201);
+      const token = jwt.sign({ userId, isShopOwner: false }, env.JWT_SECRET, { expiresIn: '7d' });
+      return sendSuccess(res, { ...(shop ? withShopPhoto(shop) : {}), user, token }, 'Shop application submitted for admin approval', 201);
     } catch (error) {
       next(error);
     }
   }
 
   static async updateShop(req: AuthRequest, res: Response, next: NextFunction) {
+    return ShopController.saveApplication(req, res, next, 'Approved');
+  }
+
+  static async resubmitApplication(req: AuthRequest, res: Response, next: NextFunction) {
+    return ShopController.saveApplication(req, res, next, 'Rejected');
+  }
+
+  private static async saveApplication(req: AuthRequest, res: Response, next: NextFunction, expectedStatus: 'Approved' | 'Rejected') {
     try {
       const shopId = Number(req.params.shopId);
       const shop = await prisma.shop.findUnique({ where: { id: shopId } });
@@ -47,17 +55,28 @@ export class ShopController {
       if (shop.userId !== req.user!.userId) {
         return sendError(res, 'Only the shop owner can update this shop', 'FORBIDDEN', 403);
       }
+      if (shop.approvalStatus !== expectedStatus) {
+        return sendError(res, 'Refresh your application before making changes', 'CONFLICT', 409);
+      }
       const data = registerShopSchema.parse(req).body;
-      const updated = await prisma.shop.update({
-        where: { id: shopId }, data: { ...data, address: formatAddress(data) }, include: { photo: shopPhotoSelection },
+      const updated = await prisma.$transaction(async tx => {
+        const changed = await tx.shop.updateMany({
+          where: { id: shopId, approvalStatus: expectedStatus },
+          data: { ...data, address: formatAddress(data), approvalStatus: 'Pending', applicationVersion: { increment: 1 }, reviewReason: null, reviewedAt: null, reviewedById: null },
+        });
+        if (!changed.count) return null;
+        await tx.user.update({ where: { id: shop.userId }, data: { isShopOwner: false } });
+        return tx.shop.findUniqueOrThrow({ where: { id: shopId }, include: { photo: shopPhotoSelection } });
       });
-      return sendSuccess(res, withShopPhoto(updated), 'Shop details updated successfully');
+      if (!updated) return sendError(res, 'Shop status changed. Refresh and try again.', 'CONFLICT', 409);
+      return sendSuccess(res, withShopPhoto(updated), 'Shop details submitted for admin approval');
     } catch (error) { next(error); }
   }
 
   static async getAllShops(req: Request, res: Response, next: NextFunction) {
     try {
       const shops = await prisma.shop.findMany({
+        where: { approvalStatus: 'Approved' },
         include: {
           photo: shopPhotoSelection,
           services: true,
@@ -73,6 +92,7 @@ export class ShopController {
   static async getRecentShops(req: Request, res: Response, next: NextFunction) {
     try {
       const shops = await prisma.shop.findMany({
+        where: { approvalStatus: 'Approved' },
         orderBy: { createdAt: 'desc' },
         take: 10,
         include: { services: true, photo: shopPhotoSelection }
@@ -83,7 +103,7 @@ export class ShopController {
     }
   }
 
-  static async getShopById(req: Request, res: Response, next: NextFunction) {
+  static async getShopById(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const shopId = parseInt(req.params.shopId);
       const shop = await prisma.shop.findUnique({
@@ -98,15 +118,19 @@ export class ShopController {
       });
 
       if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
+      if (shop.approvalStatus !== 'Approved' && shop.userId !== req.user?.userId && !req.user?.isAdmin) {
+        return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
+      }
       return sendSuccess(res, withShopPhoto(shop), 'Shop details retrieved');
     } catch (error) {
       next(error);
     }
   }
 
-  static async getShopByUserId(req: Request, res: Response, next: NextFunction) {
+  static async getShopByUserId(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const userId = parseInt(req.params.userId);
+      if (userId !== req.user?.userId && !req.user?.isAdmin) return sendError(res, 'You can only view your own application', 'FORBIDDEN', 403);
       const shop = await prisma.shop.findUnique({
         where: { userId },
         include: { services: true, photo: shopPhotoSelection }

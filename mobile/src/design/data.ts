@@ -172,7 +172,11 @@ export function useOwnedShop() {
       try {
         return await api.get<Shop>(`/shops/user/${user!.id}`);
       } catch (e) {
-        if ((e as { error?: { code?: string } })?.error?.code === "NOT_FOUND")
+        const code = (e as { code?: string; error?: { code?: string } })?.code ||
+          (e as { code?: string; error?: { code?: string } })?.error?.code;
+        const msg = (e as { message?: string; error?: { message?: string } })?.message ||
+          (e as { message?: string; error?: { message?: string } })?.error?.message;
+        if (code === "NOT_FOUND" || msg === "Shop not found")
           return null;
         throw e;
       }

@@ -28,6 +28,8 @@ import { LOGO_SPLASH_B64 } from "./mapLogo";
 // @rnmapbox/maps throws at import-time when native code isn't linked.
 let MapboxMapComponent: React.ComponentType<MapProps> | null = null;
 
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
+
 const isMapboxNativeAvailable = Boolean(
   NativeModules.RNMBXModule ||
   NativeModules.RNMBXLocationModule ||
@@ -39,7 +41,7 @@ if (isMapboxNativeAvailable) {
     // Only require when we're sure native modules are linked
     MapboxMapComponent = require("./MapboxMap").default;
   } catch {
-    // Still not available — fall back to Leaflet WebView
+    // Still not available — fall back to Mapbox WebView
     MapboxMapComponent = null;
   }
 }
@@ -50,10 +52,10 @@ export default function LaundryMap(props: MapProps) {
   if (MapboxMapComponent) {
     return <MapboxMapComponent {...props} />;
   }
-  return <LaundryMapLeaflet {...props} />;
+  return <LaundryMapWebview {...props} />;
 }
 
-function LaundryMapLeaflet({
+function LaundryMapWebview({
   shops = [],
   latitude = CAMSUR_CENTER.latitude,
   longitude = CAMSUR_CENTER.longitude,
@@ -174,26 +176,25 @@ function LaundryMapLeaflet({
       display: flex;
       flex-direction: column;
       align-items: center;
-      filter: drop-shadow(0 3px 6px rgba(0,0,0,0.4));
+      filter: drop-shadow(0 3px 8px rgba(0,0,0,0.45));
     }
     .pin-marker-bubble {
       background: #EF4444;
-      border: 2px solid white;
+      border: 2.5px solid #B91C1C;
       border-radius: 50%;
-      width: 34px;
-      height: 34px;
+      width: 40px;
+      height: 40px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
-      font-size: 16px;
+      box-shadow: 0 2px 8px rgba(239,68,68,0.45);
     }
     .pin-marker-arrow {
       width: 0;
       height: 0;
-      border-left: 5px solid transparent;
-      border-right: 5px solid transparent;
-      border-top: 7px solid #EF4444;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 10px solid #EF4444;
       margin-top: -1px;
     }
 
@@ -242,8 +243,11 @@ function LaundryMapLeaflet({
       minZoom: 10
     }).setView(defaultCenter, 13);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const mapboxToken = '${MAPBOX_TOKEN}';
+    L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=' + mapboxToken, {
       maxZoom: 19,
+      tileSize: 256,
+      attribution: '© <a href="https://www.mapbox.com/about/maps/">Mapbox</a>',
     }).addTo(map);
 
     const shopIcon = L.divIcon({
@@ -262,12 +266,17 @@ function LaundryMapLeaflet({
     const pinIcon = L.divIcon({
       className: '',
       html: '<div class="pin-marker-pin">' +
-              '<div class="pin-marker-bubble">📍</div>' +
+              '<div class="pin-marker-bubble">' +
+                '<svg width="22" height="22" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">' +
+                  '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>' +
+                  '<circle cx="12" cy="9" r="2.5" fill="#EF4444" stroke="#EF4444"/>' +
+                '</svg>' +
+              '</div>' +
               '<div class="pin-marker-arrow"></div>' +
             '</div>',
-      iconSize: [34, 41],
-      iconAnchor: [17, 41],
-      popupAnchor: [0, -41]
+      iconSize: [40, 48],
+      iconAnchor: [20, 48],
+      popupAnchor: [0, -48]
     });
 
     const markers = [];

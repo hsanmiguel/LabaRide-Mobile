@@ -4,7 +4,7 @@ import { useSegments } from "expo-router";
 import { PanelAccess } from "../src/navigation/PanelAccess";
 import { AppDialogHost } from "../src/design/AppDialogHost";
 import { useEffect, useRef } from "react";
-import { BlurTargetView } from "expo-blur";
+import { BlurTargetView as ExpoBlurTargetView } from "expo-blur";
 import { useAuthStore } from "../src/store/authStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -13,8 +13,16 @@ import { Inter_400Regular } from "@expo-google-fonts/inter/400Regular";
 import { Inter_500Medium } from "@expo-google-fonts/inter/500Medium";
 import { Inter_600SemiBold } from "@expo-google-fonts/inter/600SemiBold";
 import { Inter_700Bold } from "@expo-google-fonts/inter/700Bold";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Platform, View } from "react-native";
 import { socketService } from "../src/services/socket.service";
+
+const isNativeBlurSupported = Platform.OS === "web" || Platform.OS === "ios" || (
+  typeof globalThis !== "undefined" && (globalThis as any).expo?.modules
+    ? Boolean((globalThis as any).expo.modules.ExpoBlur)
+    : true
+);
+
+const BlurTargetView = isNativeBlurSupported ? ExpoBlurTargetView : View;
 
 const queryClient = new QueryClient();
 

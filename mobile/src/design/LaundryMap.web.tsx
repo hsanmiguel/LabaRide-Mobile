@@ -3,6 +3,8 @@ import { View } from "react-native";
 import type { MapProps } from "./LaundryMap";
 import { LOGO_SPLASH_B64 } from "./mapLogo";
 
+const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
+
 export default function LaundryMap({
   shops = [],
   latitude = 13.6217,
@@ -43,9 +45,14 @@ export default function LaundryMap({
       activeMap = map;
       (container as any)._leaflet_map = map;
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-      }).addTo(map);
+      L.tileLayer(
+        `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`,
+        {
+          maxZoom: 19,
+          tileSize: 256,
+          attribution: '© <a href="https://www.mapbox.com/about/maps/">Mapbox</a>',
+        }
+      ).addTo(map);
 
       const markers: any[] = [];
       const shopIcon = L.divIcon({
@@ -63,9 +70,21 @@ export default function LaundryMap({
 
       const pinIcon = L.divIcon({
         className: "",
-        html: '<div style="background:#EF4444;color:white;border:2px solid white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 8px rgba(0,0,0,0.3);font-size:14px;">📍</div>',
-        iconSize: [30, 30],
-        iconAnchor: [15, 15],
+        html: '<div style="display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.35));cursor:pointer;">' +
+                '<div style="background-color:#FFFFFF;border:2.5px solid #1E54AB;border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.25);">' +
+                  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1E54AB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+                    '<line x1="2" x2="5" y1="12" y2="12"></line>' +
+                    '<line x1="19" x2="22" y1="12" y2="12"></line>' +
+                    '<line x1="12" x2="12" y1="2" y2="5"></line>' +
+                    '<line x1="12" x2="12" y1="19" y2="22"></line>' +
+                    '<circle cx="12" cy="12" r="7"></circle>' +
+                    '<circle cx="12" cy="12" r="3"></circle>' +
+                  '</svg>' +
+                '</div>' +
+                '<div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #1E54AB;margin-top:-1px;"></div>' +
+              '</div>',
+        iconSize: [38, 45],
+        iconAnchor: [19, 45],
       });
 
       const validShops = shops

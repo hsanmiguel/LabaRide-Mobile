@@ -1,4 +1,4 @@
-import { coordinates, nearestShops } from "./discovery";
+import { coordinates, nearestShops, nearbyShops } from "./discovery";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import {
@@ -115,7 +115,7 @@ export function UserHomeDesign() {
   const deliveryAddress = useLaundryDraft(state => state.address);
   const selectedAddress = deliveryAddress || profile.data;
   const location = address(selectedAddress);
-  const nearby = nearestShops(shops.data || [], selectedAddress);
+  const nearby = nearbyShops(shops.data || [], selectedAddress);
   const point = coordinates(selectedAddress);
   const [filter, setFilter] = useState("all");
   const firstName = (profile.data?.name || user?.name || "").trim().split(/\s+/)[0];
@@ -192,7 +192,7 @@ export function ShopsDesign({
   const { nearby } = useLocalSearchParams<{ nearby?: string }>();
   const profile = useProfile();
   const point = coordinates(draft.address || profile.data);
-  const nearest = nearestShops(shops.data || [], draft.address || profile.data);
+  const nearest = nearbyShops(shops.data || [], draft.address || profile.data);
   const filtered = (nearby === "true" ? nearest.map(item => item.shop) : shops.data || []).filter((s) =>
     `${s.shopName} ${address(s)}`.toLowerCase().includes(query.toLowerCase()),
   );

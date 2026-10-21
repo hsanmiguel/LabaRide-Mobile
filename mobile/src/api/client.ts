@@ -32,14 +32,14 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized (e.g., clear token)
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      // Handle unauthorized or expired token by logging out so the user can re-authenticate
       useAuthStore.getState().logout();
     }
     if (!error.response && ["ERR_NETWORK", "ECONNABORTED", "ETIMEDOUT"].includes(error.code)) {
       return Promise.reject(connectionErrorMessage(API_URL, error.code !== "ERR_NETWORK", Platform.OS));
     }
-    return Promise.reject(error.response?.data || error.message);
+    return Promise.reject(error.response?.data?.error || error.response?.data?.message || error.response?.data || error.message);
   },
 );
 

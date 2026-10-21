@@ -7,6 +7,12 @@ import { useAuthStore } from "../store/authStore";
 import { Button, Txt, usePalette } from "./ui";
 import { dismissAllDialogs, dismissConfirmations, getDialog, settleDialog, subscribeToDialogs } from "./dialog-service";
 
+const isNativeBlurSupported = Platform.OS === "web" || Platform.OS === "ios" || (
+  typeof globalThis !== "undefined" && (globalThis as any).expo?.modules
+    ? Boolean((globalThis as any).expo.modules.ExpoBlur)
+    : true
+);
+
 export function AppDialogHost({ blurTarget }: { blurTarget?: RefObject<View | null> }) {
   const dialog = useSyncExternalStore(subscribeToDialogs, getDialog, getDialog);
   const [presented, setPresented] = useState(dialog);
@@ -48,7 +54,7 @@ export function AppDialogHost({ blurTarget }: { blurTarget?: RefObject<View | nu
     aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message"
     onRequestClose={cancel} onShow={() => { if (Platform.OS === "web") safeAction.current?.focus(); }}>
     <Animated.View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: 20, opacity }}>
-      {current.backdrop === "blur" && <BlurView testID="dialog-backdrop-blur" pointerEvents="none" accessible={false}
+      {current.backdrop === "blur" && isNativeBlurSupported && <BlurView testID="dialog-backdrop-blur" pointerEvents="none" accessible={false}
         intensity={32} tint="default" blurTarget={Platform.OS === "android" ? blurTarget : undefined}
         blurMethod={Platform.OS === "android" ? "dimezisBlurView" : undefined} style={StyleSheet.absoluteFill} />}
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: current.backdrop === "blur" ? "rgba(18, 24, 40, 0.28)" : "rgba(18, 24, 40, 0.48)" }]} />

@@ -115,10 +115,7 @@ function MapContent({
           allowOverlap
         >
           <View style={styles.pinMarkerPin}>
-            <View style={styles.pinMarkerBubble}>
-              <MapPin size={22} color="white" fill="white" />
-            </View>
-            <View style={styles.pinMarkerArrow} />
+            <MapPin size={38} color="#FFFFFF" fill="#EF4444" strokeWidth={1.6} />
           </View>
         </Mapbox.MarkerView>
       )}
@@ -515,31 +512,10 @@ const styles = StyleSheet.create({
   pinMarkerPin: {
     alignItems: "center",
     justifyContent: "center",
-  },
-  pinMarkerBubble: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#EF4444",
-    borderWidth: 2.5,
-    borderColor: "#B91C1C",
-    alignItems: "center",
-    justifyContent: "center",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
     shadowRadius: 5,
-    elevation: 6,
-  },
-  pinMarkerArrow: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 7,
-    borderRightWidth: 7,
-    borderTopWidth: 10,
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    borderTopColor: "#EF4444",
-    marginTop: -1,
+    elevation: 8,
   },
 });

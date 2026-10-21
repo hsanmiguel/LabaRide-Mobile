@@ -70,17 +70,14 @@ export default function LaundryMap({
 
       const pinIcon = L.divIcon({
         className: "",
-        html: '<div style="display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 3px 8px rgba(0,0,0,0.45));cursor:pointer;">' +
-                '<div style="background-color:#EF4444;border:2.5px solid #B91C1C;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(239,68,68,0.45);">' +
-                  '<svg width="22" height="22" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">' +
-                    '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>' +
-                    '<circle cx="12" cy="9" r="2.5" fill="#EF4444" stroke="#EF4444"/>' +
-                  '</svg>' +
-                '</div>' +
-                '<div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:10px solid #EF4444;margin-top:-1px;"></div>' +
+        html: '<div style="display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 4px 8px rgba(0,0,0,0.5));cursor:pointer;">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 24 24" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+                  '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0z"/>' +
+                  '<circle cx="12" cy="10" r="3" fill="#FFFFFF"/>' +
+                '</svg>' +
               '</div>',
-        iconSize: [40, 48],
-        iconAnchor: [20, 48],
+        iconSize: [38, 38],
+        iconAnchor: [19, 38],
       });
 
       const validShops = shops

@@ -111,11 +111,14 @@ function MapContent({
         <Mapbox.MarkerView
           id="pinned-location"
           coordinate={[centerLng, centerLat]}
-          anchor={{ x: 0.5, y: 0.5 }}
+          anchor={{ x: 0.5, y: 1 }}
           allowOverlap
         >
-          <View style={styles.pinBubble}>
-            <Txt style={{ color: "white", fontSize: 16 }}>📍</Txt>
+          <View style={styles.pinMarkerPin}>
+            <View style={styles.pinMarkerBubble}>
+              <MapPin size={22} color="white" fill="white" />
+            </View>
+            <View style={styles.pinMarkerArrow} />
           </View>
         </Mapbox.MarkerView>
       )}
@@ -508,5 +511,35 @@ const styles = StyleSheet.create({
   noResults: {
     padding: 16,
     alignItems: "center",
+  },
+  pinMarkerPin: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pinMarkerBubble: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#EF4444",
+    borderWidth: 2.5,
+    borderColor: "#B91C1C",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 6,
+  },
+  pinMarkerArrow: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 7,
+    borderRightWidth: 7,
+    borderTopWidth: 10,
+    borderLeftColor: "transparent",
+    borderRightColor: "transparent",
+    borderTopColor: "#EF4444",
+    marginTop: -1,
   },
 });

@@ -70,21 +70,17 @@ export default function LaundryMap({
 
       const pinIcon = L.divIcon({
         className: "",
-        html: '<div style="display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.35));cursor:pointer;">' +
-                '<div style="background-color:#FFFFFF;border:2.5px solid #1E54AB;border-radius:50%;width:38px;height:38px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.25);">' +
-                  '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1E54AB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-                    '<line x1="2" x2="5" y1="12" y2="12"></line>' +
-                    '<line x1="19" x2="22" y1="12" y2="12"></line>' +
-                    '<line x1="12" x2="12" y1="2" y2="5"></line>' +
-                    '<line x1="12" x2="12" y1="19" y2="22"></line>' +
-                    '<circle cx="12" cy="12" r="7"></circle>' +
-                    '<circle cx="12" cy="12" r="3"></circle>' +
+        html: '<div style="display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 3px 8px rgba(0,0,0,0.45));cursor:pointer;">' +
+                '<div style="background-color:#EF4444;border:2.5px solid #B91C1C;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(239,68,68,0.45);">' +
+                  '<svg width="22" height="22" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">' +
+                    '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>' +
+                    '<circle cx="12" cy="9" r="2.5" fill="#EF4444" stroke="#EF4444"/>' +
                   '</svg>' +
                 '</div>' +
-                '<div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #1E54AB;margin-top:-1px;"></div>' +
+                '<div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:10px solid #EF4444;margin-top:-1px;"></div>' +
               '</div>',
-        iconSize: [38, 45],
-        iconAnchor: [19, 45],
+        iconSize: [40, 48],
+        iconAnchor: [20, 48],
       });
 
       const validShops = shops

@@ -10,6 +10,9 @@ datasource db {
 
 enum TransactionStatus {
   Pending
+  Accepted
+  Queued
+  Ready
   Processing
   Completed
   Cancelled
@@ -77,6 +80,12 @@ model Shop {
   building      String?
   openingTime   String   @map("opening_time")
   closingTime   String   @map("closing_time")
+  deliveryMinKm Decimal? @map("delivery_min_km") @db.Decimal(7, 2)
+  deliveryMaxKm Decimal? @map("delivery_max_km") @db.Decimal(7, 2)
+  pickupMinKm   Decimal? @map("pickup_min_km") @db.Decimal(7, 2)
+  pickupMaxKm   Decimal? @map("pickup_max_km") @db.Decimal(7, 2)
+  pickupEnabled Boolean  @default(false) @map("pickup_enabled")
+  acceptingOrders Boolean @default(true) @map("accepting_orders")
   address       String?
   createdAt     DateTime @default(now()) @map("created_at")
   approvalStatus ShopApprovalStatus @default(Pending) @map("approval_status")
@@ -169,12 +178,23 @@ model Transaction {
   voucherDiscount Decimal           @default(0) @map("voucher_discount") @db.Decimal(10, 2)
   totalAmount     Decimal           @map("total_amount") @db.Decimal(10, 2)
   deliveryType    String            @map("delivery_type")
+  collectionMethod String          @default("Dropoff") @map("collection_method")
+  collectionAddress Json?          @map("collection_address")
   zone            String?
   street          String?
   barangay        String?
   building        String?
-  scheduledDate   DateTime          @map("scheduled_date") @db.Date
-  scheduledTime   DateTime          @map("scheduled_time") @db.Time()
+  requestedPickupAt DateTime? @map("requested_pickup_at") @db.Timestamptz(3)
+  confirmedPickupAt DateTime? @map("confirmed_pickup_at") @db.Timestamptz(3)
+  receivedAt DateTime? @map("received_at") @db.Timestamptz(3)
+  processingStartedAt DateTime? @map("processing_started_at") @db.Timestamptz(3)
+  estimatedReadyAt DateTime? @map("estimated_ready_at") @db.Timestamptz(3)
+  estimateUpdatedAt DateTime? @map("estimate_updated_at") @db.Timestamptz(3)
+  estimateReason String? @map("estimate_reason")
+  readyAt DateTime? @map("ready_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  scheduledDate   DateTime?         @map("scheduled_date") @db.Date
+  scheduledTime   DateTime?         @map("scheduled_time") @db.Time()
   paymentMethod   String            @default("Cash on Delivery") @map("payment_method")
   notes           String?
   status          TransactionStatus @default(Pending)

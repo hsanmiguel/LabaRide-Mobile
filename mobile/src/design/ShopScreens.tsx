@@ -57,8 +57,11 @@ import {
   type Profile,
   type Service,
 } from "./data";
+import { TurnaroundDetails } from "./TurnaroundDetails";
+import { deliveryDay } from "./delivery-slots";
 import { OrderCard, StatusBadge, Totals } from "./OrderScreens";
 import { QueryState } from "./UserScreens";
+import { distanceFields, distanceSettingsError } from "./service-area";
 import LaundryMap from "./LaundryMap";
 import { AddressFields, DeliveryDetails, FormError } from "./AddressFields";
 import { addressError, addressPayload, addressValues } from "./address";
@@ -72,6 +75,9 @@ import { useLogout } from "./useLogout";
 
 const statusLabels: Record<Order["status"], string> = {
   Pending: "New Orders",
+  Accepted: "Awaiting Laundry",
+  Queued: "Received / Queued",
+  Ready: "Ready Orders",
   Processing: "Ongoing Orders",
   Completed: "Completed Orders",
   Cancelled: "Cancelled Orders",
@@ -355,6 +361,9 @@ export function ShopTransactionsDesign() {
   const filters: Record<string, string> = {
     All: "",
     Pending: "Pending",
+    Accepted: "Accepted",
+    Queued: "Queued",
+    Ready: "Ready",
     Cancelled: "Cancelled",
     "In Progress": "Processing",
     Completed: "Completed",
@@ -428,6 +437,9 @@ export function CustomersDesign({ filter }: { filter?: Order["status"] }) {
   const [query, setQuery] = useState("");
   const statuses: Order["status"][] = [
     "Pending",
+    "Accepted",
+    "Queued",
+    "Ready",
     "Cancelled",
     "Processing",
     "Completed",
@@ -509,11 +521,20 @@ export function ShopOrderDetailsDesign({
   const order = result.data?.find((o) => o.id === id);
   const [busy, setBusy] = useState(false);
   const cache = useQueryClient();
-  async function update(status: Order["status"]) {
+  const [estimateDate, setEstimateDate] = useState("");
+  const [estimateTime, setEstimateTime] = useState("");
+  const [estimateReason, setEstimateReason] = useState("");
+  useEffect(() => {
+    setEstimateDate(order?.estimatedReadyAt ? deliveryDay(order.estimatedReadyAt) : "");
+    setEstimateTime(order?.estimatedReadyAt ? new Date(order.estimatedReadyAt).toLocaleTimeString("en-GB", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit" }) : "");
+    setEstimateReason("");
+  }, [id, order?.estimatedReadyAt]);
+  async function update(status: Order["status"], extra: Record<string, unknown> = {}) {
     setBusy(true);
     try {
-      await api.put(`/transactions/${id}/status`, { status });
+      await api.put(`/transactions/${id}/status`, { status, ...extra });
       await cache.invalidateQueries({ queryKey: ["shop-orders"] });
+      await cache.invalidateQueries({ queryKey: ["user-orders"] });
     } catch (error) {
       fail(error);
     } finally {
@@ -546,21 +567,12 @@ export function ShopOrderDetailsDesign({
         )
       }
       footer={
-        order.status === "Pending" ? (
-          <Button
-            title="Accept"
-            color={palette.primary}
-            busy={busy}
-            onPress={() => update("Processing")}
-          />
-        ) : order.status === "Processing" ? (
-          <Button
-            title="Complete Order"
-            color={palette.primary}
-            busy={busy}
-            onPress={async () => { if (await confirmAction("Complete order", "Mark this order as completed?", { confirmLabel: "Complete Order" })) await update("Completed"); }}
-          />
-        ) : undefined
+        !["Completed", "Cancelled"].includes(order.status) ? <Button
+          title={({ Pending: "Accept order", Accepted: "Confirm laundry received", Queued: "Start processing", Processing: "Mark laundry ready", Ready: order.deliveryType === "Deliver" ? "Confirm delivered to customer" : "Confirm collected by customer" } as Record<string, string>)[order.status]}
+          busy={busy} onPress={async () => {
+            const next = ({ Pending: "Accepted", Accepted: "Queued", Queued: "Processing", Processing: "Ready", Ready: "Completed" } as Record<string, Order["status"]>)[order.status];
+            if (await confirmAction("Update laundry status", ({ Accepted: "Accept this order? Processing will begin only when you select Start processing.", Queued: "Has the laundry arrived at the shop? It will enter your queue.", Processing: "Start processing now? The processing start time will be recorded.", Ready: "Is the laundry finished and ready for return?", Completed: order.deliveryType === "Deliver" ? "Has the customer received the return delivery?" : "Has the customer collected their finished laundry?" } as Record<string, string>)[next], { confirmLabel: "Confirm" })) await update(next);
+          }} /> : undefined
       }
     >
       <Card style={{ borderRadius: 16, padding: 20 }}>
@@ -577,6 +589,12 @@ export function ShopOrderDetailsDesign({
         <Section title={order.deliveryType === "Pickup" ? "Pickup Location" : "Delivery Address"} />
         <Txt style={styles.muted}>{address(order)}</Txt>
         <DeliveryDetails value={order} />
+        <PriceRow label="Getting laundry to the shop" value={order.collectionMethod === "ShopPickup" ? "Shop collects from customer" : "Customer dropoff"} />
+        {order.collectionMethod === "ShopPickup" && order.collectionAddress && <>
+          <Section title="Laundry Collection Address" />
+          <Txt style={styles.muted}>{address(order.collectionAddress)}</Txt>
+          <DeliveryDetails value={order.collectionAddress} />
+        </>}
         <Section title="Order Details" />
         <View
           style={{ backgroundColor: palette.soft, padding: 16, borderRadius: 12 }}
@@ -606,10 +624,21 @@ export function ShopOrderDetailsDesign({
           title={transaction ? "Payment Information" : "Customer Details"}
         />
         <PriceRow label="Payment Type" value={order.paymentMethod} />
-        <PriceRow
-          label="Scheduled Date"
-          value={new Date(order.scheduledDate).toLocaleDateString()}
-        />
+        <TurnaroundDetails order={order} />
+        {order.status === "Accepted" && order.requestedPickupAt && !order.confirmedPickupAt && <Button title="Confirm requested laundry pickup" outline busy={busy} onPress={() => update(order.status, { confirmPickup: true })} />}
+        {["Queued", "Processing"].includes(order.status) && <View style={{ gap: 10 }}>
+          <Section title="Estimated ready time" />
+          <Txt style={styles.muted}>Base the estimate on your queue. Processing time starts only when you select Start processing. All times are Philippine time.</Txt>
+          <PickerField label="Ready date" mode="date" value={estimateDate} onChange={setEstimateDate} />
+          <PickerField label="Ready time" mode="time" value={estimateTime} onChange={setEstimateTime} />
+          <Field label="Reason for revised estimate" placeholder="Example: More laundry in the queue" value={estimateReason} onChangeText={setEstimateReason} />
+          <Button title={order.estimatedReadyAt ? "Update ready estimate" : "Send ready estimate"} outline busy={busy} onPress={() => {
+            const time = timeInputValue(estimateTime);
+            const timestamp = time && estimateDate ? Date.parse(estimateDate + "T" + time + ":00+08:00") : NaN;
+            if (!Number.isFinite(timestamp) || timestamp <= Date.now()) { fail(new Error("Choose a future ready date and time.")); return; }
+            void update(order.status, { estimatedReadyAt: new Date(timestamp).toISOString(), estimateReason });
+          }} />
+        </View>}
         {!!order.notes && (
           <>
             <Section
@@ -823,27 +852,39 @@ export function ShopDetailsFormDesign() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const initializedShop = useRef<number | null>(null);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
   useEffect(() => {
     if (owned.data && initializedShop.current !== owned.data.id) {
       initializedShop.current = owned.data.id;
       setValues({
       ...addressValues(owned.data, "Work"), shopName: owned.data.shopName,
-      contactNumber: owned.data.contactNumber || "", openingTime: owned.data.openingTime || "", closingTime: owned.data.closingTime || ""
+      contactNumber: owned.data.contactNumber || "", openingTime: owned.data.openingTime || "", closingTime: owned.data.closingTime || "",
+      pickupEnabled: String(owned.data.pickupEnabled || false),
+      acceptingOrders: String(owned.data.acceptingOrders !== false),
+      ...Object.fromEntries(distanceFields.map(field => [field, owned.data![field] == null ? "" : String(owned.data![field])]))
       });
     }
   }, [owned.data]);
   async function save() {
     if (!owned.data || busy) return;
-    const validation = !timeInputValue(values.openingTime) || !timeInputValue(values.closingTime) ? "Choose valid opening and closing times." : addressError(values);
+    const validation = !timeInputValue(values.openingTime) || !timeInputValue(values.closingTime) ? "Choose valid opening and closing times." : addressError(values)
+      || distanceSettingsError({ ...values, pickupEnabled: values.pickupEnabled === "true" });
     if (validation) { setError(validation); return; }
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setSavedMessage(null);
     try {
-      await api.put<Shop>("/shops/" + owned.data.id, {
+      const updated = await api.put<Shop>("/shops/" + owned.data.id, {
         ...addressPayload(values), shopName: values.shopName,
-        contactNumber: values.contactNumber, openingTime: values.openingTime, closingTime: values.closingTime
+        contactNumber: values.contactNumber, openingTime: values.openingTime, closingTime: values.closingTime,
+        pickupEnabled: values.pickupEnabled === "true",
+        acceptingOrders: values.acceptingOrders !== "false",
+        ...Object.fromEntries(distanceFields.map(field => [field, values[field]?.trim() ? Number(values[field]) : null]))
       });
       await cache.invalidateQueries({ queryKey: ["shop"] });
       await cache.invalidateQueries({ queryKey: ["shops"] });
+      if (updated.approvalStatus === "Approved") {
+        setSavedMessage("Changes saved. Your shop remains approved and visible.");
+        return;
+      }
       const auth = useAuthStore.getState();
       if (auth.user && auth.token) await auth.setAuth({ ...auth.user, isShopOwner: false }, auth.token);
       router.replace({ pathname: "/(flows)/[flow]", params: { flow: "register-shop" } });
@@ -851,17 +892,21 @@ export function ShopDetailsFormDesign() {
     finally { setBusy(false); }
   }
   return <Screen title="Shop Details" background={palette.surface} footer={<View>
+    {!!savedMessage && <Txt accessibilityLiveRegion="polite" style={{ color: palette.primary, marginBottom: 12 }}>{savedMessage}</Txt>}
     <FormError error={error} /><Button title="Save Changes" color={palette.navy} busy={busy} onPress={save} />
   </View>}>
     <View style={styles.stack}>
       <QueryState loading={owned.isLoading} error={owned.error} retry={() => owned.refetch()} />
       {owned.data && <ShopPhotoEditor shop={owned.data} />}
-      <Txt style={styles.muted}>Changes to shop details require admin approval again. Your listing and shop mode will be paused while the changes are reviewed.</Txt>
+      <Txt style={styles.muted}>Hours, contact details, and service areas update immediately. Changing the shop name or location requires admin approval and pauses your listing and shop mode until reviewed.</Txt>
       <Card>
         <Field label="Shop ID" value={String(owned.data?.id || "")} editable={false} />
         {[["shopName", "Shop Name *"], ["contactNumber", "Contact Number *"]].map(([key, label]) =>
           <Field key={key} label={label} value={values[key] || ""} onChangeText={value => setValues(current => ({ ...current, [key]: value }))} />)}
         <Section title="Business Hours" />
+        <Choice label="Accept orders during business hours" selected={values.acceptingOrders !== "false"}
+          onPress={() => setValues(current => ({ ...current, acceptingOrders: current.acceptingOrders === "false" ? "true" : "false" }))} />
+        <Txt style={styles.muted}>Turn this off to temporarily close your shop to new orders. Hours use Philippine time.</Txt>
         <View style={styles.row}>
           {[["openingTime", "Opening Time *", "08:00"], ["closingTime", "Closing Time *", "18:00"]].map(([key, label, initialValue]) =>
             <View key={key} style={styles.grow}><PickerField label={label} mode="time" value={values[key] || ""} initialValue={initialValue}
@@ -869,6 +914,15 @@ export function ShopDetailsFormDesign() {
         </View>
         <Section title="Shop Address" />
         <AddressFields values={values} setValues={setValues} />
+        <Section title="Delivery & Laundry Collection Areas" />
+        <Txt style={styles.muted}>Distances use a straight-line radius from your pinned shop location. Leave a minimum blank for 0 km and a maximum blank for no distance limit.</Txt>
+        <Choice label="Offer laundry collection from customers" selected={values.pickupEnabled === "true"}
+          onPress={() => setValues(current => ({ ...current, pickupEnabled: current.pickupEnabled === "true" ? "false" : "true" }))} />
+        <Txt style={styles.muted}>Collection means your shop collects unwashed laundry at the customer's address. Customers may still collect finished laundry at your shop without a distance limit.</Txt>
+        {distanceFields.filter(field => !field.startsWith("pickup") || values.pickupEnabled === "true").map(field =>
+          <Field key={field} label={`${field.startsWith("delivery") ? "Delivery" : "Collection"} ${field.includes("Min") ? "minimum" : "maximum"} distance (km)`}
+            keyboardType="decimal-pad" suffix="km" placeholder={field.includes("Min") ? "0" : "No limit"}
+            value={values[field] || ""} onChangeText={value => setValues(current => ({ ...current, [field]: value }))} />)}
       </Card>
     </View>
   </Screen>;

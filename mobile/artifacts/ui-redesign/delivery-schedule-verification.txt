@@ -1,0 +1,3 @@
+Requested laundry pickup verified in Chrome at widths 320, 390, 768 and 1440.
+Date selection, time selection, inline calendar, initial focus, Escape dismissal, fixed footer, viewport bounds, no horizontal overflow and saved checkout state passed. Shop estimate entry, explicit processing start, ready action and customer turnaround details also passed.
+Requests intercepted with isolated fixtures; no live orders created.

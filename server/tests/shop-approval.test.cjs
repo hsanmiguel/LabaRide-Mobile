@@ -8,6 +8,7 @@ const envPath = require.resolve('../dist/config/env');
 const secret = 'isolated-approval-test-secret-12345';
 require.cache[envPath] = { id: envPath, filename: envPath, loaded: true, exports: { env: { JWT_SECRET: secret, CORS_ORIGIN: '*' } } };
 const app = require('../dist/app').default;
+const originalClock = Date.now;
 let server, root, users, shops, orders, nextId, suspendAtCommit;
 const shopInput = { shopName: 'Test Laundry', contactNumber: '09123456789', openingTime: '08:00', closingTime: '18:00',
   address_line_1: '12 Main Street', city: 'Naga', state_province: 'Camarines Sur', postal_code: '4400', country: 'Philippines', address_type: 'Work' };
@@ -43,15 +44,17 @@ beforeEach(() => {
     updateMany: async ({ where, data }) => { let count = 0; for (const row of shops.values()) if (matches(row, where)) { for (const [key, value] of Object.entries(data)) row[key] = value?.increment ? row[key] + value.increment : value; count++; } return { count }; },
   };
   database.shopPhoto = { findFirst: async () => null };
+  database.shopService = { create: async ({ data }) => ({ id: 2, ...data }) };
   database.transaction = { create: async ({ data }) => { const row = { id: orders.length + 1, ...data }; orders.push(row); return row; } };
   database.$queryRaw = async () => { if (suspendAtCommit) shops.get(10).approvalStatus = 'Suspended'; return []; };
   database.$transaction = async callback => callback(database);
 });
 before(async () => {
+  Date.now = () => Date.parse('2026-10-22T02:00:00Z');
   server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
   root = `http://127.0.0.1:${server.address().port}/api`;
 });
-after(() => new Promise(resolve => server.close(resolve)));
+after(async () => { await new Promise(resolve => server.close(resolve)); Date.now = originalClock; });
 const token = (id, claims = {}) => jwt.sign({ userId: id, isShopOwner: true, isAdmin: true, ...claims }, secret);
 async function request(path, method = 'GET', body, id = 1, expected = 200) {
   const res = await fetch(root + path, { method, headers: { 'Content-Type': 'application/json', ...(id == null ? {} : { Authorization: `Bearer ${token(id)}` }) }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -150,6 +153,79 @@ test('approved shop identity edits return to review and cannot retain publicatio
   const result = await request('/shops/10', 'PUT', { ...shopInput, shopName: 'Changed identity' });
   assert.equal(result.approvalStatus, 'Pending'); assert.equal(users.get(1).isShopOwner, false);
   assert.deepEqual(await request('/shops'), []);
+});
+
+test('routine edits are immediately published without losing approval or shop access', async () => {
+  const pinned = { ...shopInput, latitude: 13.62, longitude: 123.19 };
+  await request('/shops', 'POST', pinned, 1, 201);
+  await decide('Approved');
+  const original = { ...shops.get(10) };
+  const result = await request('/shops/10', 'PUT', {
+    ...pinned, contactNumber: '09999999999', openingTime: '07:00', closingTime: '21:00',
+    pickupEnabled: true, deliveryMinKm: 0, deliveryMaxKm: 10, pickupMinKm: 1, pickupMaxKm: 5,
+    access_code: 'Gate 2', dropoff_instructions: 'Use the side entrance',
+    approvalStatus: 'Pending', userId: 2,
+  });
+  assert.equal(result.approvalStatus, 'Approved');
+  assert.equal(result.applicationVersion, original.applicationVersion);
+  assert.equal(result.reviewedById, original.reviewedById);
+  assert.equal(result.reviewedAt, original.reviewedAt.toISOString());
+  assert.equal(result.contactNumber, '09999999999');
+  assert.equal(result.deliveryMaxKm, 10);
+  assert.equal(result.pickupEnabled, true);
+  assert.equal(result.userId, 1);
+  assert.equal(users.get(1).isShopOwner, true);
+  assert.equal((await request('/shops', 'GET', undefined, null)).length, 1);
+  assert.equal((await request('/auth/verify-token', 'POST', {})).user.isShopOwner, true);
+  await request('/shops/10/services', 'POST', { serviceName: 'Wash', price: 25 }, 1, 201);
+  await request('/transactions', 'POST', order(), 2, 201);
+});
+
+test('resaving the same identity and normalizing empty address fields preserves approval', async () => {
+  await apply(); await decide('Approved');
+  const result = await request('/shops/10', 'PUT', {
+    ...shopInput, shopName: ' Test Laundry ', city: ' NAGA ', address_line_2: '',
+  });
+  assert.equal(result.approvalStatus, 'Approved');
+  assert.equal(users.get(1).isShopOwner, true);
+});
+
+test('each physical address or coordinate change requires a fresh review', async () => {
+  await request('/shops', 'POST', { ...shopInput, latitude: 13.62, longitude: 123.19 }, 1, 201);
+  await decide('Approved');
+  const original = { ...shops.get(10) };
+  for (const [field, value] of Object.entries({
+    address_line_1: '55 Other Street', address_line_2: 'Unit 2', city: 'Legazpi',
+    state_province: 'Albay', postal_code: '4500', country: 'Other Country', latitude: 13.63, longitude: 123.2,
+  })) {
+    shops.set(10, { ...original });
+    users.get(1).isShopOwner = true;
+    const result = await request('/shops/10', 'PUT', { ...shopInput, latitude: 13.62, longitude: 123.19, [field]: value });
+    assert.equal(result.approvalStatus, 'Pending', field);
+    assert.equal(result.applicationVersion, original.applicationVersion + 1);
+    assert.equal(result.reviewedAt, null);
+    assert.equal(users.get(1).isShopOwner, false);
+  }
+});
+
+test('a concurrent suspension cannot be overwritten by a routine edit', async () => {
+  await apply(); await decide('Approved');
+  suspendAtCommit = true;
+  await request('/shops/10', 'PUT', { ...shopInput, openingTime: '06:00' }, 1, 409);
+  assert.equal(shops.get(10).approvalStatus, 'Suspended');
+  assert.equal(shops.get(10).openingTime, shopInput.openingTime);
+});
+
+test('owners can temporarily close and reopen ordering without losing shop approval', async () => {
+  await apply(); await decide('Approved');
+  const closed = await request('/shops/10', 'PUT', { ...shopInput, acceptingOrders: false });
+  assert.equal(closed.approvalStatus, 'Approved');
+  assert.equal(users.get(1).isShopOwner, true);
+  await request('/transactions', 'POST', order(), 2, 409);
+  assert.equal(orders.length, 0);
+  const reopened = await request('/shops/10', 'PUT', { ...shopInput, acceptingOrders: true });
+  assert.equal(reopened.approvalStatus, 'Approved');
+  await request('/transactions', 'POST', order(), 2, 201);
 });
 
 test('an approval change between quote validation and booking commit blocks the booking', async () => {

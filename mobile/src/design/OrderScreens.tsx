@@ -1,18 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Modal, Pressable, ScrollView, View } from "react-native";
 import {
-  CalendarDays,
-  ChevronUp,
-  ChevronDown,
   Clock,
   CheckCircle2,
+  ChevronDown,
   History,
   Minus,
   Plus,
   Pencil,
   Truck,
 } from "lucide-react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthStore } from "../store/authStore";
@@ -52,8 +50,13 @@ import { AddressFields, DeliveryDetails, FormError } from "./AddressFields";
 import { message } from "./data";
 import { clothingNames, householdNames, useLaundryDraft } from "./store";
 import { orderPricing } from "./order-pricing";
-import { scheduleDayAvailable, validFutureSchedule, deliveryLeadMinutes, deliveryScheduleError, earliestDeliveryTime } from "./schedule";
+import { validateDeliveryTime } from "./delivery-slots";
+import { TurnaroundDetails, orderUpdateText } from "./TurnaroundDetails";
+import { DeliverySchedule } from "./DeliverySchedule";
 import { QueryState } from "./UserScreens";
+import { distanceKm, serviceAreaError, serviceAreaLabel } from "./service-area";
+import { shopAvailability } from "./shop-hours";
+import { useShopAvailability } from "./useShopAvailability";
 
 export function draftTotals() {
   const d = useLaundryDraft.getState();
@@ -87,12 +90,6 @@ export function Totals({ order }: { order?: Order }) {
 }
 export function EmbeddedOrderPanel({ children, footer }: { children: ReactNode; footer?: ReactNode; title?: string; background?: string }) {
   return <View style={{ gap: 16 }}>{children}{footer}</View>;
-}
-
-export function EmbeddedTimePicker({ visible, children }: {
-  visible?: boolean; children?: ReactNode; transparent?: boolean; animationType?: "fade" | "none"; onRequestClose?: () => void;
-}) {
-  return visible ? children : null;
 }
 
 export function LaundryCountDesign({ embedded = false, onDone }: { embedded?: boolean; onDone?: () => void } = {}) {
@@ -187,15 +184,43 @@ export function CheckoutDesign() {
   const { replaceFlow } = useFlowNavigation();
   const draft = useLaundryDraft();
   const user = useAuthStore(state => state.user);
+  const availability = useShopAvailability(draft.shop);
   const profile = useProfile();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const countdownTimers = useRef<{ timeout: ReturnType<typeof setTimeout>; interval: ReturnType<typeof setInterval> } | null>(null);
+  const cancelCountdown = useCallback(() => {
+    if (countdownTimers.current) {
+      clearTimeout(countdownTimers.current.timeout);
+      clearInterval(countdownTimers.current.interval);
+      countdownTimers.current = null;
+    }
+    setCountdown(null);
+  }, []);
+  useFocusEffect(useCallback(() => cancelCountdown, [cancelCountdown]));
   const [dialog, setDialog] = useState<"items" | "address" | "schedule" | null>(null);
+  const [transportOpen, setTransportOpen] = useState(false);
   const [addressForm, setAddressForm] = useState<Record<string, string>>({});
   const [addressFormError, setAddressFormError] = useState<string | null>(null);
+  const [addingAddress, setAddingAddress] = useState(false);
+  const [savingAddress, setSavingAddress] = useState(false);
+  const addressSaveInProgress = useRef(false);
   const cache = useQueryClient();
-  const deliveryAddress = draft.deliveryType === "Pickup" ? draft.shop : draft.address || profile.data;
+  const customerAddress = draft.address || profile.data;
+  const deliveryAddress = draft.deliveryType === "Pickup" ? draft.shop : customerAddress;
+  const areaError = draft.shop ?
+    (draft.deliveryType === "Deliver" ? serviceAreaError(draft.shop, customerAddress, "delivery") : null)
+    || (draft.collectionMethod === "ShopPickup" ? serviceAreaError(draft.shop, customerAddress, "pickup") : null) : null;
+  const customerDistance = distanceKm(draft.shop, customerAddress);
+  const transportOptions: { label: string; description: string; collectionMethod: "Dropoff" | "ShopPickup"; deliveryType: "Deliver" | "Pickup" }[] = [
+    { label: "Pickup & delivery", description: "The shop picks up your dirty laundry and delivers it back clean.", collectionMethod: "ShopPickup", deliveryType: "Deliver" },
+    { label: "Pickup only", description: "The shop picks up your dirty laundry. You collect it at the shop when clean.", collectionMethod: "ShopPickup", deliveryType: "Pickup" },
+    { label: "Delivery only", description: "You drop off your dirty laundry. The shop delivers it back clean.", collectionMethod: "Dropoff", deliveryType: "Deliver" },
+    { label: "I'll handle both trips", description: "You drop off your dirty laundry and collect it at the shop when clean.", collectionMethod: "Dropoff", deliveryType: "Pickup" },
+  ];
+  const selectedTransport = transportOptions.find(option => option.collectionMethod === (draft.collectionMethod || "Dropoff") && option.deliveryType === draft.deliveryType);
   const totals = draftTotals();
   const savedAddresses = useQuery({
     queryKey: ["saved-addresses", user?.id], enabled: !!user,
@@ -205,30 +230,77 @@ export function CheckoutDesign() {
     },
   });
   function editAddress() {
+    setAddingAddress(false);
     setAddressForm(addressValues(draft.address || profile.data));
     setAddressFormError(null);
     setDialog("address");
   }
-  function saveAddress() {
+  function addAddress() {
+    setAddressForm(addressValues(null));
+    setAddressFormError(null);
+    setAddingAddress(true);
+    setDialog("address");
+  }
+  async function saveAddress() {
+    if (addressSaveInProgress.current) return;
     const validation = addressError(addressForm);
     if (validation) { setAddressFormError(validation); return; }
-    draft.set({ address: addressPayload(addressForm) });
-    setDialog(null);
+    const payload = addressPayload(addressForm);
+    if (!addingAddress) {
+      draft.set({ address: payload });
+      setDialog(null);
+      return;
+    }
+    if (!user) { setAddressFormError("Log in to save another address."); return; }
+    addressSaveInProgress.current = true;
+    setSavingAddress(true);
+    setAddressFormError(null);
+    try {
+      const key = `labaride-addresses:${user.id}`;
+      const raw = await AsyncStorage.getItem(key);
+      const entries: Partial<Profile>[] = raw ? JSON.parse(raw) : [];
+      await AsyncStorage.setItem(key, JSON.stringify([...entries, payload]));
+      await cache.invalidateQueries({ queryKey: ["saved-addresses", user.id] });
+      draft.set({ address: payload });
+      setAddingAddress(false);
+      setDialog(null);
+    } catch (failure) {
+      setAddressFormError(message(failure));
+    } finally {
+      addressSaveInProgress.current = false;
+      setSavingAddress(false);
+    }
   }
-  async function submit() {
+  async function submit(confirmed = false) {
     if (!draft.shop || !draft.service) return;
     if (!user) { router.push("/(auth)/login"); return; }
-    if (submitting.current || busy) return;
+    const currentAvailability = shopAvailability(draft.shop);
+    if (!currentAvailability.isOpen) { setError(currentAvailability.message); return; }
+    if (submitting.current || busy || countdownTimers.current) return;
     if (dialog) { setError("Finish editing your order details before placing the order."); return; }
-    const locationError = addressError(deliveryAddress);
-    const scheduleError = deliveryScheduleError(draft.schedule, draft.service.serviceName, draft.deliveryType);
+    const locationError = addressError(deliveryAddress)
+      || (draft.collectionMethod === "ShopPickup" ? addressError(customerAddress) : null);
+    const scheduleError = draft.collectionMethod !== "ShopPickup" ? null : !draft.requestedPickupAt
+      ? "Choose your requested laundry pickup date and time."
+      : validateDeliveryTime(draft.requestedPickupAt, { ...draft.shop, preparationMinutes: 0 }, Date.now())?.replace(/delivery/gi, "pickup") || null;
     const validation = totals.kilos === null ? "Enter a weight above 0 kg with up to two decimal places." :
       totals.pricingError ? totals.pricingError :
       scheduleError ? scheduleError :
-        locationError && draft.deliveryType === "Pickup" ? "The shop address is incomplete. Ask the shop owner to update Shop Details before booking pickup." : locationError;
+        locationError && draft.deliveryType === "Pickup" && addressError(deliveryAddress) ? "The shop address is incomplete. Ask the shop owner to update Shop Details before booking pickup." : locationError || areaError;
     if (validation) { setError(validation); return; }
     if (totals.kilos === null || totals.subtotal === null || totals.total === null) return;
     setError(null);
+    if (!confirmed) {
+      const deadline = Date.now() + 5000;
+      setCountdown(5);
+      const interval = setInterval(() => setCountdown(Math.max(0, Math.ceil((deadline - Date.now()) / 1000))), 1000);
+      const timeout = setTimeout(() => {
+        cancelCountdown();
+        void submit(true);
+      }, 5000);
+      countdownTimers.current = { timeout, interval };
+      return;
+    }
     submitting.current = true;
     setBusy(true);
     try {
@@ -242,9 +314,10 @@ export function CheckoutDesign() {
         voucherDiscount: 0,
         totalAmount: totals.total,
         deliveryType: draft.deliveryType,
+        collectionMethod: draft.collectionMethod || "Dropoff",
+        ...(draft.collectionMethod === "ShopPickup" ? { collectionAddress: addressPayload(customerAddress!) } : {}),
         ...addressPayload(deliveryAddress!),
-        scheduledDate: draft.schedule,
-        scheduledTime: draft.schedule,
+        ...(draft.collectionMethod === "ShopPickup" ? { requestedPickupAt: draft.requestedPickupAt } : {}),
         paymentMethod: draft.paymentMethod,
         notes: draft.notes,
         items: Object.entries(draft.counts)
@@ -252,6 +325,7 @@ export function CheckoutDesign() {
           .map(([itemName, quantity]) => ({ itemName, quantity })),
       });
       await cache.invalidateQueries({ queryKey: ["user-orders"] });
+      draft.clearOrder();
       replaceFlow("order-complete", { id: String(order.id) });
     } catch (error) {
       if ((error as { error?: { code?: string } })?.error?.code === "PRICE_CHANGED" && draft.shop) {
@@ -301,11 +375,11 @@ export function CheckoutDesign() {
               <Txt style={styles.heading}>{totals.total === null ? "Enter weight" : money(totals.total)}</Txt>
             </View>
             <Button
-              title={user ? "Place Order" : "Log In to Place Order"}
+              title={user ? availability.isOpen ? "Place Order" : "Shop closed" : "Log In to Place Order"}
               color={palette.navy}
-              onPress={submit}
+              onPress={() => submit()}
               busy={busy}
-              disabled={!!dialog}
+              disabled={!!dialog || countdown !== null || (!!user && !availability.isOpen)}
             />
           </View>
         </View>
@@ -313,6 +387,7 @@ export function CheckoutDesign() {
     >
       <View style={[styles.stack, { width: "100%", maxWidth: 760, alignSelf: "center" }]}>
         <QueryState loading={profile.isLoading} error={profile.error} retry={() => profile.refetch()} />
+        {!availability.isOpen && <View accessibilityRole="alert"><FormError error={availability.message} /></View>}
         <Card>
           <Section title="Shop & Selected Services" />
           <Txt style={styles.heading}>{draft.shop?.shopName}</Txt>
@@ -329,26 +404,56 @@ export function CheckoutDesign() {
           {!draft.serviceIds.length && <Txt style={{ color: palette.navy }}>{draft.service.serviceName}: {servicePriceLabel(draft.service)}</Txt>}
         </Card>
         <Card>
-          <Section title="Delivery or Pickup" />
-          <View style={[styles.row, { flexWrap: "wrap" }]}>
-            <Choice label="Delivery" selected={draft.deliveryType === "Deliver"} onPress={() => { draft.set({ deliveryType: "Deliver" }); setError(null); }} />
-            <Choice label="Pickup from Shop" selected={draft.deliveryType === "Pickup"} onPress={() => { draft.set({ deliveryType: "Pickup" }); setError(null); }} />
-          </View>
-          <MenuRow
-            title={
-              draft.deliveryType === "Pickup"
-                ? "Pickup from shop"
-                : "Delivery Address"
-            }
-            detail={
-              draft.deliveryType === "Pickup"
-                ? address(draft.shop)
-                : address(deliveryAddress) || "Choose your delivery address"
-            }
-            asset="locationblue.png"
-            onPress={draft.deliveryType === "Deliver" ? editAddress : undefined}
-          />
-          {deliveryAddress && <DeliveryDetails value={deliveryAddress} />}
+          <Section title="How should your laundry travel?" />
+          <Txt style={styles.muted}>Choose one option for the whole order.</Txt>
+          <Pressable accessibilityRole="button" accessibilityLabel="Laundry transport"
+            accessibilityState={{ expanded: transportOpen }} accessibilityValue={{ text: selectedTransport?.label }}
+            onPress={() => setTransportOpen(open => !open)}
+            style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, minHeight: 64,
+              borderRadius: 12, borderWidth: 1, borderColor: transportOpen ? palette.primary : palette.line,
+              backgroundColor: pressed ? palette.soft : "white" })}>
+            <View style={styles.grow}>
+              <Txt style={{ fontWeight: "600", color: palette.primary }}>{selectedTransport?.label || "Choose a transport option"}</Txt>
+              {!!selectedTransport && <Txt style={{ fontSize: 12, lineHeight: 18, color: palette.muted, marginTop: 4 }}>{selectedTransport.description}</Txt>}
+            </View>
+            <ChevronDown size={20} color={palette.primary} style={{ transform: [{ rotate: transportOpen ? "180deg" : "0deg" }] }} />
+          </Pressable>
+          {transportOpen && <View accessibilityRole="radiogroup" accessibilityLabel="Laundry transport options"
+            style={{ borderWidth: 1, borderColor: palette.line, borderRadius: 12, overflow: "hidden" }}>
+            {transportOptions.filter(option => option.collectionMethod === "Dropoff" || draft.shop?.pickupEnabled).map(option => {
+              const selected = (draft.collectionMethod || "Dropoff") === option.collectionMethod && draft.deliveryType === option.deliveryType;
+              return <Pressable key={option.label} accessibilityRole="radio" accessibilityLabel={option.label}
+                accessibilityHint={option.description} accessibilityState={{ checked: selected }}
+                onPress={() => { draft.set({ collectionMethod: option.collectionMethod, deliveryType: option.deliveryType }); setTransportOpen(false); setError(null); }}
+                style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, minHeight: 76,
+                  backgroundColor: selected || pressed ? palette.soft : "white" })}>
+                <View pointerEvents="none" style={{ width: 20, height: 20, borderRadius: 10, borderWidth: selected ? 6 : 1,
+                  borderColor: selected ? palette.primary : palette.muted, backgroundColor: "white" }} />
+                <View style={styles.grow}>
+                  <Txt style={{ fontWeight: "600", color: selected ? palette.primary : palette.ink }}>{option.label}</Txt>
+                  <Txt style={{ fontSize: 12, lineHeight: 18, color: palette.muted, marginTop: 4 }}>{option.description}</Txt>
+                </View>
+              </Pressable>;
+            })}
+          </View>}
+          {!draft.shop?.pickupEnabled && <Txt style={styles.muted}>This shop does not offer pickup from your address.</Txt>}
+          {draft.collectionMethod === "ShopPickup" && draft.shop && (draft.shop.pickupMaxKm != null || Number(draft.shop.pickupMinKm) > 0) &&
+            <Txt style={styles.muted}>Shop pickup range: {serviceAreaLabel(draft.shop, "pickup")}</Txt>}
+          {draft.deliveryType === "Deliver" && draft.shop && (draft.shop.deliveryMaxKm != null || Number(draft.shop.deliveryMinKm) > 0) &&
+            <Txt style={styles.muted}>Delivery range: {serviceAreaLabel(draft.shop, "delivery")}</Txt>}
+          {(draft.deliveryType === "Deliver" || draft.collectionMethod === "ShopPickup") && <>
+            <MenuRow title="Your Address" detail={address(customerAddress) || "Choose your address"} asset="locationblue.png" onPress={editAddress} />
+            {!!user && <Button title="Add another address" compact outline onPress={addAddress} />}
+            <Txt style={styles.muted}>{draft.collectionMethod === "ShopPickup"
+              ? draft.deliveryType === "Deliver" ? "Used for both shop pickup and return delivery." : "The shop will pick up your unwashed laundry here."
+              : "Your finished laundry will be delivered here."}</Txt>
+            {customerAddress && <DeliveryDetails value={customerAddress} />}
+            {customerDistance !== null && <Txt style={styles.muted}>Straight-line distance from shop: {customerDistance.toFixed(2)} km.</Txt>}
+            {areaError && <View style={{ padding: 14, borderRadius: 12, backgroundColor: palette.soft, gap: 12 }}>
+              <Txt>{areaError.startsWith("Pin your") ? "Add a map pin so we can check whether your address is within the shop's service area." : areaError}</Txt>
+              {areaError.startsWith("Pin your") && <Button title="Add address pin" outline onPress={editAddress} />}
+            </View>}
+          </>}
         </Card>
         <Card>
           <Section title="Laundry Weight" />
@@ -384,16 +489,21 @@ export function CheckoutDesign() {
           {!Object.values(draft.counts).some(count => count > 0) && <Txt style={styles.muted}>No clothing quantities added yet.</Txt>}
         </Card>
         <Card>
-        <MenuRow
-          title="Delivery Schedule"
-          detail={
-            draft.schedule
-              ? new Date(draft.schedule).toLocaleString()
-              : "Select Delivery Schedule"
-          }
-          asset="Time.png"
-          onPress={() => setDialog("schedule")}
-        />
+          <Section title="Turnaround & Updates" />
+          <Txt style={{ fontWeight: "600" }}>Your laundry’s completion time will be confirmed by the shop.</Txt>
+          <Txt style={styles.muted}>After receiving your laundry, the shop will estimate when it will be ready based on its queue. You’ll receive updates when processing starts and when it’s ready.</Txt>
+          {draft.collectionMethod === "ShopPickup" ? <>
+            <MenuRow title="Requested laundry pickup" detail={draft.requestedPickupAt
+              ? new Date(draft.requestedPickupAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" }) + " (Philippine time)"
+              : "Choose a pickup date and time"} asset="Time.png" onPress={() => setDialog("schedule")} />
+            <Txt style={styles.muted}>The shop must confirm pickup availability.</Txt>
+          </> : <>
+            <Txt style={{ fontWeight: "600" }}>Customer drop-off</Txt>
+            <Txt style={styles.muted}>Operating hours: {draft.shop?.openingTime} – {draft.shop?.closingTime} (Philippine time). Bring your laundry to the shop during these hours.</Txt>
+          </>}
+          <Txt style={styles.muted}>{draft.deliveryType === "Deliver"
+            ? "Return delivery will be arranged once your laundry is ready."
+            : "We’ll notify you when your laundry is ready to collect."}</Txt>
         </Card>
         <Card>
           <Section title="Note to Laundry Shop" />
@@ -402,331 +512,92 @@ export function CheckoutDesign() {
         </Card>
         <Card>
           <Section title="Payment Method" />
-          <Choice label="Cash on Delivery" selected={draft.paymentMethod === "Cash on Delivery"}
-            onPress={() => draft.set({ paymentMethod: "Cash on Delivery" })} />
+          <PaymentDropdown />
           <Section title="Fees & Total" />
           <Totals />
         </Card>
       </View>
-      <Modal visible={!!dialog} transparent animationType="none" onRequestClose={() => setDialog(null)}>
+      <Modal visible={!!dialog} transparent animationType="none" onRequestClose={() => { if (!savingAddress) setDialog(null); }}>
         {dialog && <View style={{ flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
-          <Card style={{ width: "100%", maxWidth: 540, maxHeight: "90%", padding: 24 }}>
+          {dialog === "schedule" ? <ScheduleDesign embedded inDialog pickup onDone={() => setDialog(null)} onClose={() => setDialog(null)} /> : <Card style={{ width: "100%", maxWidth: 540, maxHeight: "90%", padding: 24 }}>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16 }}>
               <View style={[styles.between, { flexWrap: "wrap" }]}>
-                <Txt style={styles.heading}>{dialog === "items" ? "Laundry Items" : dialog === "schedule" ? "Delivery Schedule" : "Delivery Address"}</Txt>
-                <Button title="Close" compact outline color={palette.navy} onPress={() => setDialog(null)} />
+                <Txt style={styles.heading}>{dialog === "items" ? "Laundry Items" : addingAddress ? "Add another address" : "Choose your address"}</Txt>
+                <Button title="Close" compact outline color={palette.navy} disabled={savingAddress} onPress={() => setDialog(null)} />
               </View>
-              {dialog === "items" ? <LaundryCountDesign embedded onDone={() => setDialog(null)} /> :
-                dialog === "schedule" ? <ScheduleDesign embedded inDialog onDone={() => setDialog(null)} /> : <View>
-                {profile.data && !addressError(profile.data) && <Button title="Use Primary Address" compact outline color={palette.navy}
-                  onPress={() => { setAddressForm(addressValues(profile.data)); setAddressFormError(null); }} />}
-                {savedAddresses.data?.map((item, index) => <MenuRow key={index} title={address(item)}
-                  onPress={() => { setAddressForm(addressValues(item)); setAddressFormError(null); }} />)}
+              {dialog === "items" ? <LaundryCountDesign embedded onDone={() => setDialog(null)} /> : <View>
+                {!addingAddress && <>
+                  {profile.data && !addressError(profile.data) && <Button title="Use Primary Address" compact outline color={palette.navy}
+                    onPress={() => { setAddressForm(addressValues(profile.data)); setAddressFormError(null); }} />}
+                  {!!savedAddresses.data?.length && <Section title="Saved addresses" />}
+                  {savedAddresses.data?.map((item, index) => <MenuRow key={index} title={address(item)}
+                    onPress={() => { setAddressForm(addressValues(item)); setAddressFormError(null); }} />)}
+                  {!!user && <Button title="Add new address" compact outline onPress={addAddress} />}
+                </>}
+                {addingAddress && <Txt style={styles.muted}>Save an additional address for future orders. Your primary address will stay the same.</Txt>}
                 <AddressFields values={addressForm} setValues={setAddressForm} />
                 <FormError error={addressFormError} />
-                <Button title="Use This Address" color={palette.navy} onPress={saveAddress} />
+                <Button title={addingAddress ? "Save & Use Address" : "Use This Address"} color={palette.navy} busy={savingAddress} onPress={saveAddress} />
               </View>}
             </ScrollView>
-          </Card>
+          </Card>}
         </View>}
+      </Modal>
+      <Modal visible={countdown !== null} transparent animationType="fade" onRequestClose={cancelCountdown}>
+        <View style={{ flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
+          <Card style={{ width: "100%", maxWidth: 440, padding: 28, gap: 20 }}>
+            <View style={{ alignItems: "center", gap: 12 }}>
+              <Clock size={32} color={palette.primary} />
+              <Txt accessibilityRole="header" style={styles.heading}>Placing your order soon</Txt>
+              <Txt accessibilityLiveRegion="polite" style={{ fontSize: 40, fontWeight: "700", color: palette.primary }}>{countdown}</Txt>
+              <Txt style={[styles.muted, { textAlign: "center" }]}>Your order will be sent automatically when the countdown ends. You can still modify your details now.</Txt>
+            </View>
+            <Button title="Modify order" outline color={palette.navy} icon={<Pencil size={18} color={palette.navy} />} onPress={cancelCountdown} />
+          </Card>
+        </View>
       </Modal>
     </Screen>
   );
 }
-export function ScheduleDesign({ embedded = false, inDialog = false, onDone }: { embedded?: boolean; inDialog?: boolean; onDone?: () => void } = {}) {
+export function ScheduleDesign({ embedded = false, inDialog = false, pickup = false, onDone, onClose }: {
+  embedded?: boolean; inDialog?: boolean; pickup?: boolean; onDone?: () => void; onClose?: () => void;
+} = {}) {
+  return <DeliverySchedule pickup={pickup} embedded={embedded || inDialog} onDone={onDone} onClose={onClose} />;
+}
+function PaymentDropdown() {
   const palette = usePalette();
   const draft = useLaundryDraft();
-  const [now, setNow] = useState(() => new Date());
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 60000);
-    return () => clearInterval(timer);
-  }, []);
-  const leadMinutes = deliveryLeadMinutes(draft.service?.serviceName, draft.deliveryType);
-  const earliestTime = earliestDeliveryTime(draft.service?.serviceName, draft.deliveryType, now.getTime());
-  const initial = !deliveryScheduleError(draft.schedule, draft.service?.serviceName, draft.deliveryType)
-    ? new Date(draft.schedule)
-    : new Date(Date.now() + 86400000);
-  const [month, setMonth] = useState(
-    new Date(initial.getFullYear(), initial.getMonth(), 1),
-  );
-  const [selected, setSelected] = useState(initial.getDate());
-  const [hour, setHour] = useState(String(initial.getHours() % 12 || 12));
-  const [minute, setMinute] = useState(String(initial.getMinutes()).padStart(2, "0"));
-  const [period, setPeriod] = useState(initial.getHours() >= 12 ? "PM" : "AM");
-  const [timeOpen, setTimeOpen] = useState(false);
-  const [pendingTime, setPendingTime] = useState({ hour, minute, period });
-  const [timeError, setTimeError] = useState<string | null>(null);
-  const dayCount = new Date(
-    month.getFullYear(),
-    month.getMonth() + 1,
-    0,
-  ).getDate();
-  const offset = month.getDay();
-  const currentMonth = new Date(earliestTime.getFullYear(), earliestTime.getMonth(), 1);
-  const previousMonthAvailable = month.getTime() > currentMonth.getTime();
-  const selectedDayAvailable = scheduleDayAvailable(new Date(month.getFullYear(), month.getMonth(), selected), now, earliestTime);
-  function changeMonth(direction: -1 | 1) {
-    const today = new Date();
-    const target = new Date(month.getFullYear(), month.getMonth() + direction, 1);
-    const earliest = earliestDeliveryTime(draft.service?.serviceName, draft.deliveryType);
-    if (target < new Date(earliest.getFullYear(), earliest.getMonth(), 1)) return;
-    setMonth(target);
-    setSelected(target.getFullYear() === earliest.getFullYear() && target.getMonth() === earliest.getMonth() ? earliest.getDate() : 1);
-    setNow(today);
-    setError(null);
-  }
-  function openTimePicker() {
-    setPendingTime({ hour, minute, period });
-    setTimeError(null);
-    setTimeOpen(true);
-  }
-  function adjustTime(unit: "hour" | "minute", direction: -1 | 1) {
-    setPendingTime(value => ({ ...value, [unit]: unit === "hour"
-      ? String(((Number(value.hour) - 1 + direction + 12) % 12) + 1)
-      : String((Number(value.minute) + direction + 60) % 60).padStart(2, "0") }));
-    setTimeError(null);
-  }
-  function scheduledAt(time: typeof pendingTime) {
-    return new Date(month.getFullYear(), month.getMonth(), selected,
-      (Number(time.hour) % 12) + (time.period === "PM" ? 12 : 0), Number(time.minute));
-  }
-  function validateTime(time: typeof pendingTime) {
-    const h = Number(time.hour);
-    const m = Number(time.minute);
-    if (
-      !Number.isInteger(h) ||
-      h < 1 ||
-      h > 12 ||
-      !Number.isInteger(m) ||
-      m < 0 ||
-      m > 59
-    )
-      return "Enter a valid time.";
-    const date = scheduledAt(time);
-    if (!scheduleDayAvailable(date)) return "Choose today or a later date.";
-    if (!validFutureSchedule(date.toISOString()) || date.getHours() < 4)
-      return "Choose a future time between 4 AM and 11 PM.";
-    return deliveryScheduleError(date.toISOString(), draft.service?.serviceName, draft.deliveryType);
-  }
-  function saveTime() {
-    const validation = validateTime(pendingTime);
-    if (validation) { setTimeError(validation); return; }
-    setHour(pendingTime.hour);
-    setMinute(pendingTime.minute);
-    setPeriod(pendingTime.period);
-    setError(null);
-    setTimeOpen(false);
-  }
-  function confirm() {
-    const time = { hour, minute, period };
-    const validation = validateTime(time);
-    if (validation) { setNow(new Date()); setError(validation); return; }
-    draft.set({ schedule: scheduledAt(time).toISOString() });
-    if (onDone) onDone();
-    else router.back();
-  }
-  const Container = embedded ? EmbeddedOrderPanel : Screen;
-  const TimePickerContainer = inDialog ? EmbeddedTimePicker : Modal;
-  return (
-    <Container
-      title="Select Delivery Schedule"
-      background={palette.surface}
-      footer={inDialog && timeOpen ? undefined :
-        <View style={{ width: "100%", maxWidth: 520, alignSelf: "center" }}>
-          <FormError error={error} />
-          <Button
-            title="Confirm Schedule"
-            color={palette.navy}
-            onPress={confirm}
-            disabled={!selectedDayAvailable}
-          />
-        </View>
-      }
-    >
-      <View style={[styles.stack, { width: "100%", maxWidth: 520, alignSelf: "center" }]}>
-        {!(inDialog && timeOpen) && <View style={styles.row}>
-          <View style={{ padding: 12, borderRadius: 14, backgroundColor: palette.lavender }}>
-            <CalendarDays size={24} color={palette.navy} />
-          </View>
-          <View style={styles.grow}>
-            <Txt style={styles.heading}>Choose your date and time</Txt>
-            <Txt style={styles.muted}>Select today or a later date.</Txt>
-          </View>
-        </View>}
-        {!(inDialog && timeOpen) && <Card style={{ padding: 20 }}>
-          <Section title="Delivery time" />
-          {leadMinutes > 0 && <View style={{ gap: 4 }}>
-            <Txt style={styles.muted}>Full Service delivery needs at least 2 hours for washing, drying, and preparation.</Txt>
-            <Txt style={{ color: palette.navy, fontWeight: "600" }}>
-              Earliest delivery: {earliestTime.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-            </Txt>
-          </View>}
-          <Pressable accessibilityRole="button" accessibilityLabel="Change delivery time"
-            accessibilityValue={{ text: `${hour.padStart(2, "0")}:${minute.padStart(2, "0")} ${period}` }}
-            onPress={openTimePicker}
-            style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12,
-              padding: 16, borderRadius: 12, borderWidth: 1, borderColor: palette.line,
-              backgroundColor: pressed ? palette.lavender : palette.surface })}>
-            <Clock size={24} color={palette.navy} />
-            <View style={styles.grow}>
-              <Txt style={{ fontSize: 24, fontWeight: "600", color: palette.navy }}>
-                {hour.padStart(2, "0")}:{minute.padStart(2, "0")} {period}
-              </Txt>
-              <Txt style={styles.muted}>Tap to change time</Txt>
-            </View>
-            <Pencil size={18} color={palette.navy} />
-          </Pressable>
-        </Card>}
-        <TimePickerContainer visible={timeOpen} transparent animationType="none" onRequestClose={() => setTimeOpen(false)}>
-          {timeOpen && <View style={inDialog ? {} : { flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
-          <Card style={inDialog ? { padding: 0, borderWidth: 0, shadowOpacity: 0, elevation: 0 } : { width: "100%", maxWidth: 420, maxHeight: "90%", padding: 24 }}>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16 }}>
-          <Txt style={styles.heading}>Select delivery time</Txt>
-          <Txt style={styles.muted}>Use the arrows to adjust the hour and minute.</Txt>
-          {leadMinutes > 0 && <Txt style={styles.muted}>
-            Full Service delivery is available from {earliestTime.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.
-          </Txt>}
-          <View style={[styles.row, { justifyContent: "center", gap: 10 }]}>
-            {(["hour", "minute"] as const).map((unit, index) => (
-              <View key={unit} style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}>
-                {index === 1 && <Txt style={{ fontSize: 28, color: palette.navy, marginTop: 24 }}>:</Txt>}
-                <View style={{ flex: 1, gap: 8 }}>
-                  <Txt style={{ color: palette.muted, textAlign: "center" }}>{unit === "hour" ? "Hour" : "Minute"}</Txt>
-                  <View style={{ alignItems: "center", padding: 6, borderRadius: 14,
-                    backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line }}>
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Increase ${unit}`}
-                      onPress={() => adjustTime(unit, 1)}
-                      style={({ pressed }) => ({ width: "100%", minHeight: 40, alignItems: "center",
-                        justifyContent: "center", borderRadius: 8, backgroundColor: pressed ? palette.lavender : "transparent" })}>
-                      <ChevronUp size={22} color={palette.navy} />
-                    </Pressable>
-                    <Txt accessibilityLabel={`Selected ${unit}`} accessibilityLiveRegion="polite"
-                      style={{ fontSize: 30, fontWeight: "600", color: palette.navy, paddingVertical: 4 }}>
-                      {String(Number(unit === "hour" ? pendingTime.hour : pendingTime.minute)).padStart(2, "0")}
-                    </Txt>
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Decrease ${unit}`}
-                      onPress={() => adjustTime(unit, -1)}
-                      style={({ pressed }) => ({ width: "100%", minHeight: 40, alignItems: "center",
-                        justifyContent: "center", borderRadius: 8, backgroundColor: pressed ? palette.lavender : "transparent" })}>
-                      <ChevronDown size={22} color={palette.navy} />
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            ))}
-          </View>
-          <View style={{ flexDirection: "row", backgroundColor: palette.surface, borderRadius: 12, padding: 4 }}>
-            {["AM", "PM"].map(value => <Pressable key={value} accessibilityRole="radio"
-              accessibilityLabel={value} accessibilityState={{ checked: pendingTime.period === value }}
-              onPress={() => { setPendingTime(current => ({ ...current, period: value })); setTimeError(null); }}
-              style={{ flex: 1, alignItems: "center", paddingVertical: 12, borderRadius: 9,
-                backgroundColor: pendingTime.period === value ? palette.navy : "transparent" }}>
-              <Txt style={{ fontWeight: "600", color: pendingTime.period === value ? "white" : palette.muted }}>{value}</Txt>
-            </Pressable>)}
-          </View>
-          <FormError error={timeError} />
-          <View style={styles.row}>
-            <Button title="Cancel" outline color={palette.navy} style={styles.grow} onPress={() => setTimeOpen(false)} />
-            <Button title="Save Time" color={palette.navy} style={styles.grow} onPress={saveTime} />
-          </View>
-          </ScrollView>
-          </Card>
-          </View>}
-        </TimePickerContainer>
-        {!(inDialog && timeOpen) && <Card style={{ padding: 16 }}>
-          <View style={styles.between}>
-            <Pressable
-              accessibilityLabel="Previous month"
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !previousMonthAvailable }}
-              disabled={!previousMonthAvailable}
-              onPress={() => changeMonth(-1)}
-              style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: palette.surface }}
-            >
-              <Txt style={[styles.heading, !previousMonthAvailable && { color: palette.muted }]}>‹</Txt>
-            </Pressable>
-            <Txt style={styles.heading}>
-              {month.toLocaleDateString(undefined, {
-                month: "long",
-                year: "numeric",
-              })}
-            </Txt>
-            <Pressable
-              accessibilityLabel="Next month"
-              accessibilityRole="button"
-              onPress={() => changeMonth(1)}
-              style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: palette.surface }}
-            >
-              <Txt style={styles.heading}>›</Txt>
-            </Pressable>
-          </View>
-          <View style={{ flexDirection: "row" }}>
-            {["S", "M", "T", "W", "T", "F", "S"].map((day, i) => (
-              <Txt
-                key={i}
-                style={{
-                  width: `${100 / 7}%`,
-                  textAlign: "center", paddingVertical: 12,
-                  color: palette.muted,
-                }}
-              >
-                {day}
-              </Txt>
-            ))}
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-            {Array.from({ length: offset + dayCount }, (_, i) => {
-              const day = i - offset + 1;
-              const date = new Date(month.getFullYear(), month.getMonth(), day);
-              const available = i >= offset && scheduleDayAvailable(date, now, earliestTime);
-              const isSelected = available && selected === day;
-              return (
-              <Pressable
-                key={i}
-                accessibilityRole="button"
-                accessibilityLabel={i >= offset ? date.toLocaleDateString() : undefined}
-                accessibilityState={{ disabled: !available, selected: isSelected }}
-                disabled={!available}
-                onPress={() => {
-                  if (!scheduleDayAvailable(date, new Date(), earliestDeliveryTime(draft.service?.serviceName, draft.deliveryType))) { setNow(new Date()); return; }
-                  setSelected(day); setError(null);
-                }}
-                style={{
-                  width: `${100 / 7}%`,
-                  height: 48,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <View style={{ width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center",
-                  backgroundColor: isSelected ? palette.navy : "transparent" }}>
-                <Txt
-                  style={{
-                    color: isSelected ? "white" : available ? palette.navy : palette.muted,
-                  }}
-                >
-                  {i >= offset ? i - offset + 1 : ""}
-                </Txt>
-                </View>
-              </Pressable>
-              );
-            })}
-          </View>
-        </Card>}
-        {!(inDialog && timeOpen) && <View style={{ padding: 16, borderRadius: 12, backgroundColor: palette.lavender }}>
-          <Txt style={{ color: palette.navy, fontWeight: "600" }}>Selected delivery date</Txt>
-          <Txt style={{ color: palette.navy, marginTop: 4 }}>{new Date(
-            month.getFullYear(), month.getMonth(), selected,
-          ).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</Txt>
-        </View>}
+  const [open, setOpen] = useState(false);
+  return <View style={{ gap: 10 }}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Payment method"
+      accessibilityState={{ expanded: open }} accessibilityValue={{ text: "Cash on Delivery" }}
+      onPress={() => setOpen(value => !value)}
+      style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, minHeight: 54,
+        borderRadius: 12, borderWidth: 1, borderColor: open ? palette.primary : palette.line,
+        backgroundColor: pressed ? palette.soft : "white" })}>
+      <Txt style={{ flex: 1, color: palette.primary, fontWeight: "600" }}>Cash on Delivery</Txt>
+      <ChevronDown size={20} color={palette.primary} style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }} />
+    </Pressable>
+    {open && <View accessibilityRole="radiogroup" accessibilityLabel="Payment options" style={{ gap: 10 }}>
+    <Choice label="Cash on Delivery" selected={draft.paymentMethod === "Cash on Delivery"}
+      onPress={() => { draft.set({ paymentMethod: "Cash on Delivery" }); setOpen(false); }} />
+    {["Bank Transfer", "GCash"].map(label => <Pressable key={label} disabled
+      accessibilityRole="radio" accessibilityLabel={`${label}, coming soon`}
+      accessibilityState={{ disabled: true, checked: false }}
+      style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 14,
+        borderRadius: 12, borderWidth: 1, borderColor: palette.line, backgroundColor: "#F5F6F8" }}>
+      <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: palette.muted }} />
+      <Txt style={{ flex: 1, color: palette.muted }}>{label}</Txt>
+      <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: "#E8EBF0" }}>
+        <Txt style={{ fontSize: 11, color: palette.muted, fontWeight: "600" }}>Coming soon</Txt>
       </View>
-    </Container>
-  );
+    </Pressable>)}
+    </View>}
+    <Txt style={styles.muted}>Bank transfer and GCash payments are coming soon. Please use Cash on Delivery for now.</Txt>
+  </View>;
 }
 export function PaymentDesign() {
   const palette = usePalette();
-  const draft = useLaundryDraft();
   return (
     <Screen
       title="Payment Method"
@@ -739,11 +610,7 @@ export function PaymentDesign() {
       }
     >
       <Card>
-        <Choice
-          label="Cash on Delivery"
-          selected={draft.paymentMethod === "Cash on Delivery"}
-          onPress={() => draft.set({ paymentMethod: "Cash on Delivery" })}
-        />
+        <PaymentDropdown />
       </Card>
     </Screen>
   );
@@ -753,6 +620,9 @@ export function StatusBadge({ status }: { status: Order["status"] }) {
   const palette = usePalette();
   const colors = {
     Pending: palette.warning,
+    Accepted: palette.primary,
+    Queued: palette.warning,
+    Ready: palette.successInk,
     Processing: palette.primary,
     Completed: palette.successInk,
     Cancelled: palette.danger,
@@ -843,7 +713,7 @@ export function ActivitiesDesign({
       !history ||
       (tab === "Past Order"
         ? ["Completed", "Cancelled"].includes(order.status)
-        : ["Pending", "Processing"].includes(order.status)),
+        : !["Completed", "Cancelled"].includes(order.status)),
   );
   return (
     <Screen
@@ -982,13 +852,7 @@ export function OrderDetailsDesign({
             <View style={styles.row}>
               <CheckCircle2 size={24} color={palette.blue} />
               <Txt style={styles.muted}>
-                {order.status === "Pending"
-                  ? "Waiting for shop confirmation"
-                  : order.status === "Processing"
-                    ? "Your laundry is in progress"
-                    : order.status === "Completed"
-                      ? "Your laundry is ready"
-                      : "Order cancelled"}
+                {orderUpdateText(order)}
               </Txt>
             </View>
           )}
@@ -1001,6 +865,11 @@ export function OrderDetailsDesign({
             asset="delivery.png"
           />
           <DeliveryDetails value={order} />
+          {order.collectionMethod === "ShopPickup" && order.collectionAddress && <>
+            <Section title="Laundry Collection Address" />
+            <Txt style={styles.muted}>{address(order.collectionAddress)}</Txt>
+            <DeliveryDetails value={order.collectionAddress} />
+          </>}
           <MenuRow
             title={order.shop?.shopName || "Laundry Shop"}
             detail={order.shop?.address}
@@ -1008,10 +877,7 @@ export function OrderDetailsDesign({
           />
           <PriceRow label="Order ID:" value={`#${order.id}`} />
           <PriceRow label="Payment Method" value={order.paymentMethod} />
-          <PriceRow
-            label="Delivery Schedule"
-            value={new Date(order.scheduledDate).toLocaleDateString()}
-          />
+          <TurnaroundDetails order={order} />
         </Card>
         <Card>
           <View style={styles.row}>

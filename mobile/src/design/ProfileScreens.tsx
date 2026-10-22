@@ -700,10 +700,10 @@ export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
   });
   return (
     <Screen
-      title="Address"
+      title="Your Addresses"
       footer={
         <Button
-          title="Add New Address"
+          title="Add another address"
           color={palette.navy}
           onPress={() => go("add-address", { checkout: String(checkout) })}
         />
@@ -727,6 +727,7 @@ export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
             go("confirm-location", { checkout: String(checkout) });
           }}
         />
+        {!!saved.data?.length && <Section title="Saved Addresses" />}
         {saved.data?.map((item, index) => (
           <MenuRow
             key={index}

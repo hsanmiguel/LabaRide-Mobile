@@ -161,7 +161,7 @@ export default function DesignFlow() {
     return (
       <CustomersDesign
         filter={
-          ["Pending", "Processing", "Completed", "Cancelled"].includes(
+          ["Pending", "Accepted", "Queued", "Processing", "Ready", "Completed", "Cancelled"].includes(
             params.status || "",
           )
             ? (params.status as Order["status"])

@@ -12,13 +12,14 @@ const approvalTest = process.argv.includes('--approvals');
 const applicationTest = process.argv.includes('--application');
 const dialogTest = process.argv.includes('--dialogs');
 const logoutTest = process.argv.includes('--logout');
-const nativeDialogs = [], dialogWrites = [];
+const scheduleTest = process.argv.includes('--schedule');
+const nativeDialogs = [], dialogWrites = [], workflowWrites = [];
 let failServiceDelete = false;
 let photoBytes, hasPhoto = false, brokenPhoto = false;
 fs.mkdirSync(artifacts, { recursive: true });
 const user = { id: 7, name: 'Test Customer With A Long Name', email: 'ui-test@example.test', isShopOwner: true, isAdmin: approvalTest,
   address_line_1: '123 Long Street Name, Building Two', city: 'Naga', state_province: 'Camarines Sur', postal_code: '4400', country: 'Philippines', address_type: 'Home', latitude: 13.6217, longitude: 123.1948 };
-const shops = [{ ...user, id: 101, userId: 7, approvalStatus: approvalTest || applicationTest ? 'Pending' : 'Approved', applicationVersion: 1, createdAt: new Date().toISOString(), shopName: 'Test Laundry & Fabric Care With A Long Shop Name', openingTime: '08:00', closingTime: '18:00', contactNumber: '09123456789', services: [{ id: 1, serviceName: 'Full Service', price: 215, packageKilos: 8 }, { id: 2, serviceName: 'Wash Only', price: 25 }], kiloPrices: [], clothingTypes: [], householdItems: [] },
+const shops = [{ ...user, id: 101, userId: 7, approvalStatus: approvalTest || applicationTest ? 'Pending' : 'Approved', applicationVersion: 1, createdAt: new Date().toISOString(), pickupEnabled: true, shopName: 'Test Laundry & Fabric Care With A Long Shop Name', openingTime: '08:00', closingTime: '18:00', contactNumber: '09123456789', services: [{ id: 1, serviceName: 'Full Service', price: 215, packageKilos: 8 }, { id: 2, serviceName: 'Wash Only', price: 25 }], kiloPrices: [], clothingTypes: [], householdItems: [] },
   { ...user, id: 102, userId: 8, approvalStatus: 'Approved', applicationVersion: 1, createdAt: new Date().toISOString(), shopName: 'Test Neighborhood Laundry', latitude: 13.63, services: [] }];
 const reviews = [];
 const orders = ['Pending', 'Processing', 'Completed', 'Cancelled'].map((status,i) => ({ id: 42+i, userId: 7, shopId: 101, userName: user.name,
@@ -66,7 +67,8 @@ async function waitFor(expression, timeout = 10000) {
 async function visit(route, width, expected, screenshot) {
   errors = [];
   if (sessionScriptId) await command('Page.removeScriptToEvaluateOnNewDocument',{identifier:sessionScriptId});
-  const script = await command('Page.addScriptToEvaluateOnNewDocument',{source:`sessionStorage.setItem('auth_token','isolated-ui-test');sessionStorage.setItem('auth_user',${JSON.stringify(JSON.stringify(user))});`});
+  const fixedClock = scheduleTest ? `const OriginalDate=Date;globalThis.Date=class extends OriginalDate{constructor(...args){super(...(args.length?args:[Date.parse('2026-10-22T02:30:00Z')]));}static now(){return OriginalDate.parse('2026-10-22T02:30:00Z');}};` : '';
+  const script = await command('Page.addScriptToEvaluateOnNewDocument',{source:`${fixedClock}sessionStorage.setItem('auth_token','isolated-ui-test');sessionStorage.setItem('auth_user',${JSON.stringify(JSON.stringify(user))});`});
   sessionScriptId = script.identifier;
   await command('Emulation.setDeviceMetricsOverride', { width, height: width < 768 ? 844 : 1000, deviceScaleFactor: 1, mobile: false });
   await command('Page.navigate', { url: `http://127.0.0.1:4178${route}` });
@@ -117,13 +119,20 @@ async function clickText(text) {
         if (!request.url.includes('/api/')) { await command('Fetch.continueRequest',{ requestId }); return; }
         const endpoint = new URL(request.url).pathname;
         const photoEndpoint = endpoint === '/api/shops/101/photo';
-        assert.ok(['GET','OPTIONS'].includes(request.method) || photoTest && photoEndpoint && ['PUT','DELETE'].includes(request.method)
+        assert.ok(scheduleTest && request.method === 'PUT' && endpoint === '/api/transactions/42/status' || ['GET','OPTIONS'].includes(request.method) || photoTest && photoEndpoint && ['PUT','DELETE'].includes(request.method)
           || dialogTest && request.method === 'DELETE' && endpoint === '/api/shops/101/services/1'
           || approvalTest && request.method === 'PUT' && ['/api/admin/shops/101/review','/api/shops/101/application'].includes(endpoint)
           || applicationTest && request.method === 'POST' && endpoint === '/api/auth/verify-token'
           || approvalTest && request.method === 'POST' && endpoint === '/api/auth/login', 'UI smoke tests must not mutate real records');
         if (mode === 'loading') await pause(2500);
         if (closing) return;
+        if (scheduleTest && request.method === 'PUT' && endpoint === '/api/transactions/42/status') {
+          const body = JSON.parse(request.postData);
+          workflowWrites.push(body);
+          Object.assign(orders[0], body, { updatedAt: '2026-10-22T02:30:00Z' });
+          if (body.status === 'Processing') orders[0].processingStartedAt = '2026-10-22T02:30:00Z';
+          if (body.status === 'Ready') orders[0].readyAt = '2026-10-22T02:30:00Z';
+        }
         if (dialogTest && request.method === 'DELETE') {
           dialogWrites.push(endpoint);
           if (!failServiceDelete) shops[0].services = shops[0].services.filter(service=>service.id!==1);
@@ -165,6 +174,80 @@ async function clickText(text) {
   });
   await command('Page.enable'); await command('Runtime.enable');
   await command('Fetch.enable',{ patterns:[{urlPattern:'*/api/*'}] });
+  if (scheduleTest) {
+    for (const width of [320,390,768,1440]) {
+      await visit('/order/101', width, 'Review Order');
+      await evaluate(`document.querySelector('[role="checkbox"]').click()`);
+      await clickText('Review Order');
+      await waitFor('document.body.innerText.includes("Place Order")');
+      assert.ok(await evaluate('document.body.innerText.includes("Turnaround & Updates")'));
+      await evaluate(`document.querySelector('[aria-label="Laundry transport"]').click()`);
+      await evaluate(`document.querySelector('[aria-label="Pickup & delivery"]').click()`);
+      const openSchedule = async () => {
+        await evaluate(`Array.from(document.querySelectorAll('[role="button"]')).find(e=>e.innerText.trim().startsWith('Requested laundry pickup')).click()`);
+        await waitFor('!!document.querySelector("[data-testid=delivery-schedule-footer]")');
+      };
+      await openSchedule();
+      await waitFor('document.activeElement?.getAttribute("aria-label")==="Close pickup request"');
+      const bounds = await evaluate(`(()=>{const footer=document.querySelector('[data-testid=delivery-schedule-footer]');const panel=footer.parentElement.getBoundingClientRect();return {left:panel.left,right:panel.right,top:panel.top,bottom:panel.bottom,footerTop:footer.getBoundingClientRect().top};})()`);
+      assert.ok(bounds.left>=0&&bounds.right<=width&&bounds.top>=0&&bounds.bottom<=(width<768?844:1000),'Schedule fits viewport');
+      const horizontalOverflow = await evaluate(`(()=>{const e=document.querySelector('[data-testid=delivery-schedule-body]');return e.scrollWidth>e.clientWidth;})()`);
+      assert.equal(horizontalOverflow,false,'Schedule body does not overflow horizontally');
+      await evaluate(`document.querySelector('[data-testid=delivery-schedule-body]').scrollTop=99999`);
+      await pause(100);
+      assert.ok(Math.abs(await evaluate(`document.querySelector('[data-testid=delivery-schedule-footer]').getBoundingClientRect().top`)-bounds.footerTop)<1,'Footer stays fixed while content scrolls');
+      await evaluate(`document.querySelector('[data-testid=delivery-schedule-body]').scrollTop=0`);
+      await evaluate(`document.querySelector('[aria-label="Tomorrow"]').click()`);
+      await evaluate(`document.querySelector('[aria-label="9:00 AM"]').click()`);
+      assert.ok((await evaluate(`document.querySelector('[data-testid=delivery-schedule-footer]').innerText`)).includes('Tomorrow at 9:00 AM'));
+      await clickText('Choose another date');
+      await evaluate(`document.querySelector('[aria-label="2026-10-25"]').click()`);
+      assert.equal(await evaluate(`!!document.querySelector('[data-testid=delivery-calendar]')`),false);
+      if (width===320||width===390||width===1440) {
+        const shot=await command('Page.captureScreenshot',{format:'png'});
+        fs.writeFileSync(path.join(artifacts,`delivery-schedule-${width}.png`),Buffer.from(shot.data,'base64'));
+      }
+      await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+      await command('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+      await waitFor('!document.querySelector("[data-testid=delivery-schedule-footer]")');
+      await openSchedule();
+      await evaluate(`document.querySelector('[aria-label="Tomorrow"]').click()`);
+      await evaluate(`document.querySelector('[aria-label="9:00 AM"]').click()`);
+      await clickText('Save pickup request');
+      await waitFor('!document.querySelector("[data-testid=delivery-schedule-footer]")');
+      assert.equal(await evaluate(`JSON.parse(sessionStorage.getItem('labaride-draft:user:7')).state.requestedPickupAt`),'2026-10-23T01:00:00.000Z');
+      assert.deepEqual(errors,[],'Schedule has no runtime exceptions');
+      console.log('PASS laundry pickup request',width);
+    }
+    orders[0].status = 'Queued';
+    orders[0].receivedAt = '2026-10-22T02:00:00Z';
+    await visit('/shop/customers/orders/42', 390, 'Send ready estimate');
+    async function fill(label, value) {
+      await evaluate(`(()=>{const e=document.querySelector('[aria-label="'+${JSON.stringify(label)}+'"]');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;setter.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    }
+    await fill('Ready date','2026-10-23');
+    await fill('Ready time','14:00');
+    await clickText('Send ready estimate');
+    await waitFor('document.body.innerText.includes("Update ready estimate")');
+    assert.equal(workflowWrites[0].estimatedReadyAt,'2026-10-23T06:00:00.000Z');
+    await clickText('Start processing');
+    await waitFor('!!document.querySelector("[data-testid=app-dialog]")');
+    await clickText('Confirm');
+    await waitFor('document.body.innerText.includes("Mark laundry ready")');
+    assert.equal(workflowWrites[1].status,'Processing');
+    assert.ok(await evaluate('document.body.innerText.includes("Processing started")'));
+    await clickText('Mark laundry ready');
+    await waitFor('!!document.querySelector("[data-testid=app-dialog]")');
+    await clickText('Confirm');
+    await waitFor('document.body.innerText.includes("Confirm delivered to customer")');
+    assert.equal(workflowWrites[2].status,'Ready');
+    await visit('/transaction-details?id=42',390,'Turnaround & Updates');
+    assert.ok(await evaluate('document.body.innerText.includes("arranging return delivery")'));
+    assert.ok(await evaluate('document.body.innerText.includes("Estimated ready time")'));
+    console.log('PASS shop estimate, processing, ready actions and customer updates');
+    fs.writeFileSync(path.join(artifacts,'delivery-schedule-verification.txt'),'Requested laundry pickup verified in Chrome at widths 320, 390, 768 and 1440.\nDate selection, time selection, inline calendar, initial focus, Escape dismissal, fixed footer, viewport bounds, no horizontal overflow and saved checkout state passed. Shop estimate entry, explicit processing start, ready action and customer turnaround details also passed.\nRequests intercepted with isolated fixtures; no live orders created.\n');
+    return;
+  }
   if (logoutTest) {
     const visible = '!!document.querySelector("[data-testid=app-dialog]")';
     const closed = '!document.querySelector("[data-testid=app-dialog]")';

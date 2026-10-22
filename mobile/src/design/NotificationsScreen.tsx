@@ -1,3 +1,4 @@
+import { orderUpdateText, turnaroundTime } from "./TurnaroundDetails";
 import { Pressable, View } from "react-native";
 import { router } from "expo-router";
 import {
@@ -32,7 +33,7 @@ export function NotificationsDesign({
         {["Today", "Earlier"].map((group) => {
           const items = (orders.data || []).filter(
             (order) =>
-              (new Date(order.createdAt).toDateString() === today) ===
+              (new Date(order.updatedAt || order.createdAt).toDateString() === today) ===
               (group === "Today"),
           );
           if (!items.length) return null;
@@ -89,8 +90,9 @@ export function NotificationsDesign({
                         marginVertical: 4,
                       }}
                     >
-                      Order #{order.id} · {order.serviceName} · {order.status}
+                      Order #{order.id} · {orderUpdateText(order)}
                     </Txt>
+                    {!!order.estimatedReadyAt && <Txt style={{ fontSize: 12 }}>Estimated ready: {turnaroundTime(order.estimatedReadyAt)}{order.estimateReason ? ` · ${order.estimateReason}` : ""}</Txt>}
                     <Txt
                       style={{
                         fontFamily: "Poppins",
@@ -98,7 +100,7 @@ export function NotificationsDesign({
                         color: palette.muted,
                       }}
                     >
-                      {new Date(order.createdAt).toLocaleString()}
+                      {new Date(order.updatedAt || order.createdAt).toLocaleString()}
                     </Txt>
                   </View>
                 </Pressable>

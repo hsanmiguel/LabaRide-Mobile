@@ -3,7 +3,8 @@ import { interfaceRole, rolePalette } from "../src/design/theme-tokens";
 import { useSegments } from "expo-router";
 import { PanelAccess } from "../src/navigation/PanelAccess";
 import { AppDialogHost } from "../src/design/AppDialogHost";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { restoreLaundryDraft } from "../src/design/store";
 import { BlurTargetView as ExpoBlurTargetView } from "expo-blur";
 import { useAuthStore } from "../src/store/authStore";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -30,6 +31,8 @@ export default function RootLayout() {
   const blurTarget = useRef<View | null>(null);
   const segments = useSegments();
   const { checkAuth, isLoading, user } = useAuthStore();
+  const draftOwner = user ? `user:${user.id}` : "guest";
+  const [restoredDraftOwner, setRestoredDraftOwner] = useState<string | null>(null);
   const [fontsLoaded, fontError] = useFonts({
     Inter: Inter_400Regular,
     "Inter-Medium": Inter_500Medium,
@@ -40,6 +43,15 @@ export default function RootLayout() {
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    let active = true;
+    void restoreLaundryDraft(draftOwner).then(() => {
+      if (active) setRestoredDraftOwner(draftOwner);
+    });
+    return () => { active = false; };
+  }, [isLoading, draftOwner]);
 
   useEffect(() => {
     if (!user) return;
@@ -57,7 +69,7 @@ export default function RootLayout() {
     };
   }, [user?.id]);
 
-  if (isLoading || (!fontsLoaded && !fontError)) {
+  if (isLoading || restoredDraftOwner !== draftOwner || (!fontsLoaded && !fontError)) {
     return (
       <View
         style={{

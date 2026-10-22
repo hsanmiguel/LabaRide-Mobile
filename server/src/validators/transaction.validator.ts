@@ -1,10 +1,6 @@
 import { z } from 'zod';
 import { addressSchema } from './address.validator';
 
-const futureSchedule = z.string().datetime({ offset: true, message: 'Choose a valid delivery date and time' }).refine(
-  (value) => Date.parse(value) > Date.now(), 'Choose a delivery date and time in the future',
-);
-
 export const createTransactionSchema = z.object({
   body: z.object({
     shopId: z.number().int().positive(),
@@ -22,22 +18,41 @@ export const createTransactionSchema = z.object({
     voucherDiscount: z.number().optional(),
     totalAmount: z.number().optional(),
     deliveryType: z.enum(['Deliver', 'Pickup']),
+    collectionMethod: z.enum(['Dropoff', 'ShopPickup']).default('Dropoff'),
+    collectionAddress: addressSchema.optional(),
     ...addressSchema.shape,
-    scheduledDate: futureSchedule,
-    scheduledTime: futureSchedule,
+    requestedPickupAt: z.string().datetime({ offset: true }).nullish(),
+    scheduledDate: z.string().nullish(),
+    scheduledTime: z.string().nullish(),
     paymentMethod: z.string().default('Cash on Delivery'),
     notes: z.string().optional(),
     items: z.array(z.object({
       itemName: z.string(),
       quantity: z.number().int().positive()
     })).optional()
-  })
+  }).superRefine((data, ctx) => {
+    if (data.collectionMethod === 'ShopPickup' && !data.collectionAddress) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Choose a collection address for shop pickup.', path: ['collectionAddress'] });
+    }
+    if (data.collectionMethod === 'ShopPickup' && (!data.requestedPickupAt || Date.parse(data.requestedPickupAt) <= Date.now())) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Choose a future requested laundry pickup time.', path: ['requestedPickupAt'] });
+    }
+  }).transform(data => ({
+    ...data,
+    collectionAddress: data.collectionMethod === 'ShopPickup' ? data.collectionAddress : undefined,
+    requestedPickupAt: data.collectionMethod === 'ShopPickup' ? data.requestedPickupAt : null,
+    scheduledDate: null,
+    scheduledTime: null,
+  }))
 });
 
 export const updateStatusSchema = z.object({
   body: z.object({
-    status: z.enum(['Pending', 'Processing', 'Completed', 'Cancelled']),
-    notes: z.string().optional()
+    status: z.enum(['Pending', 'Accepted', 'Queued', 'Processing', 'Ready', 'Completed', 'Cancelled']),
+    notes: z.string().optional(),
+    estimatedReadyAt: z.string().datetime({ offset: true }).optional(),
+    estimateReason: z.string().trim().max(500).optional(),
+    confirmPickup: z.boolean().optional(),
   })
 });
 

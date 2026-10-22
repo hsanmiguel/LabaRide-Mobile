@@ -9,8 +9,8 @@ require.cache[databasePath] = { id: databasePath, filename: databasePath, loaded
 const { TransactionController } = require('../dist/controllers/transaction.controller');
 
 async function invoke({ method = 'cancelTransaction', status = 'Pending', userId = 1,
-  body = { reason: '  I changed my mind  ' }, race, missing = false, id = '42' } = {}) {
-  let row = missing ? null : { id: 42, userId: 1, shopId: 5, status, notes: '', totalAmount: 130, shop: { userId: 2, approvalStatus: 'Approved' } };
+  body = { reason: '  I changed my mind  ' }, rowFields = {}, race, missing = false, id = '42' } = {}) {
+  let row = missing ? null : { id: 42, userId: 1, shopId: 5, status, notes: '', totalAmount: 130, shop: { userId: 2, approvalStatus: 'Approved' }, ...rowFields };
   let writes = 0, error;
   const events = [];
   database.transaction = {
@@ -82,11 +82,55 @@ test('shop status updates cannot revive a cancelled order or overwrite a simulta
     assert.equal(result.row.status, 'Cancelled');
     assert.equal(result.writes, 0);
   }
-  const race = await invoke({ method: 'updateStatus', userId: 2, body: { status: 'Processing' }, race: 'Cancelled' });
+  const race = await invoke({ method: 'updateStatus', userId: 2, body: { status: 'Accepted' }, race: 'Cancelled' });
   assert.equal(race.res.code, 409);
   assert.equal(race.row.status, 'Cancelled');
   assert.equal(race.events.length, 0);
-  const accepted = await invoke({ method: 'updateStatus', userId: 2, body: { status: 'Processing' } });
+  const accepted = await invoke({ method: 'updateStatus', userId: 2, body: { status: 'Accepted' } });
   assert.equal(accepted.res.code, 200);
-  assert.equal(accepted.row.status, 'Processing');
+  assert.equal(accepted.row.status, 'Accepted');
+  assert.equal(accepted.row.processingStartedAt, undefined);
+});
+
+test('receipt and processing are separate, timestamps start on explicit action and cannot reset', async () => {
+  const skip = await invoke({ method: 'updateStatus', userId: 2, body: { status: 'Processing' } });
+  assert.equal(skip.res.code, 409);
+  const receipt = await invoke({ method: 'updateStatus', userId: 2, status: 'Accepted', body: { status: 'Queued' } });
+  assert.ok(receipt.row.receivedAt instanceof Date);
+  assert.equal(receipt.row.processingStartedAt, undefined);
+  const start = await invoke({ method: 'updateStatus', userId: 2, status: 'Queued', body: { status: 'Processing' } });
+  assert.ok(start.row.processingStartedAt instanceof Date);
+  const original = new Date('2026-01-01T00:00:00Z');
+  const repeat = await invoke({ method: 'updateStatus', userId: 2, status: 'Processing', rowFields: { processingStartedAt: original }, body: { status: 'Processing' } });
+  assert.equal(repeat.row.processingStartedAt, original);
+  const ready = await invoke({ method: 'updateStatus', userId: 2, status: 'Processing', body: { status: 'Ready' } });
+  assert.ok(ready.row.readyAt instanceof Date);
+  assert.equal((await invoke({ method: 'updateStatus', userId: 2, status: 'Ready', body: { status: 'Completed' } })).res.code, 200);
+});
+test('ready estimates require receipt and a future time; revisions require a reason and notify customer', async () => {
+  const estimatedReadyAt = new Date(Date.now()+86400000).toISOString();
+  for (const status of ['Pending', 'Accepted', 'Ready', 'Completed', 'Cancelled']) {
+    const result = await invoke({ method: 'updateStatus', userId: 2, status, body: { status, estimatedReadyAt } });
+    assert.equal(result.res.code, 400);
+    assert.equal(result.writes, 0);
+  }
+  const result = await invoke({ method: 'updateStatus', userId: 2, status: 'Queued', body: { status: 'Queued', estimatedReadyAt } });
+  assert.equal(result.res.code, 200);
+  assert.equal(result.row.estimatedReadyAt.toISOString(), estimatedReadyAt);
+  assert.ok(result.row.estimateUpdatedAt instanceof Date);
+  assert.deepEqual(result.events.map(e=>e.room), ['user_1','shop_5']);
+  const rowFields = { estimatedReadyAt: new Date(Date.now()+3600000) };
+  const revise = { method: 'updateStatus', userId: 2, status: 'Processing', rowFields, body: { status: 'Processing', estimatedReadyAt } };
+  assert.equal((await invoke(revise)).res.code, 400);
+  revise.body.estimateReason = 'Queue is longer than expected';
+  assert.equal((await invoke(revise)).row.estimateReason, revise.body.estimateReason);
+  revise.body.estimatedReadyAt = '2020-01-01T00:00:00Z';
+  assert.equal((await invoke(revise)).res.code, 400);
+});
+test('shop can confirm requested pickup only after accepting the order', async () => {
+  const rowFields = { collectionMethod: 'ShopPickup', requestedPickupAt: new Date(Date.now()+3600000) };
+  const options = { method: 'updateStatus', userId: 2, status: 'Accepted', rowFields, body: { status: 'Accepted', confirmPickup: true } };
+  assert.equal((await invoke(options)).row.confirmedPickupAt, rowFields.requestedPickupAt);
+  options.status = 'Pending'; options.body.status = 'Pending';
+  assert.equal((await invoke(options)).res.code, 409);
 });

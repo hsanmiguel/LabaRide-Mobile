@@ -5,272 +5,156 @@ const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
 const React = require('react');
-
-const screenFile = fs.readFileSync(path.join(__dirname, '../src/design/OrderScreens.tsx'), 'utf8');
-const ast = ts.createSourceFile('OrderScreens.tsx', screenFile, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const screen = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name.text === 'ScheduleDesign');
-const source = fs.readFileSync(path.join(__dirname, '../src/design/schedule.ts'), 'utf8') + '\n' + screen.getText(ast);
-const compiled = ts.transpileModule(source, { compilerOptions: {
-  module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022,
-} }).outputText;
-
+const modules = new Map();
+function load(file) {
+  if (modules.has(file)) return modules.get(file);
+  const module = { exports: {} };
+  const source = fs.readFileSync(path.join(__dirname, '../src/design', file), 'utf8');
+  const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  new Function('module', 'exports', 'require', output)(module, module.exports, name => load(name.slice(2) + '.ts'));
+  modules.set(file, module.exports);
+  return module.exports;
+}
+const source = fs.readFileSync(path.join(__dirname, '../src/design/DeliverySchedule.tsx'), 'utf8');
+const ast = ts.createSourceFile('DeliverySchedule.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const screen = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name.text === 'DeliverySchedule');
+const compiled = ts.transpileModule(screen.getText(ast), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022 } }).outputText;
 function elements(element, type) {
-  if (Array.isArray(element)) return element.flatMap(child => elements(child, type));
+  if (Array.isArray(element)) return element.flatMap(item => elements(item, type));
   if (!React.isValidElement(element)) return [];
   return [...(element.type === type ? [element] : []), ...elements(element.props.children, type)];
 }
-
-function harness(now = new Date(2026, 9, 13, 10, 30), schedule = '', serviceName = 'Wash', deliveryType = 'Deliver', screenProps = {}) {
-  let clock = now.getTime(), index = 0, backs = 0;
+function harness({ time = '2026-10-22T10:30:00+08:00', schedule = '', pickup = false, hours = {}, serviceName = 'Full Service', failure = null, loading = false } = {}) {
+  let clock = Date.parse(time), index = 0, tick = () => {}, effectSet = false, closed = 0, done = 0;
   const hooks = [], saves = [];
+  const shop = { id: 5, openingTime: '08:00', closingTime: '18:00', services: [{ id: 9, serviceName }], ...hours };
+  const draft = { shop, service: { serviceName }, serviceIds: [9], deliveryType: 'Deliver', schedule, requestedPickupAt: pickup ? schedule : '', set: value => saves.push(value) };
   class FakeDate extends Date {
     constructor(...args) { if (args.length) super(...args); else super(clock); }
     static now() { return clock; }
   }
-  const context = { exports: {}, React, Date: FakeDate,
-    useState(initial) {
-      const slot = index++;
-      if (!(slot in hooks)) hooks[slot] = typeof initial === 'function' ? initial() : initial;
-      return [hooks[slot], value => { hooks[slot] = typeof value === 'function' ? value(hooks[slot]) : value; }];
-    },
-    useEffect() {},
-    useLaundryDraft: () => ({ schedule, service: { serviceName }, deliveryType, set: value => saves.push(value) }),
-    router: { back: () => { backs++; } }, palette: { navy: 'navy', muted: 'muted' }, styles: {},
+  const context = { exports: {}, React, Date: FakeDate, ...load('delivery-slots.ts'), ...load('schedule.ts'), ...load('form-values.ts'), ...load('shop-hours.ts'),
+    useState(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = typeof initial === 'function' ? initial() : initial; return [hooks[slot], value => { hooks[slot] = typeof value === 'function' ? value(hooks[slot]) : value; }]; },
+    useRef(initial) { const slot = index++; if (!(slot in hooks)) hooks[slot] = { current: initial }; return hooks[slot]; },
+    useEffect(effect) { if (!effectSet) { effectSet = true; effect(); } },
+    setInterval(callback) { tick = callback; return 1; }, clearInterval() {},
+    useLaundryDraft: () => draft,
+    useShop: () => ({ data: loading ? null : shop, isLoading: loading, error: failure, refetch() {} }),
+    useWindowDimensions: () => ({ width: 320, height: 640 }), useSafeAreaInsets: () => ({ top: 24, bottom: 20 }),
+    usePalette: () => ({ primary: 'blue', line: 'gray', muted: 'gray', ink: 'black', soft: '#eef' }), styles: { grow: { flex: 1 }, row: {}, muted: {} },
+    Platform: { OS: 'web' }, router: { back: () => { closed++; } }, message: error => error.message,
   };
-  for (const name of ['Screen', 'EmbeddedOrderPanel', 'EmbeddedTimePicker', 'Button', 'View', 'FormError', 'CalendarDays', 'ChevronUp', 'ChevronDown', 'Clock', 'Pencil', 'Modal', 'ScrollView', 'Field', 'Txt', 'TabsRow', 'Card', 'Pressable', 'Section']) context[name] = name;
-  context.usePalette = () => context.palette;
+  for (const name of ['View', 'KeyboardAvoidingView', 'ScrollView', 'ActivityIndicator', 'Txt', 'Button', 'Field', 'Pressable', 'Screen', 'FormError', 'X', 'Check', 'ChevronLeft', 'ChevronRight']) context[name] = name;
   vm.runInNewContext(compiled, context);
-  const render = () => { index = 0; return context.exports.ScheduleDesign(screenProps); };
-  const monthButton = label => elements(render(), 'Pressable').find(item => item.props.accessibilityLabel === label);
-  const day = number => elements(render(), 'Pressable').find(item =>
-    elements(item, 'Txt').some(text => text.props.children === number));
-  const modal = () => elements(render(), screenProps.inDialog ? 'EmbeddedTimePicker' : 'Modal')[0];
-  const openTime = () => elements(render(), 'Pressable').find(item => item.props.accessibilityLabel === 'Change delivery time').props.onPress();
-  const adjust = label => {
-    if (!modal().props.visible) openTime();
-    elements(modal(), 'Pressable').find(item => item.props.accessibilityLabel === label).props.onPress();
-  };
-  const value = unit => {
-    if (!modal().props.visible) openTime();
-    return elements(modal(), 'Txt').find(item => item.props.accessibilityLabel === `Selected ${unit}`).props.children;
-  };
-  const modalButton = title => elements(modal(), 'Button').find(item => item.props.title === title).props.onPress();
-  const saveTime = () => modalButton('Save Time');
-  const preview = () => elements(render(), 'Pressable').find(item => item.props.accessibilityLabel === 'Change delivery time').props.accessibilityValue.text;
-  const confirm = () => elements(render().props.footer, 'Button')[0].props.onPress();
-  return { render, monthButton, day, adjust, value, confirm, saves, context, modal, openTime, modalButton, saveTime, preview,
-    advance: milliseconds => { clock += milliseconds; },
-    error: () => elements(render().props.footer, 'FormError')[0].props.error,
-    timeError: () => elements(modal(), 'FormError')[0]?.props.error,
-    backs: () => backs,
-  };
+  const render = () => { index = 0; return context.exports.DeliverySchedule({ embedded: true, pickup, onDone: () => { done++; }, onClose: () => { closed++; } }); };
+  const button = title => elements(render(), 'Button').find(item => item.props.title === title);
+  const group = label => elements(render(), 'View').find(item => item.props.accessibilityLabel === label);
+  const radio = (groupName, label) => elements(group(groupName), 'Pressable').find(item => item.props.accessibilityLabel === label);
+  const slots = () => elements(group(pickup ? 'Pickup time' : 'Delivery time'), 'Pressable');
+  const confirm = () => button(pickup ? 'Save pickup request' : 'Confirm Delivery Schedule').props.onPress();
+  const calendarDay = day => elements(render(), 'Pressable').find(item => item.props.accessibilityLabel === day);
+  return { render, button, radio, slots, confirm, calendarDay, saves, draft, done: () => done, closed: () => closed,
+    advance: ms => { clock += ms; tick(); }, now: () => clock, context };
 }
 
-test('past calendar days and previous months are disabled; today is available', () => {
+test('compact date-first layout has one scrolling body and a separate sticky footer', () => {
   const app = harness();
-  assert.equal(app.monthButton('Previous month').props.disabled, true);
-  for (let day = 1; day < 13; day++) assert.equal(app.day(day).props.disabled, true);
-  assert.equal(app.day(13).props.disabled, false);
-  assert.equal(app.day(14).props.disabled, false);
+  const screen = app.render();
+  assert.ok(screen.props.style.height <= 640 - 24 - 20 - 48);
+  assert.equal(screen.props.style.maxWidth, 560);
+  const text = elements(screen, 'Txt').map(item => Array.isArray(item.props.children) ? item.props.children.join('') : item.props.children);
+  assert.ok(text.indexOf('1. Choose Delivery Date') < text.indexOf('2. Choose Delivery Time'));
+  const body = elements(screen, 'ScrollView');
+  assert.equal(body.length, 1);
+  assert.equal(elements(body[0], 'Button').some(item => item.props.title === 'Confirm Delivery Schedule'), false);
+  assert.ok(elements(screen, 'View').some(item => item.props.testID === 'delivery-schedule-footer'));
+  for (const slot of app.slots()) assert.equal(slot.props.style({ pressed: false }).width, '48%');
 });
 
-test('returning to the current month selects today across month and year boundaries', () => {
-  for (const now of [new Date(2026, 9, 13, 10), new Date(2026, 9, 31, 10), new Date(2026, 11, 31, 10)]) {
-    const app = harness(now);
-    if (now.getDate() === 13) app.monthButton('Next month').props.onPress();
-    app.monthButton('Previous month').props.onPress();
-    assert.equal(app.day(now.getDate()).props.accessibilityState.selected, true);
-    assert.equal(app.monthButton('Previous month').props.disabled, true);
-  }
+test('invalid saved times are replaced by the earliest valid available time on open', () => {
+  const app = harness({ schedule: '2026-10-22T11:00:00+08:00' });
+  const selected = app.slots().filter(slot => slot.props.accessibilityState.checked);
+  assert.equal(selected.length, 1);
+  app.confirm();
+  assert.ok(Date.parse(app.saves[0].schedule) >= app.now() + 120 * 60000);
+  assert.equal(app.done(), 1);
 });
 
-test('today accepts a future time, rejects an elapsed time and shows the error inline', () => {
+test('a valid exact saved time remains selected even when it is not a suggested grid time', () => {
+  const app = harness({ schedule: '2026-10-23T11:17:00+08:00' });
+  assert.equal(app.slots().filter(item => item.props.accessibilityState.checked).length, 1);
+  assert.equal(app.slots().find(item => item.props.accessibilityState.checked).props.accessibilityLabel, '11:17 AM');
+  app.confirm();
+  assert.equal(Date.parse(app.saves[0].schedule), Date.parse('2026-10-23T11:17:00+08:00'));
+});
+
+test('date changes immediately choose a valid slot and tomorrow uses the shop opening time', () => {
   const app = harness();
-  app.day(13).props.onPress();
-  app.adjust('Decrease hour');
-  app.saveTime();
-  assert.equal(app.saves.length, 0);
-  assert.match(app.timeError(), /future time/);
-  assert.equal(app.modal().props.visible, true);
-  app.adjust('Increase hour');
-  app.adjust('Increase hour');
-  app.saveTime();
+  app.radio('Delivery date', 'Tomorrow').props.onPress();
+  assert.equal(app.slots()[0].props.accessibilityLabel, '8:00 AM');
   app.confirm();
-  assert.equal(app.saves.length, 1);
-  assert.equal(new Date(app.saves[0].schedule).getDate(), 13);
-  assert.equal(app.backs(), 1);
+  assert.equal(app.saves[0].schedule, '2026-10-23T00:00:00.000Z');
 });
 
-test('a schedule left open across midnight cannot save yesterday', () => {
-  const app = harness(new Date(2026, 9, 13, 23, 50));
-  app.day(13).props.onPress();
-  app.advance(20 * 60000);
-  app.confirm();
-  assert.equal(app.saves.length, 0);
-  assert.match(app.error(), /today or a later date/);
-  assert.equal(app.day(13).props.disabled, true);
+test('today is disabled when preparation cannot fit before closing', () => {
+  const app = harness({ time: '2026-10-22T17:00:00+08:00' });
+  assert.equal(app.radio('Delivery date', 'Today').props.disabled, true);
+  assert.equal(app.radio('Delivery date', 'Tomorrow').props.accessibilityState.checked, true);
 });
 
-test('stale schedules reset to tomorrow; valid schedules retain their minutes', () => {
-  const now = new Date(2026, 9, 13, 10, 30);
-  const stale = harness(now, new Date(2026, 9, 12, 11, 45).toISOString());
-  assert.equal(stale.day(14).props.accessibilityState.selected, true);
-  const saved = harness(now, new Date(2026, 9, 14, 11, 45).toISOString());
-  assert.equal(saved.value('minute'), '45');
-  assert.equal(saved.context.exports.validFutureSchedule('invalid', now.getTime()), false);
-});
-
-test('arrow controls cycle hours and minutes within their allowed ranges', () => {
-  const app = harness(new Date(2026, 9, 13, 10, 30), new Date(2026, 9, 14, 12, 59).toISOString());
-  assert.equal(app.value('hour'), '12');
-  assert.equal(app.value('minute'), '59');
-  app.adjust('Increase hour');
-  assert.equal(app.value('hour'), '01');
-  app.adjust('Decrease hour');
-  assert.equal(app.value('hour'), '12');
-  app.adjust('Increase minute');
-  assert.equal(app.value('minute'), '00');
-  app.adjust('Decrease minute');
-  assert.equal(app.value('minute'), '59');
-  app.saveTime();
-  app.confirm();
-  const saved = new Date(app.saves[0].schedule);
-  assert.equal(saved.getHours(), 12);
-  assert.equal(saved.getMinutes(), 59);
-});
-
-test('clicking the time opens a modal; Cancel and dismissal preserve the selected time', () => {
+test('calendar navigation stays inline and cannot select a past date', () => {
   const app = harness();
-  const original = app.preview();
-  assert.equal(app.modal().props.visible, false);
-  app.openTime();
-  assert.equal(app.modal().props.visible, true);
-  app.adjust('Increase hour');
-  app.adjust('Increase minute');
-  assert.equal(app.preview(), original, 'Changes are provisional until saved');
-  app.modalButton('Cancel');
-  assert.equal(app.modal().props.visible, false);
-  assert.equal(app.preview(), original);
-  app.openTime();
-  assert.equal(app.value('hour'), '10');
-  assert.equal(app.value('minute'), '30');
-  app.adjust('Increase hour');
-  app.modal().props.onRequestClose();
-  assert.equal(app.modal().props.visible, false);
-  assert.equal(app.preview(), original);
+  app.button('Choose another date').props.onPress();
+  assert.equal(app.calendarDay('2026-10-21').props.disabled, true);
+  elements(app.render(), 'Pressable').find(item => item.props.accessibilityLabel === 'Next month').props.onPress();
+  app.calendarDay('2026-11-05').props.onPress();
+  assert.equal(elements(app.render(), 'View').some(item => item.props.testID === 'delivery-calendar'), false);
+  assert.equal(app.saves.length, 0);
+  app.confirm();
+  assert.equal(app.context.deliveryDay(app.saves[0].schedule), '2026-11-05');
 });
 
-test('Save Time applies the modal values and AM/PM before confirming the schedule', () => {
+test('exact-time entry rejects outside-hours times and accepts compatible minute-level times', () => {
   const app = harness();
-  app.openTime();
-  app.adjust('Increase hour');
-  app.adjust('Increase minute');
-  app.adjust('PM');
-  app.saveTime();
-  assert.equal(app.modal().props.visible, false);
-  assert.equal(app.preview(), '11:31 PM');
-  assert.equal(app.saves.length, 0, 'Save Time does not place or confirm a booking');
+  app.radio('Delivery date', 'Tomorrow').props.onPress();
+  app.button('Enter an exact time').props.onPress();
+  let field = elements(app.render(), 'Field')[0];
+  field.props.onChangeText('19:00');
+  assert.equal(app.button('Confirm Delivery Schedule').props.disabled, true);
+  field = elements(app.render(), 'Field')[0];
+  field.props.onChangeText('11:17 AM');
+  assert.equal(app.button('Confirm Delivery Schedule').props.disabled, false);
   app.confirm();
-  assert.equal(app.saves.length, 1);
-  const saved = new Date(app.saves[0].schedule);
-  assert.equal(saved.getHours(), 23);
-  assert.equal(saved.getMinutes(), 31);
+  assert.equal(app.saves[0].schedule, '2026-10-23T03:17:00.000Z');
 });
 
-test('Full Service delivery rejects times inside two hours and accepts the exact cutoff', () => {
-  const now = new Date(2026, 9, 13, 10, 30);
-  const app = harness(now, '', '8Kg Full Service Laundry');
-  app.day(13).props.onPress();
-  app.adjust('Increase hour');
-  app.saveTime();
-  assert.match(app.timeError(), /at least 2 hours/);
-  assert.equal(app.modal().props.visible, true);
+test('closing discards unconfirmed choices, and expiry revalidates before saving', () => {
+  const app = harness();
+  app.radio('Delivery date', 'Tomorrow').props.onPress();
+  elements(app.render(), 'Pressable').find(item => item.props.accessibilityLabel === 'Close delivery schedule').props.onPress();
+  assert.equal(app.closed(), 1);
   assert.equal(app.saves.length, 0);
-  app.adjust('Increase hour');
-  app.adjust('PM');
-  app.saveTime();
-  assert.equal(app.modal().props.visible, false);
-  assert.equal(app.preview(), '12:30 PM');
+  assert.equal(app.draft.schedule, '');
+  const expiring = harness({ time: '2026-10-22T15:59:40+08:00', schedule: '2026-10-22T17:59:55+08:00' });
+  const confirm = expiring.button('Confirm Delivery Schedule').props.onPress;
+  expiring.advance(20000);
+  confirm();
+  assert.equal(expiring.saves.length, 0);
+});
+
+test('manual closure and availability errors prevent confirmation with useful retry or empty states', () => {
+  const closed = harness({ hours: { acceptingOrders: false } });
+  assert.equal(closed.slots().length, 0);
+  assert.equal(closed.button('Confirm Delivery Schedule').props.disabled, true);
+  const failed = harness({ failure: new Error('Shop unavailable') });
+  assert.ok(failed.button('Retry availability'));
+  assert.equal(failed.button('Confirm Delivery Schedule').props.disabled, true);
+});
+
+ test('shop pickup requests use no laundry processing lead time and save separately from return delivery', () => {
+  const app = harness({ pickup: true, schedule: '2026-10-22T11:00:00+08:00' });
   app.confirm();
-  assert.equal(new Date(app.saves[0].schedule).getTime() - now.getTime(), 120 * 60000);
-});
-
-test('Full Service cutoff is checked again after waiting to confirm a schedule', () => {
-  const now = new Date(2026, 9, 13, 10, 30);
-  const app = harness(now, new Date(2026, 9, 13, 12, 30).toISOString(), 'Full-Service');
-  app.render();
-  app.advance(60000);
-  app.confirm();
-  assert.equal(app.saves.length, 0);
-  assert.match(app.error(), /at least 2 hours/);
-});
-
-test('a two-hour cutoff across midnight disables today and displays the next available delivery hour', () => {
-  const now = new Date(2026, 9, 13, 23, 30, 15);
-  const app = harness(now, '', 'FULL SERVICE');
-  assert.equal(app.day(13).props.disabled, true);
-  assert.equal(app.day(14).props.disabled, false);
-  const earliest = app.context.exports.earliestDeliveryTime('FULL SERVICE', 'Deliver', now.getTime());
-  assert.equal(earliest.getDate(), 14);
-  assert.equal(earliest.getHours(), 4);
-  assert.equal(earliest.getMinutes(), 0);
-  const fractional = app.context.exports.earliestDeliveryTime('FULL SERVICE', 'Deliver', new Date(2026, 9, 13, 10, 30, 15).getTime());
-  assert.equal(fractional.getHours(), 12);
-  assert.equal(fractional.getMinutes(), 31);
-});
-
-test('the full-service lead time applies to combined services and only to deliveries', () => {
-  const now = new Date(2026, 9, 13, 10, 30).getTime();
-  const soon = new Date(now + 60 * 60000).toISOString();
-  const { deliveryScheduleError } = harness().context.exports;
-  assert.match(deliveryScheduleError(soon, 'Iron, 8 kg Full Service Laundry', 'Deliver', now), /at least 2 hours/);
-  assert.equal(deliveryScheduleError(soon, 'Wash Only', 'Deliver', now), null);
-  assert.equal(deliveryScheduleError(soon, 'Full Service', 'Pickup', now), null);
-});
-
-test('all service types open, modify and save the same time-picker modal', () => {
-  const now = new Date(2026, 9, 13, 10, 30);
-  for (const name of ['Wash Only', 'Dry Only', 'Ironing', '8Kg Full Service Laundry', 'Custom Service']) {
-    const app = harness(now, '', name);
-    app.openTime();
-    assert.equal(app.modal().props.visible, true, name);
-    app.adjust('Increase hour');
-    app.adjust('Increase minute');
-    app.saveTime();
-    assert.equal(app.modal().props.visible, false, name);
-    assert.equal(app.preview(), '11:31 AM', name);
-    app.confirm();
-    assert.equal(app.saves.length, 1, name);
-    const saved = new Date(app.saves[0].schedule);
-    assert.equal(saved.getDate(), 14, name);
-    assert.equal(saved.getHours(), 11, name);
-    assert.equal(saved.getMinutes(), 31, name);
-  }
-});
-
-test('embedded scheduling saves back to the review page without navigating away', () => {
-  let done = 0;
-  const app = harness(new Date(2026, 9, 13, 10, 30), '', 'Full Service', 'Deliver', { embedded: true, onDone: () => { done++; } });
-  assert.equal(app.render().type, 'EmbeddedOrderPanel');
-  app.confirm();
-  assert.equal(app.saves.length, 1);
-  assert.equal(done, 1);
-  assert.equal(app.backs(), 0);
-});
-
-test('the schedule popup edits time without opening a second native modal', () => {
-  let done = 0;
-  const app = harness(new Date(2026, 9, 13, 10, 30), '', 'Full Service', 'Deliver',
-    { embedded: true, inDialog: true, onDone: () => { done++; } });
-  app.openTime();
-  assert.equal(elements(app.render(), 'Modal').length, 0);
-  assert.equal(app.render().props.footer, undefined);
-  app.adjust('Increase hour');
-  app.saveTime();
-  assert.equal(app.preview(), '11:30 AM');
-  assert.ok(app.render().props.footer);
-  app.confirm();
-  assert.equal(done, 1);
-  assert.equal(app.saves.length, 1);
-  assert.equal(app.backs(), 0);
-});
+  assert.equal(app.saves[0].requestedPickupAt, '2026-10-22T03:00:00.000Z');
+  assert.equal(app.saves[0].schedule, undefined);
+  assert.ok(elements(app.render(), 'Txt').some(x => x.props.children === 'This is a request. The shop must confirm pickup availability.'));
+ });

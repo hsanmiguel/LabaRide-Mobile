@@ -8,6 +8,8 @@ import { env } from '../config/env';
 import { formatAddress } from '../validators/address.validator';
 import { userProfileSelect } from '../utils/user-profile';
 import { shopPhotoSelection, withShopPhoto } from '../utils/shop-photo';
+import { distanceSettingsError } from '../utils/service-area';
+import { shopChangesRequireReview } from '../utils/shop-review';
 
 export class ShopController {
   
@@ -60,16 +62,25 @@ export class ShopController {
       }
       const data = registerShopSchema.parse(req).body;
       const updated = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM shops WHERE id = ${shopId} FOR UPDATE`;
+        const current = await tx.shop.findUnique({ where: { id: shopId } });
+        if (!current || current.approvalStatus !== expectedStatus || current.userId !== req.user!.userId) return null;
+        const areaError = distanceSettingsError({ ...current, ...data });
+        if (areaError) throw Object.assign(new Error(areaError), { statusCode: 400 });
+        const needsReview = expectedStatus === 'Rejected' || shopChangesRequireReview(current, data);
         const changed = await tx.shop.updateMany({
-          where: { id: shopId, approvalStatus: expectedStatus },
-          data: { ...data, address: formatAddress(data), approvalStatus: 'Pending', applicationVersion: { increment: 1 }, reviewReason: null, reviewedAt: null, reviewedById: null },
+          where: { id: shopId, approvalStatus: expectedStatus, applicationVersion: current.applicationVersion },
+          data: { ...data, address: formatAddress(data), ...(needsReview ? {
+            approvalStatus: 'Pending', applicationVersion: { increment: 1 }, reviewReason: null, reviewedAt: null, reviewedById: null,
+          } : {}) },
         });
         if (!changed.count) return null;
-        await tx.user.update({ where: { id: shop.userId }, data: { isShopOwner: false } });
+        if (needsReview) await tx.user.update({ where: { id: current.userId }, data: { isShopOwner: false } });
         return tx.shop.findUniqueOrThrow({ where: { id: shopId }, include: { photo: shopPhotoSelection } });
       });
       if (!updated) return sendError(res, 'Shop status changed. Refresh and try again.', 'CONFLICT', 409);
-      return sendSuccess(res, withShopPhoto(updated), 'Shop details submitted for admin approval');
+      return sendSuccess(res, withShopPhoto(updated), updated.approvalStatus === 'Approved'
+        ? 'Shop details updated successfully' : 'Shop details submitted for admin approval');
     } catch (error) { next(error); }
   }
 

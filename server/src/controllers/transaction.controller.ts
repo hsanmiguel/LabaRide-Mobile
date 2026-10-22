@@ -49,7 +49,7 @@ export class TransactionController {
         await tx.$queryRaw`SELECT id FROM shops WHERE id = ${shop.id} FOR SHARE`;
         const current = await tx.shop.findUnique({ where: { id: shop.id }, select: { approvalStatus: true } });
         if (current?.approvalStatus !== 'Approved') return null;
-        return tx.transaction.create({
+        const order = await tx.transaction.create({
         data: {
           ...transactionData,
           ...pricing,
@@ -65,6 +65,11 @@ export class TransactionController {
         },
         include: { items: true }
         });
+        await tx.notification.createMany({ data: [
+          { userId, transactionId: order.id, shopMode: false, title: 'Booking submitted', message: `Order #${order.id} is waiting for shop confirmation.` },
+          { userId: shop.userId, transactionId: order.id, shopMode: true, title: 'New order', message: `${user.name} submitted order #${order.id} for ${order.serviceName}.` },
+        ] });
+        return order;
       });
       if (!transaction) return sendError(res, 'This shop is not approved to receive orders', 'SHOP_NOT_APPROVED', 403);
 
@@ -119,7 +124,7 @@ export class TransactionController {
   static async updateStatus(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const transactionId = parseInt(req.params.id);
-      const { status, notes } = updateStatusSchema.parse(req).body;
+      const { status, notes, acceptanceExplanation } = updateStatusSchema.parse(req).body;
       const existing = await prisma.transaction.findUnique({
         where: { id: transactionId }, include: { shop: { select: { userId: true, approvalStatus: true } } },
       });
@@ -131,15 +136,29 @@ export class TransactionController {
       if (existing.status === 'Cancelled' && status !== 'Cancelled') {
         return sendError(res, 'A cancelled order cannot be accepted or completed', 'CONFLICT', 409);
       }
-      const updated = await prisma.transaction.updateMany({
-        where: { id: transactionId, status: existing.status, shop: { approvalStatus: 'Approved' } },
-        data: { status, notes: notes || undefined },
+      const accepting = existing.status === 'Pending' && status === 'Processing';
+      if (accepting && !acceptanceExplanation) {
+        return sendError(res, 'Enter an explanation before accepting this order', 'ACCEPTANCE_EXPLANATION_REQUIRED', 400);
+      }
+      const savedNotes = accepting
+        ? [existing.notes, `Shop acceptance: ${acceptanceExplanation}`].filter(Boolean).join('\n\n')
+        : notes || undefined;
+      const updated = await prisma.$transaction(async tx => {
+        const result = await tx.transaction.updateMany({
+          where: { id: transactionId, status: existing.status, shop: { approvalStatus: 'Approved' } },
+          data: { status, notes: savedNotes },
+        });
+        if (result.count && existing.status !== status) await tx.notification.createMany({ data: [
+          { userId: existing.userId, transactionId, shopMode: false, title: `Order ${status.toLowerCase()}`, message: `Order #${transactionId} is now ${status.toLowerCase()}.${accepting ? ` Shop acceptance: ${acceptanceExplanation}` : notes ? ` ${notes}` : ''}` },
+          { userId: existing.shop.userId, transactionId, shopMode: true, title: `Order ${status.toLowerCase()}`, message: `Order #${transactionId} is now ${status.toLowerCase()}.` },
+        ] });
+        return result;
       });
       if (!updated.count) return sendError(res, 'Order status changed. Refresh and try again.', 'CONFLICT', 409);
       const transaction = await prisma.transaction.findUniqueOrThrow({ where: { id: transactionId } });
 
       // Emit socket event to both user and shop
-      const payload = { transaction_id: transaction.id, status, notes, total_amount: transaction.totalAmount };
+      const payload = { transaction_id: transaction.id, status, notes: transaction.notes, total_amount: transaction.totalAmount };
       (req.app.get('io') as Server | undefined)?.to(`user_${transaction.userId}`).emit('status_update', payload);
       (req.app.get('io') as Server | undefined)?.to(`shop_${transaction.shopId}`).emit('status_update', payload);
 
@@ -153,7 +172,7 @@ export class TransactionController {
     try {
       const { params: { id: transactionId }, body: { reason } } = cancelTransactionSchema.parse(req);
       const existing = await prisma.transaction.findUnique({
-        where: { id: transactionId }, select: { userId: true, status: true },
+        where: { id: transactionId }, include: { shop: { select: { userId: true } } },
       });
       if (!existing) return sendError(res, 'Order not found', 'NOT_FOUND', 404);
       if (existing.userId !== req.user!.userId) {
@@ -163,9 +182,16 @@ export class TransactionController {
         return sendError(res, 'You can only cancel a pending order before it is accepted', 'CONFLICT', 409);
       }
       
-      const updated = await prisma.transaction.updateMany({
-        where: { id: transactionId, userId: req.user!.userId, status: 'Pending' },
-        data: { status: 'Cancelled', notes: reason },
+      const updated = await prisma.$transaction(async tx => {
+        const result = await tx.transaction.updateMany({
+          where: { id: transactionId, userId: req.user!.userId, status: 'Pending' },
+          data: { status: 'Cancelled', notes: reason },
+        });
+        if (result.count) await tx.notification.createMany({ data: [
+          { userId: existing.userId, transactionId, shopMode: false, title: 'Order cancelled', message: `You cancelled order #${transactionId}: ${reason}` },
+          { userId: existing.shop.userId, transactionId, shopMode: true, title: 'Customer cancelled an order', message: `Order #${transactionId} was cancelled: ${reason}` },
+        ] });
+        return result;
       });
       if (!updated.count) return sendError(res, 'Order status changed. Refresh and try again.', 'CONFLICT', 409);
       const transaction = await prisma.transaction.findUniqueOrThrow({ where: { id: transactionId } });

@@ -49,8 +49,10 @@ async function invoke({ minutes, serviceName = '8Kg Full Service Laundry', deliv
   const originalClock = Date.now;
   Date.now = () => now + waitingMinutes * 60000;
   let writes = 0, error;
+  const notifications = [];
+  database.notification = { createMany: async ({ data }) => { notifications.push(...data); return { count: data.length }; } };
   database.user = { findUnique: async () => ({ id: 1, name: 'Test User', email: 'test@example.invalid' }) };
-  database.shop = { findUnique: async () => ({ id: 1, approvalStatus: 'Approved', services: [
+  database.shop = { findUnique: async () => ({ id: 1, userId: 2, approvalStatus: 'Approved', services: [
     { id: 1, serviceName, price: new Prisma.Decimal(215), packageKilos: new Prisma.Decimal(8) },
   ], kiloPrices: [] }) };
   database.transaction = { create: async ({ data }) => { writes++; return { ...data, id: 1 }; } };
@@ -62,7 +64,7 @@ async function invoke({ minutes, serviceName = '8Kg Full Service Laundry', deliv
   const res = { status(code) { this.code = code; return this; }, json(data) { this.body = data; return this; } };
   try { await TransactionController.createTransaction(req, res, failure => { error = failure; }); }
   finally { Date.now = originalClock; }
-  return { res, writes, error };
+  return { res, writes, error, notifications };
 }
 
 test('API uses the saved shop service name and rejects early delivery before writing an order', async () => {
@@ -71,10 +73,13 @@ test('API uses the saved shop service name and rejects early delivery before wri
   assert.equal(early.res.code, 400);
   assert.equal(early.res.body.error.code, 'INVALID_SCHEDULE');
   assert.equal(early.writes, 0);
+  assert.equal(early.notifications.length, 0);
   const boundary = await invoke({ minutes: 120 });
   assert.equal(boundary.res.code, 201);
   assert.equal(boundary.writes, 1);
   assert.equal(boundary.res.body.data.serviceName, '8Kg Full Service Laundry');
+  assert.deepEqual(boundary.notifications.map(item => [item.userId, item.shopMode]), [[1, false], [2, true]]);
+  assert.ok(boundary.notifications.every(item => item.transactionId === boundary.res.body.data.id));
   const expiredCutoff = await invoke({ minutes: 120, waitingMinutes: 1 });
   assert.equal(expiredCutoff.res.code, 400);
   assert.equal(expiredCutoff.writes, 0);

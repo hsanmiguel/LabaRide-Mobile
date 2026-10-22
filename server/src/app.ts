@@ -14,6 +14,7 @@ import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
 import shopRoutes from './routes/shop.routes';
 import transactionRoutes from './routes/transaction.routes';
+import notificationRoutes from './routes/notification.routes';
 
 const app = express();
 
@@ -32,6 +33,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/shops', shopRoutes);
 app.use('/api/transactions', transactionRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

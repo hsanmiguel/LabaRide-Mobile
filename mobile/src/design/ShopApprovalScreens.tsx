@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Modal, View, useWindowDimensions } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, ScrollView, View, useWindowDimensions } from "react-native";
 import { ArrowRight, Check, CheckCircle2, Clock3, LockKeyhole, MapPin, Phone, RefreshCw, ShoppingBag, Store, TriangleAlert, type LucideIcon } from "lucide-react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/authStore";
@@ -130,6 +130,9 @@ interface Application extends Shop {
 export function AdminDashboardDesign() {
   const logout = useLogout();
   const palette = usePalette();
+  const { width } = useWindowDimensions();
+  const compact = width < 600;
+  const wide = width >= 1000;
   const auth = useAuthStore();
   const profile = useProfile();
   const cache = useQueryClient();
@@ -170,49 +173,77 @@ export function AdminDashboardDesign() {
   return <Screen title="Admin Dashboard" back={false} background={palette.surface}>
     <View style={styles.stack}>
       <View style={styles.between}>
-        <View><Txt style={styles.title}>Shop approvals</Txt><Txt style={styles.muted}>Review applications before shops go live.</Txt></View>
+        <View style={{ flex: 1, minWidth: 180, gap: 4 }}><Txt style={styles.title}>Shop management</Txt><Txt style={styles.muted}>Review applications and manage shop access.</Txt></View>
         <View style={[styles.row, { flexWrap: "wrap" }]}>
           <Button title="Sign Out" outline onPress={logout} />
         </View>
       </View>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-        {statuses.map(status => <Card key={status} style={{ flexGrow: 1, flexBasis: 140 }}>
-          <Txt style={styles.muted}>{labels[status]}</Txt><Txt style={styles.title}>{list.filter(shop => shop.approvalStatus === status).length}</Txt>
+        {statuses.map(status => <Card key={status} style={{ flexGrow: 1, flexBasis: compact ? "45%" : 140, padding: compact ? 16 : 20, gap: 8 }}>
+          <Txt style={{ color: palette.muted, fontSize: 12 }}>{labels[status]}</Txt><Txt style={styles.title}>{list.filter(shop => shop.approvalStatus === status).length}</Txt>
         </Card>)}
       </View>
       <SearchBox placeholder="Search shops, owners, or addresses" value={search} onChangeText={setSearch} />
       <TabsRow items={[...statuses, "All"]} value={filter} onChange={setFilter} />
-      <Button title="Refresh Applications" outline busy={applications.isFetching} onPress={() => { void applications.refetch(); void profile.refetch(); }} />
+      <View style={[styles.between, { gap: 8 }]}>
+        <Txt accessibilityLiveRegion="polite" style={styles.muted}>{visible.length} {visible.length === 1 ? "shop" : "shops"}{filter !== "All" ? ` · ${labels[filter as Status]}` : " · All statuses"}</Txt>
+        <Button title="Refresh" compact outline busy={applications.isFetching} icon={<RefreshCw size={15} color={palette.primary} />} onPress={() => { void applications.refetch(); void profile.refetch(); }} />
+      </View>
       <QueryState loading={applications.isLoading} error={applications.error} retry={() => applications.refetch()} />
-      {visible.map(shop => <Card key={shop.id}>
-        <View style={styles.between}><Txt style={styles.heading}>{shop.shopName}</Txt><ApprovalBadge status={shop.approvalStatus} /></View>
-        <Txt style={styles.muted}>Application #{shop.id} · Submitted {new Date(shop.createdAt).toLocaleDateString()}</Txt>
-        <Txt>Owner: {shop.user.name}</Txt><Txt>Email: {shop.user.email}</Txt>
-        <Txt>Shop contact: {shop.contactNumber}</Txt>
-        <Txt>Address: {address(shop)}</Txt>
-        <Txt>Hours: {shop.openingTime} – {shop.closingTime}</Txt>
-        {shop.reviewedAt && <Txt style={styles.muted}>Reviewed {new Date(shop.reviewedAt).toLocaleString()} by {shop.reviewedBy?.name || "Former admin"}</Txt>}
-        {shop.reviewReason && <Txt>Admin's reason: {shop.reviewReason}</Txt>}
-        <View style={[styles.row, { flexWrap: "wrap" }]}>
-          {(shop.approvalStatus === "Pending" || shop.approvalStatus === "Suspended") && <Button title={shop.approvalStatus === "Suspended" ? "Restore Shop" : "Approve Shop"} color={palette.success} onPress={() => choose(shop, "Approved")} />}
-          {shop.approvalStatus === "Pending" && <Button title="Reject Application" color={palette.danger} outline onPress={() => choose(shop, "Rejected")} />}
-          {shop.approvalStatus === "Approved" && <Button title="Suspend Shop" color={palette.danger} outline onPress={() => choose(shop, "Suspended")} />}
+      {visible.map(shop => <Card key={shop.id} style={{ padding: compact ? 18 : 24, gap: 20, borderRadius: 20 }}>
+        <View style={{ flexDirection: compact ? "column" : "row", alignItems: "flex-start", gap: 12 }}>
+          <View style={[styles.row, { flex: compact ? undefined : 1, minWidth: 0, width: compact ? "100%" : undefined }]}>
+            <View style={{ width: 44, height: 44, flexShrink: 0, borderRadius: 12, backgroundColor: palette.soft, alignItems: "center", justifyContent: "center" }}><Store size={22} color={palette.primary} /></View>
+            <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+              <Txt accessibilityRole="header" style={styles.heading}>{shop.shopName}</Txt>
+              <Txt style={{ color: palette.muted, fontSize: 12 }}>Application #{shop.id} · Submitted {new Date(shop.createdAt).toLocaleDateString()}</Txt>
+            </View>
+          </View>
+          <ApprovalBadge status={shop.approvalStatus} />
+        </View>
+        <View style={{ flexDirection: wide ? "row" : "column", gap: 20, paddingTop: 18, borderTopWidth: 1, borderTopColor: palette.line }}>
+          <View style={{ flex: wide ? 1 : undefined, minWidth: 0, gap: 6 }}>
+            <Txt style={{ fontSize: 11, fontWeight: "700", color: palette.muted, letterSpacing: 1 }}>OWNER & CONTACT</Txt>
+            <Txt style={{ fontWeight: "600" }}>{shop.user.name}</Txt>
+            <Txt selectable style={{ color: palette.muted }}>{shop.user.email}</Txt>
+            <View style={[styles.row, { gap: 8 }]}><Phone size={15} color={palette.muted} /><Txt selectable>{shop.contactNumber || "No contact number"}</Txt></View>
+          </View>
+          <View style={{ flex: wide ? 1.4 : undefined, minWidth: 0, gap: 8 }}>
+            <Txt style={{ fontSize: 11, fontWeight: "700", color: palette.muted, letterSpacing: 1 }}>LOCATION & HOURS</Txt>
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}><MapPin size={16} color={palette.muted} style={{ marginTop: 3, flexShrink: 0 }} /><Txt style={{ flex: 1 }}>{address(shop) || "No address provided"}</Txt></View>
+            <View style={[styles.row, { gap: 8 }]}><Clock3 size={15} color={palette.muted} /><Txt style={{ flex: 1, color: palette.muted }}>{shop.openingTime} – {shop.closingTime}</Txt></View>
+          </View>
+        </View>
+        {(shop.reviewReason || shop.reviewedAt) && <View style={{ backgroundColor: palette.surface, padding: 14, borderRadius: 12, gap: 6 }}>
+          <Txt style={{ fontSize: 12, fontWeight: "600", color: palette.primary }}>Latest admin review</Txt>
+          {!!shop.reviewReason && <Txt>{shop.reviewReason}</Txt>}
+          {!!shop.reviewedAt && <Txt style={{ fontSize: 12, color: palette.muted }}>{shop.reviewedBy?.name || "Former admin"} · {new Date(shop.reviewedAt).toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</Txt>}
+        </View>}
+        <View style={{ flexDirection: wide ? "row" : "column", alignItems: wide ? "center" : "stretch", gap: 16, borderTopWidth: 1, borderTopColor: palette.line, paddingTop: 16 }}>
+          <Txt style={{ flex: wide ? 1 : undefined, color: palette.muted, fontSize: 12 }}>{shop.approvalStatus === "Approved" ? "Visible to customers and accepting bookings." : shop.approvalStatus === "Pending" ? "Hidden from customers until approved." : shop.approvalStatus === "Suspended" ? "Shop access is paused. Restore to enable bookings." : "The owner can update and resubmit this application."}</Txt>
+          <View style={{ flexDirection: compact ? "column" : "row", flexWrap: "wrap", gap: 10 }}>
+            {(shop.approvalStatus === "Pending" || shop.approvalStatus === "Suspended") && <Button title={shop.approvalStatus === "Suspended" ? "Restore Shop" : "Approve Shop"} color={palette.success} onPress={() => choose(shop, "Approved")} />}
+            {shop.approvalStatus === "Pending" && <Button title="Reject Application" color={palette.danger} outline onPress={() => choose(shop, "Rejected")} />}
+            {shop.approvalStatus === "Approved" && <Button title="Suspend Shop" color={palette.danger} outline onPress={() => choose(shop, "Suspended")} />}
+          </View>
         </View>
       </Card>)}
       {!applications.isLoading && !applications.error && !visible.length && <Empty title="No matching applications" message="Shop applications will appear here for review." />}
     </View>
     <Modal visible={!!decision} transparent animationType="fade" onRequestClose={() => !busy && setDecision(null)}>
-      <View style={{ flex: 1, justifyContent: "center", padding: 20, backgroundColor: "#00000066" }}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: "#00000066" }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: compact ? 16 : 24 }}>
         <Card style={{ width: "100%", maxWidth: 520, alignSelf: "center" }}>
           <Txt style={styles.heading}>{decision?.status === "Approved" ? "Approve shop" : decision?.status === "Rejected" ? "Reject application" : "Suspend shop"}</Txt>
           <Txt>{decision?.shop.shopName}</Txt>
           <Txt style={styles.muted}>{decision?.status === "Approved" ? "The shop will be listed for customers and shop mode will be enabled." : "The shop will stay hidden and shop mode will be locked. The applicant will see your reason."}</Txt>
           <Field label={decision?.status === "Approved" ? "Note (optional)" : "Reason *"} value={reason} onChangeText={setReason} multiline maxLength={1000} />
           <FormError error={error} />
-          <Button title="Confirm Decision" busy={busy} onPress={review} />
+          <Button title={decision?.status === "Suspended" ? "Suspend Shop" : decision?.status === "Rejected" ? "Reject Application" : decision?.shop.approvalStatus === "Suspended" ? "Restore Shop" : "Approve Shop"} color={decision?.status === "Approved" ? palette.success : palette.danger} busy={busy} onPress={review} />
           <Button title="Cancel" disabled={busy} outline onPress={() => setDecision(null)} />
         </Card>
-      </View>
+      </ScrollView>
+      </KeyboardAvoidingView>
     </Modal>
   </Screen>;
 }

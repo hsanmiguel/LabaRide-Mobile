@@ -1,6 +1,6 @@
 import { coordinates, nearestShops, nearbyShops } from "./discovery";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import {
   Bell,
   ArrowUpRight,
@@ -124,18 +124,20 @@ export function UserHomeDesign() {
     (shops.data || []).filter(shop => filter === "all" || shop.services?.some(service => `service:${service.serviceName}` === filter));
   return <Screen back={false}>
     <View style={[styles.stack, { gap: 16 }]}>
-      <View style={styles.between}>
+      <View style={[styles.row, { alignItems: "flex-start", gap: width < 360 ? 8 : 16 }]}>
         <View style={styles.grow}>
           <Txt style={{ fontSize: width >= 768 ? 30 : 24, fontWeight: "700" }} numberOfLines={1}>{firstName ? `Hello, ${firstName}` : "Hello there"}</Txt>
           <Pressable accessibilityRole="button" accessibilityLabel="Choose delivery location" onPress={() => go("add-location")}
-            style={[styles.row, { minHeight: 36, gap: 6 }]}>
-            <MapPin size={14} color={palette.primary} />
-            <Txt numberOfLines={1} style={{ flex: 1, color: palette.muted, fontSize: 12 }}>{location || "Choose your delivery location"}</Txt>
-            <ChevronRight size={14} color={palette.primary} />
+            style={[styles.row, { alignSelf: "flex-start", maxWidth: "100%", minHeight: 44, gap: 6 }]}>
+            <MapPin size={14} color={palette.primary} style={{ flexShrink: 0 }} />
+            <Txt numberOfLines={1} ellipsizeMode="tail" style={{ flexShrink: 1, color: palette.muted, fontSize: 12 }}>{location || "Choose your delivery location"}</Txt>
+            <ChevronRight size={14} color={palette.primary} style={{ flexShrink: 0 }} />
           </Pressable>
         </View>
-        <IconButton label="Your profile" onPress={() => router.push("/(user)/profile")}><UserRound size={22} color={palette.primary} /></IconButton>
-        {!guest && user && <IconButton label="Notifications" onPress={() => go("notifications")}><Bell size={22} color={palette.primary} /></IconButton>}
+        <View style={[styles.row, { flexShrink: 0, gap: 8, paddingTop: 4 }]}>
+          <IconButton label="Your profile" onPress={() => router.push("/(user)/profile")}><UserRound size={22} color={palette.primary} /></IconButton>
+          {!guest && user && <IconButton label="Notifications" onPress={() => go("notifications")}><Bell size={22} color={palette.primary} /></IconButton>}
+        </View>
       </View>
       <SearchBox onPress={() => go("search")} />
       <View style={{ gap: 12 }}>
@@ -185,6 +187,8 @@ export function ShopsDesign({
   map?: boolean;
 }) {
   const palette = usePalette();
+  const { width } = useWindowDimensions();
+  const webMap = map && Platform.OS === "web";
   const { go: openFlow, inShop } = useFlowNavigation();
   const shops = useShops();
   const [query, setQuery] = useState("");
@@ -238,7 +242,7 @@ export function ShopsDesign({
           </View>
         </View>
         {map && (
-          <View style={{ height: 300, borderRadius: 16, overflow: "hidden" }}>
+          <View style={{ height: webMap && width >= 1000 ? 380 : 300, flexShrink: 0, borderRadius: 16, overflow: "hidden" }}>
             <LaundryMap shops={filtered} latitude={point?.latitude} longitude={point?.longitude} onSelect={open} />
           </View>
         )}
@@ -266,7 +270,16 @@ export function ShopsDesign({
           error={shops.error}
           retry={() => shops.refetch()}
         />
-        {map ? (
+        {webMap ? (
+          <View style={{ gap: 16 }}>
+            <Txt accessibilityRole="header" style={styles.heading}>{filtered.length} {filtered.length === 1 ? "laundry shop" : "laundry shops"}</Txt>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: 16 }}>
+              {filtered.map(shop => <View key={shop.id} style={{ width: width >= 1400 ? "31.8%" : width >= 1000 ? "48.8%" : "100%", minWidth: 0 }}>
+                <ShopCard shop={shop} onPress={() => open(shop)} />
+              </View>)}
+            </View>
+          </View>
+        ) : map ? (
           <ScrollView
             style={{ maxHeight: 260 }}
             contentContainerStyle={styles.stack}

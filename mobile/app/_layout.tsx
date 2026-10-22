@@ -47,6 +47,7 @@ export default function RootLayout() {
     const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: ["user-orders"] });
       queryClient.invalidateQueries({ queryKey: ["shop-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
     };
     const offStatus = socketService.onTransactionUpdate(invalidate);
     const offNew = socketService.onNewTransaction(invalidate);

@@ -508,11 +508,15 @@ export function ShopOrderDetailsDesign({
   const result = useOrders(true);
   const order = result.data?.find((o) => o.id === id);
   const [busy, setBusy] = useState(false);
+  const [acceptanceExplanation, setAcceptanceExplanation] = useState("");
   const cache = useQueryClient();
   async function update(status: Order["status"]) {
     setBusy(true);
     try {
-      await api.put(`/transactions/${id}/status`, { status });
+      await api.put(`/transactions/${id}/status`, {
+        status,
+        ...(status === "Processing" ? { acceptanceExplanation: acceptanceExplanation.trim() } : {}),
+      });
       await cache.invalidateQueries({ queryKey: ["shop-orders"] });
     } catch (error) {
       fail(error);
@@ -551,6 +555,7 @@ export function ShopOrderDetailsDesign({
             title="Accept"
             color={palette.primary}
             busy={busy}
+            disabled={!acceptanceExplanation.trim()}
             onPress={() => update("Processing")}
           />
         ) : order.status === "Processing" ? (
@@ -564,6 +569,20 @@ export function ShopOrderDetailsDesign({
       }
     >
       <Card style={{ borderRadius: 16, padding: 20 }}>
+        {order.status === "Pending" && (
+          <View style={{ marginBottom: 20 }}>
+            <Field
+              label="Acceptance explanation (required)"
+              placeholder="Let the customer know why you can accept and what to expect."
+              value={acceptanceExplanation}
+              onChangeText={setAcceptanceExplanation}
+              multiline
+              maxLength={500}
+              editable={!busy}
+            />
+            <Txt style={styles.muted}>This message will be shared with the customer when you accept.</Txt>
+          </View>
+        )}
         <View style={styles.between}>
           <Txt style={{ fontSize: 24, fontWeight: "700", color: palette.navy }}>
             Order

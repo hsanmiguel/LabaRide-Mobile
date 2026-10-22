@@ -37,6 +37,7 @@ export const createTransactionSchema = z.object({
 export const updateStatusSchema = z.object({
   body: z.object({
     status: z.enum(['Pending', 'Processing', 'Completed', 'Cancelled']),
+    acceptanceExplanation: z.string().trim().min(1, 'Enter an acceptance explanation').max(500).optional(),
     notes: z.string().optional()
   })
 });
@@ -44,7 +45,6 @@ export const updateStatusSchema = z.object({
 export const cancelTransactionSchema = z.object({
   params: z.object({ id: z.coerce.number().int().positive() }),
   body: z.object({
-    // Older clients can omit the reason; supplied reasons must contain text.
-    reason: z.string().trim().min(1, 'Choose a cancellation reason').max(500).optional(),
+    reason: z.string({ required_error: 'Choose a cancellation reason' }).trim().min(1, 'Choose a cancellation reason').max(500),
   }),
 });

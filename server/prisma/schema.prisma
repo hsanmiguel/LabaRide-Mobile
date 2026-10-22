@@ -50,6 +50,7 @@ model User {
   reviewedShops        Shop[] @relation("ShopReviewer")
   photo                UserPhoto?
   transactions         Transaction[]
+  notifications        Notification[]
   // Nullable for existing accounts and historical records; new address saves are validated by the API.
   address_line_1       String?
   address_line_2       String?
@@ -197,6 +198,21 @@ model Transaction {
   dropoff_instructions String?
 
   @@map("transactions")
+}
+
+model Notification {
+  id            Int      @id @default(autoincrement())
+  userId        Int      @map("user_id")
+  transactionId Int      @map("transaction_id")
+  shopMode      Boolean  @default(false) @map("shop_mode")
+  title         String
+  message       String
+  createdAt     DateTime @default(now()) @map("created_at")
+  readAt        DateTime? @map("read_at")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, shopMode, createdAt])
+  @@map("notifications")
 }
 
 model TransactionItem {

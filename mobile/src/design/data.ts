@@ -202,7 +202,7 @@ export function useOrders(shopMode = false) {
   return useQuery({
     queryKey: [shopMode ? "shop-orders" : "user-orders", ownerId],
     enabled: !!ownerId,
-    refetchInterval: process.env.EXPO_PUBLIC_REALTIME_MODE === "polling" ? 15000 : false,
+    refetchInterval: 15000,
     queryFn: () =>
       api.get<Order[]>(
         `/transactions/${shopMode ? "shop" : "user"}/${ownerId}`,

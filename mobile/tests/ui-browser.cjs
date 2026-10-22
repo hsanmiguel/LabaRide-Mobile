@@ -68,7 +68,8 @@ async function visit(route, width, expected, screenshot) {
   errors = [];
   if (sessionScriptId) await command('Page.removeScriptToEvaluateOnNewDocument',{identifier:sessionScriptId});
   const fixedClock = scheduleTest ? `const OriginalDate=Date;globalThis.Date=class extends OriginalDate{constructor(...args){super(...(args.length?args:[Date.parse('2026-10-22T02:30:00Z')]));}static now(){return OriginalDate.parse('2026-10-22T02:30:00Z');}};` : '';
-  const script = await command('Page.addScriptToEvaluateOnNewDocument',{source:`${fixedClock}sessionStorage.setItem('auth_token','isolated-ui-test');sessionStorage.setItem('auth_user',${JSON.stringify(JSON.stringify(user))});`});
+  const savedAddressFixture = scheduleTest ? `localStorage.setItem('labaride-addresses:7',${JSON.stringify(JSON.stringify([{ ...user, address_line_1: '88 Saved Address Street', address_type: 'Work', access_code: 'Gate 2', dropoff_instructions: 'Ring the bell' }]))});` : '';
+  const script = await command('Page.addScriptToEvaluateOnNewDocument',{source:`${fixedClock}${savedAddressFixture}sessionStorage.setItem('auth_token','isolated-ui-test');sessionStorage.setItem('auth_user',${JSON.stringify(JSON.stringify(user))});`});
   sessionScriptId = script.identifier;
   await command('Emulation.setDeviceMetricsOverride', { width, height: width < 768 ? 844 : 1000, deviceScaleFactor: 1, mobile: false });
   await command('Page.navigate', { url: `http://127.0.0.1:4178${route}` });
@@ -183,6 +184,24 @@ async function clickText(text) {
       assert.ok(await evaluate('document.body.innerText.includes("Turnaround & Updates")'));
       await evaluate(`document.querySelector('[aria-label="Laundry transport"]').click()`);
       await evaluate(`document.querySelector('[aria-label="Pickup & delivery"]').click()`);
+      const openAddresses = async () => {
+        await evaluate(`Array.from(document.querySelectorAll('[role="button"]')).find(e=>e.innerText.trim().startsWith('Customer address')).click()`);
+        await waitFor(`!!document.querySelector('[role="radiogroup"][aria-label="Saved addresses"]')`);
+      };
+      await openAddresses();
+      assert.equal(await evaluate(`document.querySelector('[role="radiogroup"][aria-label="Saved addresses"]').parentElement.querySelectorAll('input,textarea').length`), 0, 'Checkout address selector has no address inputs');
+      await waitFor(`!!document.querySelector('[aria-label="Saved address 1"]')`);
+      if (width === 390) {
+        const shot = await command('Page.captureScreenshot', { format: 'png' });
+        fs.writeFileSync(path.join(artifacts, 'checkout-address-selector-390.png'), Buffer.from(shot.data, 'base64'));
+      }
+      await evaluate(`document.querySelector('[aria-label="Saved address 1"]').click()`);
+      await waitFor(`!document.querySelector('[role="radiogroup"][aria-label="Saved addresses"]')`);
+      assert.equal(await evaluate(`JSON.parse(sessionStorage.getItem('labaride-draft:user:7')).state.address.address_line_1`), '88 Saved Address Street');
+      await openAddresses();
+      await evaluate(`document.querySelector('[aria-label="Primary address"]').click()`);
+      await waitFor(`!document.querySelector('[role="radiogroup"][aria-label="Saved addresses"]')`);
+      assert.equal(await evaluate(`JSON.parse(sessionStorage.getItem('labaride-draft:user:7')).state.address`), null);
       const openSchedule = async () => {
         await evaluate(`Array.from(document.querySelectorAll('[role="button"]')).find(e=>e.innerText.trim().startsWith('Requested laundry pickup')).click()`);
         await waitFor('!!document.querySelector("[data-testid=delivery-schedule-footer]")');

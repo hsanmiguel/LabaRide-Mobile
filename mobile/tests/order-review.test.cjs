@@ -103,7 +103,7 @@ function harness({ guest = false, request, failure, saved = [], storageFailure, 
         addressWrites.push({ key, value }); storedAddresses = JSON.parse(value);
       },
     },
-    useFlowNavigation: () => ({ replaceFlow: (...args) => navigation.push(args) }),
+    useFlowNavigation: () => ({ replaceFlow: (...args) => navigation.push(args), go: (...args) => navigation.push(args) }),
     router: { push: (...args) => navigation.push(args), back: () => navigation.push(['back']) },
     useQueryClient: () => ({ invalidateQueries: async ({ queryKey }) => invalidations.push(queryKey[0]) }),
     draftTotals: () => orderPricing(draft.kilos, draft.service, draft.shop, draft.deliveryType, draft.serviceIds),
@@ -117,7 +117,7 @@ function harness({ guest = false, request, failure, saved = [], storageFailure, 
     palette: { navy: 'navy', surface: 'surface' }, styles: {},
   };
   for (const name of ['Screen', 'Button', 'View', 'FormError', 'Field', 'Txt', 'Card', 'Pressable', 'Asset',
-    'Plus', 'Minus', 'Pencil', 'ChevronDown', 'Clock', 'Section', 'Empty', 'QueryState', 'MenuRow', 'Modal', 'ScrollView', 'Choice', 'PaymentDropdown', 'AddressFields', 'DeliveryDetails', 'ScheduleDesign', 'PriceRow', 'Totals']) context[name] = name;
+    'Plus', 'Minus', 'Pencil', 'ChevronDown', 'CheckCircle2', 'Clock', 'Section', 'Empty', 'QueryState', 'MenuRow', 'Modal', 'ScrollView', 'Choice', 'PaymentDropdown', 'AddressFields', 'DeliveryDetails', 'ScheduleDesign', 'PriceRow', 'Totals']) context[name] = name;
   context.usePalette = () => context.palette;
   vm.runInNewContext(compiled, context);
   const render = () => { index = 0; return context.exports.CheckoutDesign(); };
@@ -134,7 +134,7 @@ test('summary is the checkout form with all booking details and a direct Place O
   assert.equal(app.render().props.title, 'Order Summary');
   assert.equal(elements(app.render().props.footer, 'Button')[0].props.title, 'Place Order');
   assert.equal(app.button('Proceed to checkout'), undefined);
-  for (const title of ['Shop & Selected Services', 'How should your laundry travel?', 'Laundry Weight', 'Note to Laundry Shop', 'Payment Method', 'Fees & Total']) {
+  for (const title of ['Shop & Selected Services', 'Pickup & Delivery Options', 'Laundry Weight', 'Note to Laundry Shop', 'Payment Method', 'Fees & Total']) {
     assert.ok(elements(app.render(), 'Section').some(item => item.props.title === title), title);
   }
   assert.ok(elements(app.render(), 'Section').some(item => item.props.title === 'Turnaround & Updates'));
@@ -143,12 +143,13 @@ test('summary is the checkout form with all booking details and a direct Place O
 
 test('address, laundry and schedule editors open in a modal on the review page', () => {
   const app = harness();
-  app.menu('Your Address').props.onPress();
+  app.menu('Customer address').props.onPress();
   let modal = elements(app.render(), 'Modal')[0];
   assert.equal(modal.props.visible, true);
-  elements(modal, 'AddressFields')[0].props.setValues(current => ({ ...current, address_line_1: '99 New Street' }));
-  app.button('Use This Address').props.onPress();
-  assert.equal(app.draft.address.address_line_1, '99 New Street');
+  assert.equal(elements(modal, 'AddressFields').length, 0);
+  elements(modal, 'Pressable').find(item => item.props.accessibilityLabel === 'Primary address').props.onPress();
+  assert.equal(app.draft.address, null);
+  assert.equal(app.menu('Customer address').props.detail, addressHelpers.formatAddress(app.profile));
   assert.equal(elements(app.render(), 'Modal')[0].props.visible, false);
   app.button('Add Types of Clothes').props.onPress();
   const items = elements(app.render(), 'LaundryCountDesign')[0];
@@ -351,7 +352,7 @@ test('shop collection uses its own range and preserves the collection address wi
   const collection = elements(app.render(), 'Pressable').find(item => item.props.accessibilityLabel === 'Pickup only');
   assert.ok(collection);
   collection.props.onPress();
-  assert.ok(app.menu('Your Address'));
+  assert.ok(app.menu('Customer address'));
   assert.equal(app.menu('Delivery Schedule'), undefined);
   await app.place();
   await app.advance(5000);
@@ -379,16 +380,16 @@ test('transport choices share one address and missing pins have an action that o
   app.draft.shop = { ...app.draft.shop, pickupEnabled: true, latitude: 0, longitude: 0, deliveryMaxKm: 5 };
   app.draft.set({ collectionMethod: 'ShopPickup' });
   const screen = app.render();
-  assert.equal(elements(screen, 'MenuRow').filter(item => item.props.title === 'Your Address').length, 1);
+  assert.equal(elements(screen, 'MenuRow').filter(item => item.props.title === 'Customer address').length, 1);
   assert.equal(elements(screen, 'DeliveryDetails').length, 1);
   elements(app.render(), 'Pressable').find(item => item.props.accessibilityLabel === 'Laundry transport').props.onPress();
   const choices = elements(app.render(), 'Pressable').filter(item => item.props.accessibilityRole === 'radio');
   assert.equal(choices.length, 4);
   assert.equal(choices.filter(item => item.props.accessibilityState.checked).length, 1);
   assert.equal(choices.find(item => item.props.accessibilityState.checked).props.accessibilityLabel, 'Pickup & delivery');
-  app.button('Add address pin').props.onPress();
-  assert.equal(elements(app.render(), 'Modal')[0].props.visible, true);
-  assert.equal(elements(app.render(), 'AddressFields').length, 1);
+  app.button('Manage addresses').props.onPress();
+  assert.deepEqual(JSON.parse(JSON.stringify(app.navigation)), [['addresses', { checkout: 'true' }]]);
+  assert.equal(elements(app.render(), 'AddressFields').length, 0);
 });
 
 test('one transport selection sets both trips together and unavailable pickup options are hidden', () => {
@@ -414,60 +415,57 @@ test('one transport selection sets both trips together and unavailable pickup op
     dropdown.props.onPress();
     assert.equal(options().filter(item => item.props.accessibilityState.checked).length, 1);
     assert.equal(!!app.menu('Requested laundry pickup'), collectionMethod === 'ShopPickup');
-    assert.equal(!!app.menu('Your Address'), collectionMethod === 'ShopPickup' || deliveryType === 'Deliver');
+    assert.ok(app.menu('Customer address'));
   }
 });
 
-test('adding another address saves it alongside existing addresses without replacing the primary address', async () => {
-  const existing = { address_line_1: 'Older Saved Street', city: 'Naga', state_province: 'Camarines Sur', postal_code: '4400', country: 'Philippines', address_type: 'Work' };
+test('checkout selects an existing saved address immediately and preserves coordinates and instructions', async () => {
+  const existing = { address_line_1: 'Older Saved Street', city: 'Naga', state_province: 'Camarines Sur', postal_code: '4400', country: 'Philippines', address_type: 'Work', latitude: 13.63, longitude: 123.2, access_code: 'Gate 2', dropoff_instructions: 'Ring bell' };
   const app = harness({ saved: [existing] });
-  app.button('Add another address').props.onPress();
-  let modal = elements(app.render(), 'Modal')[0];
-  const fields = elements(modal, 'AddressFields')[0];
-  assert.equal(fields.props.values.address_line_1, '');
-  fields.props.setValues({ ...app.profile, address_line_1: '99 New Street', latitude: '13.63', longitude: '123.2' });
-  const save = app.button('Save & Use Address').props.onPress;
-  await Promise.all([save(), save()]);
-  assert.equal(app.addressWrites.length, 1);
-  const stored = JSON.parse(app.addressWrites[0].value);
-  assert.equal(stored.length, 2);
-  assert.equal(stored[0].address_line_1, 'Older Saved Street');
-  assert.equal(stored[1].address_line_1, '99 New Street');
-  assert.equal(stored[1].latitude, 13.63);
+  app.menu('Customer address').props.onPress();
+  const modal = elements(app.render(), 'Modal')[0];
+  assert.equal(elements(modal, 'AddressFields').length, 0);
+  assert.equal(app.button('Add new address'), undefined);
+  assert.equal(app.button('Add another address'), undefined);
+  elements(modal, 'Pressable').find(item => item.props.accessibilityLabel === 'Saved address 1').props.onPress();
+  assert.equal(app.draft.address, existing);
+  assert.equal(elements(app.render(), 'Modal')[0].props.visible, false);
   assert.equal(app.profile.address_line_1, '12 Main Street');
-  assert.equal(app.draft.address.address_line_1, '99 New Street');
-  assert.equal(elements(app.render(), 'Modal')[0].props.visible, false);
-  app.menu('Your Address').props.onPress();
-  assert.ok(app.menu(addressHelpers.formatAddress(existing)));
-  app.menu(addressHelpers.formatAddress(existing)).props.onPress();
-  await app.button('Use This Address').props.onPress();
-  assert.equal(app.draft.address.address_line_1, 'Older Saved Street');
-  app.menu('Your Address').props.onPress();
-  app.button('Use Primary Address').props.onPress();
-  await app.button('Use This Address').props.onPress();
-  assert.equal(app.draft.address.address_line_1, '12 Main Street');
-});
-
-test('cancelled and invalid additional addresses do not change the order or save partial data', async () => {
-  const app = harness();
-  app.menu('Your Address').props.onPress();
-  app.button('Add new address').props.onPress();
-  await app.button('Save & Use Address').props.onPress();
   assert.equal(app.addressWrites.length, 0);
+  await app.place();
+  await app.advance(5000);
+  assert.equal(app.calls[0].body.latitude, 13.63);
+  assert.equal(app.calls[0].body.access_code, 'Gate 2');
+  assert.equal(app.calls[0].body.dropoff_instructions, 'Ring bell');
+  app.menu('Customer address').props.onPress();
+  elements(app.render(), 'Pressable').find(item => item.props.accessibilityLabel === 'Primary address').props.onPress();
   assert.equal(app.draft.address, null);
-  assert.equal(elements(app.render(), 'Modal')[0].props.visible, true);
-  app.button('Close').props.onPress();
-  assert.equal(elements(app.render(), 'Modal')[0].props.visible, false);
+  assert.equal(app.menu('Customer address').props.detail, addressHelpers.formatAddress(app.profile));
 });
 
-test('a storage failure keeps the new address form open and preserves the existing order address', async () => {
-  const app = harness({ storageFailure: new Error('Could not save address') });
-  app.button('Add another address').props.onPress();
-  elements(app.render(), 'AddressFields')[0].props.setValues({ ...app.profile, address_line_1: '99 New Street' });
-  await app.button('Save & Use Address').props.onPress();
+test('closing the address selector preserves the selection; managing addresses leaves the basket intact', () => {
+  const app = harness();
+  app.draft.set({ notes: 'Preserve this order', counts: { Shirts: 2 } });
+  app.menu('Customer address').props.onPress();
+  app.button('Close').props.onPress();
   assert.equal(app.draft.address, null);
-  assert.equal(elements(app.render(), 'Modal')[0].props.visible, true);
-  assert.ok(elements(app.render(), 'FormError').some(item => item.props.error === 'Could not save address'));
+  assert.equal(elements(app.render(), 'Modal')[0].props.visible, false);
+  app.menu('Customer address').props.onPress();
+  app.button('Manage addresses in Profile').props.onPress();
+  assert.deepEqual(JSON.parse(JSON.stringify(app.navigation)), [['addresses', { checkout: 'true' }]]);
+  assert.equal(app.draft.notes, 'Preserve this order');
+  assert.equal(app.draft.counts.Shirts, 2);
+  assert.equal(app.addressWrites.length, 0);
+});
+
+test('incomplete saved addresses are disabled and never expose checkout address inputs', () => {
+  const app = harness({ saved: [{ address_line_1: 'Incomplete' }] });
+  app.menu('Customer address').props.onPress();
+  const option = elements(app.render(), 'Pressable').find(item => item.props.accessibilityLabel === 'Saved address 1');
+  assert.equal(option.props.disabled, true);
+  assert.equal(option.props.accessibilityState.disabled, true);
+  assert.equal(elements(app.render(), 'AddressFields').length, 0);
+  assert.equal(app.draft.address, null);
 });
 
 test('closed, not-yet-open, and manually paused shops cannot begin an order', async () => {

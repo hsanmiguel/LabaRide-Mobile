@@ -45,8 +45,8 @@ import {
   type Shop,
   type Profile,
 } from "./data";
-import { addressError, addressPayload, addressValues } from "./address";
-import { AddressFields, DeliveryDetails, FormError } from "./AddressFields";
+import { addressError, addressPayload } from "./address";
+import { DeliveryDetails, FormError } from "./AddressFields";
 import { message } from "./data";
 import { clothingNames, householdNames, useLaundryDraft } from "./store";
 import { orderPricing } from "./order-pricing";
@@ -54,7 +54,7 @@ import { validateDeliveryTime } from "./delivery-slots";
 import { TurnaroundDetails, orderUpdateText } from "./TurnaroundDetails";
 import { DeliverySchedule } from "./DeliverySchedule";
 import { QueryState } from "./UserScreens";
-import { distanceKm, serviceAreaError, serviceAreaLabel } from "./service-area";
+import { serviceAreaError, serviceAreaLabel } from "./service-area";
 import { shopAvailability } from "./shop-hours";
 import { useShopAvailability } from "./useShopAvailability";
 
@@ -181,7 +181,7 @@ export function OrderSummaryDesign() {
 }
 export function CheckoutDesign() {
   const palette = usePalette();
-  const { replaceFlow } = useFlowNavigation();
+  const { replaceFlow, go } = useFlowNavigation();
   const draft = useLaundryDraft();
   const user = useAuthStore(state => state.user);
   const availability = useShopAvailability(draft.shop);
@@ -202,18 +202,12 @@ export function CheckoutDesign() {
   useFocusEffect(useCallback(() => cancelCountdown, [cancelCountdown]));
   const [dialog, setDialog] = useState<"items" | "address" | "schedule" | null>(null);
   const [transportOpen, setTransportOpen] = useState(false);
-  const [addressForm, setAddressForm] = useState<Record<string, string>>({});
-  const [addressFormError, setAddressFormError] = useState<string | null>(null);
-  const [addingAddress, setAddingAddress] = useState(false);
-  const [savingAddress, setSavingAddress] = useState(false);
-  const addressSaveInProgress = useRef(false);
   const cache = useQueryClient();
   const customerAddress = draft.address || profile.data;
   const deliveryAddress = draft.deliveryType === "Pickup" ? draft.shop : customerAddress;
   const areaError = draft.shop ?
     (draft.deliveryType === "Deliver" ? serviceAreaError(draft.shop, customerAddress, "delivery") : null)
     || (draft.collectionMethod === "ShopPickup" ? serviceAreaError(draft.shop, customerAddress, "pickup") : null) : null;
-  const customerDistance = distanceKm(draft.shop, customerAddress);
   const transportOptions: { label: string; description: string; collectionMethod: "Dropoff" | "ShopPickup"; deliveryType: "Deliver" | "Pickup" }[] = [
     { label: "Pickup & delivery", description: "The shop picks up your dirty laundry and delivers it back clean.", collectionMethod: "ShopPickup", deliveryType: "Deliver" },
     { label: "Pickup only", description: "The shop picks up your dirty laundry. You collect it at the shop when clean.", collectionMethod: "ShopPickup", deliveryType: "Pickup" },
@@ -229,48 +223,22 @@ export function CheckoutDesign() {
       return raw ? JSON.parse(raw) as Partial<Profile>[] : [];
     },
   });
-  function editAddress() {
-    setAddingAddress(false);
-    setAddressForm(addressValues(draft.address || profile.data));
-    setAddressFormError(null);
+  function chooseAddress() {
     setDialog("address");
   }
-  function addAddress() {
-    setAddressForm(addressValues(null));
-    setAddressFormError(null);
-    setAddingAddress(true);
-    setDialog("address");
+  function selectAddress(value: Partial<Profile> | null) {
+    draft.set({ address: value });
+    setError(null);
+    setDialog(null);
   }
-  async function saveAddress() {
-    if (addressSaveInProgress.current) return;
-    const validation = addressError(addressForm);
-    if (validation) { setAddressFormError(validation); return; }
-    const payload = addressPayload(addressForm);
-    if (!addingAddress) {
-      draft.set({ address: payload });
-      setDialog(null);
-      return;
-    }
-    if (!user) { setAddressFormError("Log in to save another address."); return; }
-    addressSaveInProgress.current = true;
-    setSavingAddress(true);
-    setAddressFormError(null);
-    try {
-      const key = `labaride-addresses:${user.id}`;
-      const raw = await AsyncStorage.getItem(key);
-      const entries: Partial<Profile>[] = raw ? JSON.parse(raw) : [];
-      await AsyncStorage.setItem(key, JSON.stringify([...entries, payload]));
-      await cache.invalidateQueries({ queryKey: ["saved-addresses", user.id] });
-      draft.set({ address: payload });
-      setAddingAddress(false);
-      setDialog(null);
-    } catch (failure) {
-      setAddressFormError(message(failure));
-    } finally {
-      addressSaveInProgress.current = false;
-      setSavingAddress(false);
-    }
+  function manageAddresses() {
+    setDialog(null);
+    go("addresses", { checkout: "true" });
   }
+  const addressOptions = [
+    ...(profile.data ? [{ label: "Primary address", value: profile.data, primary: true }] : []),
+    ...(savedAddresses.data || []).map((value, index) => ({ label: "Saved address " + (index + 1), value, primary: false })),
+  ];
   async function submit(confirmed = false) {
     if (!draft.shop || !draft.service) return;
     if (!user) { router.push("/(auth)/login"); return; }
@@ -393,6 +361,12 @@ export function CheckoutDesign() {
           <Txt style={styles.heading}>{draft.shop?.shopName}</Txt>
           <Txt style={styles.muted}>{address(draft.shop)}</Txt>
           <PriceRow label="Customer" value={profile.data?.name || user?.name || "Log in to place your order"} />
+          {!!user && <View style={{ gap: 4, marginBottom: 8 }}>
+            <MenuRow title="Customer address" detail={address(customerAddress) || "No address saved. Add one in Profile."}
+              asset="locationblue.png" onPress={chooseAddress} />
+            {!!addressError(customerAddress) && <FormError error="Complete your address in Profile before checkout." />}
+            {(draft.deliveryType === "Deliver" || draft.collectionMethod === "ShopPickup") && customerAddress && <DeliveryDetails value={customerAddress} />}
+          </View>}
           <PriceRow label="Contact Number" value={profile.data?.phone || "Not provided"} />
           {!!user?.email && <PriceRow label="Email" value={user.email} />}
           {(draft.shop?.services?.filter(item => draft.serviceIds.includes(item.id)) || []).map(item => (
@@ -404,8 +378,8 @@ export function CheckoutDesign() {
           {!draft.serviceIds.length && <Txt style={{ color: palette.navy }}>{draft.service.serviceName}: {servicePriceLabel(draft.service)}</Txt>}
         </Card>
         <Card>
-          <Section title="How should your laundry travel?" />
-          <Txt style={styles.muted}>Choose one option for the whole order.</Txt>
+          <Section title="Pickup & Delivery Options" />
+          <Txt style={styles.muted}>Choose how your laundry gets to the shop and back to you.</Txt>
           <Pressable accessibilityRole="button" accessibilityLabel="Laundry transport"
             accessibilityState={{ expanded: transportOpen }} accessibilityValue={{ text: selectedTransport?.label }}
             onPress={() => setTransportOpen(open => !open)}
@@ -442,16 +416,11 @@ export function CheckoutDesign() {
           {draft.deliveryType === "Deliver" && draft.shop && (draft.shop.deliveryMaxKm != null || Number(draft.shop.deliveryMinKm) > 0) &&
             <Txt style={styles.muted}>Delivery range: {serviceAreaLabel(draft.shop, "delivery")}</Txt>}
           {(draft.deliveryType === "Deliver" || draft.collectionMethod === "ShopPickup") && <>
-            <MenuRow title="Your Address" detail={address(customerAddress) || "Choose your address"} asset="locationblue.png" onPress={editAddress} />
-            {!!user && <Button title="Add another address" compact outline onPress={addAddress} />}
-            <Txt style={styles.muted}>{draft.collectionMethod === "ShopPickup"
-              ? draft.deliveryType === "Deliver" ? "Used for both shop pickup and return delivery." : "The shop will pick up your unwashed laundry here."
-              : "Your finished laundry will be delivered here."}</Txt>
-            {customerAddress && <DeliveryDetails value={customerAddress} />}
-            {customerDistance !== null && <Txt style={styles.muted}>Straight-line distance from shop: {customerDistance.toFixed(2)} km.</Txt>}
-            {areaError && <View style={{ padding: 14, borderRadius: 12, backgroundColor: palette.soft, gap: 12 }}>
-              <Txt>{areaError.startsWith("Pin your") ? "Add a map pin so we can check whether your address is within the shop's service area." : areaError}</Txt>
-              {areaError.startsWith("Pin your") && <Button title="Add address pin" outline onPress={editAddress} />}
+            {areaError && <View accessibilityRole="alert" accessibilityLiveRegion="polite"
+              style={{ padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FECDD3", backgroundColor: "#FFF1F2", gap: 10 }}>
+              <Txt style={{ color: palette.danger, fontWeight: "600" }}>Address needs attention</Txt>
+              <Txt style={{ color: palette.danger }}>{areaError.startsWith("Pin your") ? "Update your saved address with a map pin in Profile so we can check the shop's service area." : areaError}</Txt>
+              {areaError.startsWith("Pin your") && <Button title="Manage addresses" color={palette.danger} outline onPress={manageAddresses} />}
             </View>}
           </>}
         </Card>
@@ -517,27 +486,38 @@ export function CheckoutDesign() {
           <Totals />
         </Card>
       </View>
-      <Modal visible={!!dialog} transparent animationType="none" onRequestClose={() => { if (!savingAddress) setDialog(null); }}>
+      <Modal visible={!!dialog} transparent animationType="none" onRequestClose={() => setDialog(null)}>
         {dialog && <View style={{ flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
           {dialog === "schedule" ? <ScheduleDesign embedded inDialog pickup onDone={() => setDialog(null)} onClose={() => setDialog(null)} /> : <Card style={{ width: "100%", maxWidth: 540, maxHeight: "90%", padding: 24 }}>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16 }}>
               <View style={[styles.between, { flexWrap: "wrap" }]}>
-                <Txt style={styles.heading}>{dialog === "items" ? "Laundry Items" : addingAddress ? "Add another address" : "Choose your address"}</Txt>
-                <Button title="Close" compact outline color={palette.navy} disabled={savingAddress} onPress={() => setDialog(null)} />
+                <Txt style={styles.heading}>{dialog === "items" ? "Laundry Items" : "Choose your address"}</Txt>
+                <Button title="Close" compact outline color={palette.navy} onPress={() => setDialog(null)} />
               </View>
               {dialog === "items" ? <LaundryCountDesign embedded onDone={() => setDialog(null)} /> : <View>
-                {!addingAddress && <>
-                  {profile.data && !addressError(profile.data) && <Button title="Use Primary Address" compact outline color={palette.navy}
-                    onPress={() => { setAddressForm(addressValues(profile.data)); setAddressFormError(null); }} />}
-                  {!!savedAddresses.data?.length && <Section title="Saved addresses" />}
-                  {savedAddresses.data?.map((item, index) => <MenuRow key={index} title={address(item)}
-                    onPress={() => { setAddressForm(addressValues(item)); setAddressFormError(null); }} />)}
-                  {!!user && <Button title="Add new address" compact outline onPress={addAddress} />}
-                </>}
-                {addingAddress && <Txt style={styles.muted}>Save an additional address for future orders. Your primary address will stay the same.</Txt>}
-                <AddressFields values={addressForm} setValues={setAddressForm} />
-                <FormError error={addressFormError} />
-                <Button title={addingAddress ? "Save & Use Address" : "Use This Address"} color={palette.navy} busy={savingAddress} onPress={saveAddress} />
+                <Txt style={styles.muted}>Choose an address you saved in your profile. Add or edit addresses in Profile before placing your order.</Txt>
+                <QueryState loading={savedAddresses.isLoading} error={savedAddresses.error} retry={() => savedAddresses.refetch()} />
+                <View accessibilityRole="radiogroup" accessibilityLabel="Saved addresses" style={{ gap: 10, marginVertical: 14 }}>
+                  {addressOptions.map((option, index) => {
+                    const invalid = addressError(option.value);
+                    const selected = option.primary ? !draft.address : !!draft.address &&
+                      JSON.stringify(addressPayload(draft.address)) === JSON.stringify(addressPayload(option.value));
+                    return <Pressable key={index} accessibilityRole="radio" accessibilityLabel={option.label}
+                      accessibilityState={{ checked: selected, disabled: !!invalid }} disabled={!!invalid}
+                      onPress={() => selectAddress(option.primary ? null : option.value)}
+                      style={({ pressed }) => ({ padding: 14, borderRadius: 12, borderWidth: 1,
+                        borderColor: selected ? palette.primary : palette.line, backgroundColor: selected || pressed ? palette.soft : "white", gap: 6, opacity: invalid ? 0.6 : 1 })}>
+                      <View style={styles.between}>
+                        <Txt style={{ fontWeight: "600", color: palette.primary }}>{option.label}{option.value.address_type ? " - " + option.value.address_type : ""}</Txt>
+                        {selected && <CheckCircle2 size={18} color={palette.primary} />}
+                      </View>
+                      <Txt style={styles.muted}>{address(option.value) || "Address not configured"}</Txt>
+                      {!!invalid && <Txt style={styles.muted}>Incomplete address. Update it in Profile.</Txt>}
+                    </Pressable>;
+                  })}
+                </View>
+                {!addressOptions.length && <Txt style={styles.muted}>No addresses saved yet. Add your address in Profile before checkout.</Txt>}
+                {!!user && <Button title="Manage addresses in Profile" compact outline onPress={manageAddresses} />}
               </View>}
             </ScrollView>
           </Card>}

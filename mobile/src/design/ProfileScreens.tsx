@@ -686,7 +686,7 @@ export function TwoFactorDesign({
 }
 export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
   const palette = usePalette();
-  const { go } = useFlowNavigation();
+  const { go, flowHref } = useFlowNavigation();
   const profile = useProfile();
   const user = useAuthStore((state) => state.user);
   const draft = useLaundryDraft();
@@ -724,7 +724,8 @@ export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
           asset="locationblue.png"
           onPress={() => {
             draft.set({ address: profile.data });
-            go("confirm-location", { checkout: String(checkout) });
+            if (checkout) router.dismissTo(flowHref("checkout"));
+            else go("confirm-location", { checkout: "false" });
           }}
         />
         {!!saved.data?.length && <Section title="Saved Addresses" />}
@@ -735,7 +736,8 @@ export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
             asset="locationblue.png"
             onPress={() => {
               draft.set({ address: item });
-              go("confirm-location", { checkout: String(checkout) });
+              if (checkout) router.dismissTo(flowHref("checkout"));
+              else go("confirm-location", { checkout: "false" });
             }}
           />
         ))}
@@ -773,7 +775,8 @@ export function LocationDesign({ stage = "add-location", checkout = false }: { s
         await AsyncStorage.setItem(key, JSON.stringify([...entries, payload]));
         draft.set({ address: payload });
         await cache.invalidateQueries({ queryKey: ["saved-addresses"] });
-        router.back();
+        if (checkout) router.dismissTo(flowHref("checkout"));
+        else router.back();
       } else if (checkout) {
         draft.set({ address: payload });
         router.dismissTo(flowHref("checkout"));

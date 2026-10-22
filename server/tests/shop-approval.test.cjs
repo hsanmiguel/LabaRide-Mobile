@@ -47,6 +47,7 @@ beforeEach(() => {
   database.shopService = { create: async ({ data }) => ({ id: 2, ...data }) };
   database.transaction = { create: async ({ data }) => { const row = { id: orders.length + 1, ...data }; orders.push(row); return row; } };
   database.$queryRaw = async () => { if (suspendAtCommit) shops.get(10).approvalStatus = 'Suspended'; return []; };
+  database.notification = { createMany: async ({ data }) => ({ count: data.length }) };
   database.$transaction = async callback => callback(database);
 });
 before(async () => {

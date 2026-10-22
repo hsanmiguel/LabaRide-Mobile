@@ -1,8 +1,10 @@
-import { orderUpdateText, turnaroundTime } from "./TurnaroundDetails";
+import type { Notification } from "./NotificationsScreen";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuthStore } from "../store/authStore";
 import { useRef } from "react";
 import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { Bell, ChevronRight, X } from "lucide-react-native";
-import { go, message, useOrders } from "./data";
+import { api, fail, go, message } from "./data";
 import { Button, Empty, Txt, styles, usePalette } from "./ui";
 
 export function RecentNotificationsModal({ anchor, onClose }: {
@@ -14,10 +16,26 @@ export function RecentNotificationsModal({ anchor, onClose }: {
   const panelWidth = Math.min(420, width - 24);
   const panelTop = anchor.y + anchor.height + 8;
   const panelLeft = Math.max(12, Math.min(anchor.x + anchor.width - panelWidth, width - panelWidth - 12));
-  const orders = useOrders();
+  const user = useAuthStore(state => state.user);
+  const cache = useQueryClient();
+  const orders = useQuery({
+    queryKey: ["notifications", user?.id, false], enabled: !!user,
+    queryFn: () => api.get<Notification[]>("/notifications?shopMode=false"), refetchInterval: 15000,
+  });
+  async function open(notification: Notification) {
+    try {
+      if (!notification.readAt) {
+        await api.put(`/notifications/${notification.id}/read`, {});
+        cache.setQueryData<Notification[]>(["notifications", user?.id, false], current =>
+          current?.map(item => item.id === notification.id ? { ...item, readAt: new Date().toISOString() } : item));
+      }
+      onClose();
+      go("transaction-details", { id: String(notification.transactionId) });
+    } catch (error) { fail(error); }
+  }
   const closeButton = useRef<View>(null);
   const recent = [...(orders.data || [])]
-    .sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime() || b.id - a.id)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || b.id - a.id)
     .slice(0, 5);
 
   return <Modal visible transparent statusBarTranslucent animationType="fade" onRequestClose={onClose}
@@ -51,15 +69,14 @@ export function RecentNotificationsModal({ anchor, onClose }: {
               <Button title="Retry" outline onPress={() => { void orders.refetch(); }} />
             </View>
             : recent.length ? recent.map(order => <Pressable key={order.id} accessibilityRole="button"
-              accessibilityLabel={`Order ${order.id}, ${order.status}. View details`}
-              onPress={() => { onClose(); go("transaction-details", { id: String(order.id) }); }}
+              accessibilityLabel={`${order.readAt ? "Read" : "Unread"}: ${order.title}. ${order.message}`}
+              onPress={() => { void open(order); }}
               style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, padding: 14,
                 borderRadius: 16, borderWidth: 1, borderColor: palette.line, backgroundColor: pressed ? palette.soft : "white" })}>
               <View style={styles.grow}>
-                <Txt numberOfLines={1} style={{ fontWeight: "600", color: palette.primary }}>{order.shop?.shopName || "Laundry Shop"}</Txt>
-                <Txt numberOfLines={2} style={{ fontSize: 13, marginTop: 4 }}>{`Order #${order.id} · ${orderUpdateText(order)}`}</Txt>
-                {!!order.estimatedReadyAt && <Txt style={{ fontSize: 12 }}>Estimated ready: {turnaroundTime(order.estimatedReadyAt)}{order.estimateReason ? ` · ${order.estimateReason}` : ""}</Txt>}
-<Txt style={{ fontSize: 11, color: palette.muted, marginTop: 6 }}>{new Date(order.updatedAt || order.createdAt).toLocaleString()}</Txt>
+                <Txt numberOfLines={1} style={{ fontWeight: "600", color: palette.primary }}>{order.title}</Txt>
+                <Txt numberOfLines={2} style={{ fontSize: 13, marginTop: 4 }}>{order.message}</Txt>
+                <Txt style={{ fontSize: 11, color: palette.muted, marginTop: 6 }}>{new Date(order.createdAt).toLocaleString()}</Txt>
               </View>
               <ChevronRight size={18} color={palette.primary} />
             </Pressable>)

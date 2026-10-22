@@ -61,12 +61,13 @@ const { TransactionController } = require('../dist/controllers/transaction.contr
 const { Prisma } = require('@prisma/client');
 async function invoke({ area = {}, body = {}, currentArea } = {}) {
   let writes = 0, error;
-  const shop = { ...location, id: 1, approvalStatus: 'Approved', openingTime: '08:00', closingTime: '18:00', ...area,
+  const shop = { ...location, id: 1, userId: 2, approvalStatus: 'Approved', openingTime: '08:00', closingTime: '18:00', ...area,
     services: [{ id: 1, serviceName: 'Wash', price: new Prisma.Decimal(25) }], kiloPrices: [] };
   database.user = { findUnique: async () => ({ id: 7, name: 'Customer', email: 'test@example.invalid' }) };
   database.shop = { findUnique: async () => shop };
   database.$transaction = async callback => callback({
     $queryRaw: async () => [],
+    notification: { createMany: async ({ data }) => ({ count: data.length }) },
     shop: { findUnique: async () => ({ ...shop, ...currentArea }) },
     transaction: { create: async ({ data }) => { writes++; return { ...data, id: 42 }; } },
   });

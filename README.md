@@ -165,6 +165,26 @@ and regenerate the Prisma client with `npm run prisma:generate` before starting
 the updated backend. Run pricing checks with `npm run test:pricing` in both
 `server/` and `mobile/`.
 
+## Order notifications
+
+New bookings and order status changes save separate notification records for the
+customer and shop owner in the same database transaction as the order change.
+The Notifications screen shows each event with its timestamp, highlights unread
+events, and marks a notification read when opened. Earlier status messages remain
+available after an order changes again. Records start when this migration is applied;
+historical orders are not converted into invented notification events.
+
+Apply the notifications table with `npm run prisma:deploy` and regenerate the client
+with `npm run prisma:generate` in `server/` before deploying the updated API.
+Order lists and notification screens refresh every 15 seconds while active, including
+on the Vercel HTTP API. Standalone Socket.IO events also refresh these queries.
+Set `EXPO_PUBLIC_REALTIME_MODE=polling` for Vercel to disable unsupported socket
+connections. These are in-app notifications; device push, SMS, and email delivery
+are not configured.
+
+Run server checks with `npm run build` followed by
+`node --test tests/notifications.test.cjs tests/cancel-order.test.cjs tests/order-schedule.test.cjs`.
+
 ## Migration Notes
 
 The original Flutter screen designs and assets are recreated in `mobile/src/design`

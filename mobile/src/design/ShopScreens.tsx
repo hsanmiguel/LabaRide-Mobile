@@ -520,6 +520,7 @@ export function ShopOrderDetailsDesign({
   const result = useOrders(true);
   const order = result.data?.find((o) => o.id === id);
   const [busy, setBusy] = useState(false);
+  const [acceptanceExplanation, setAcceptanceExplanation] = useState("");
   const cache = useQueryClient();
   const [estimateDate, setEstimateDate] = useState("");
   const [estimateTime, setEstimateTime] = useState("");
@@ -532,9 +533,13 @@ export function ShopOrderDetailsDesign({
   async function update(status: Order["status"], extra: Record<string, unknown> = {}) {
     setBusy(true);
     try {
-      await api.put(`/transactions/${id}/status`, { status, ...extra });
+      await api.put(`/transactions/${id}/status`, {
+        status, ...extra,
+        ...(status === "Accepted" ? { acceptanceExplanation: acceptanceExplanation.trim() } : {}),
+      });
       await cache.invalidateQueries({ queryKey: ["shop-orders"] });
       await cache.invalidateQueries({ queryKey: ["user-orders"] });
+      await cache.invalidateQueries({ queryKey: ["notifications"] });
     } catch (error) {
       fail(error);
     } finally {
@@ -569,13 +574,27 @@ export function ShopOrderDetailsDesign({
       footer={
         !["Completed", "Cancelled"].includes(order.status) ? <Button
           title={({ Pending: "Accept order", Accepted: "Confirm laundry received", Queued: "Start processing", Processing: "Mark laundry ready", Ready: order.deliveryType === "Deliver" ? "Confirm delivered to customer" : "Confirm collected by customer" } as Record<string, string>)[order.status]}
-          busy={busy} onPress={async () => {
+          busy={busy} disabled={order.status === "Pending" && !acceptanceExplanation.trim()} onPress={async () => {
             const next = ({ Pending: "Accepted", Accepted: "Queued", Queued: "Processing", Processing: "Ready", Ready: "Completed" } as Record<string, Order["status"]>)[order.status];
             if (await confirmAction("Update laundry status", ({ Accepted: "Accept this order? Processing will begin only when you select Start processing.", Queued: "Has the laundry arrived at the shop? It will enter your queue.", Processing: "Start processing now? The processing start time will be recorded.", Ready: "Is the laundry finished and ready for return?", Completed: order.deliveryType === "Deliver" ? "Has the customer received the return delivery?" : "Has the customer collected their finished laundry?" } as Record<string, string>)[next], { confirmLabel: "Confirm" })) await update(next);
           }} /> : undefined
       }
     >
       <Card style={{ borderRadius: 16, padding: 20 }}>
+        {order.status === "Pending" && (
+          <View style={{ marginBottom: 20 }}>
+            <Field
+              label="Acceptance explanation (required)"
+              placeholder="Let the customer know why you can accept and what to expect."
+              value={acceptanceExplanation}
+              onChangeText={setAcceptanceExplanation}
+              multiline
+              maxLength={500}
+              editable={!busy}
+            />
+            <Txt style={styles.muted}>This message will be shared with the customer when you accept.</Txt>
+          </View>
+        )}
         <View style={styles.between}>
           <Txt style={{ fontSize: 24, fontWeight: "700", color: palette.navy }}>
             Order

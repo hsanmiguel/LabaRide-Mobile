@@ -16,8 +16,10 @@ async function invoke({ minutes, serviceName = '8Kg Full Service Laundry', deliv
   const originalClock = Date.now;
   Date.now = () => now + waitingMinutes * 60000;
   let writes = 0, error;
+  const notifications = [];
+  database.notification = { createMany: async ({ data }) => { notifications.push(...data); return { count: data.length }; } };
   database.user = { findUnique: async () => ({ id: 1, name: 'Test User', email: 'test@example.invalid' }) };
-  database.shop = { findUnique: async () => ({ id: 1, approvalStatus: 'Approved', openingTime: '08:00', closingTime: '18:00', services: [
+  database.shop = { findUnique: async () => ({ id: 1, userId: 2, approvalStatus: 'Approved', openingTime: '08:00', closingTime: '18:00', services: [
     { id: 1, serviceName, price: new Prisma.Decimal(215), packageKilos: new Prisma.Decimal(8) },
   ], kiloPrices: [] }) };
   database.transaction = { create: async ({ data }) => { writes++; return { ...data, id: 1 }; } };
@@ -33,7 +35,7 @@ async function invoke({ minutes, serviceName = '8Kg Full Service Laundry', deliv
   const res = { status(code) { this.code = code; return this; }, json(data) { this.body = data; return this; } };
   try { await TransactionController.createTransaction(req, res, failure => { error = failure; }); }
   finally { Date.now = originalClock; }
-  return { res, writes, error };
+  return { res, writes, error, notifications };
 }
 
 
@@ -45,6 +47,7 @@ test('return delivery never requires a checkout time or two-hour booking lead ti
   assert.equal(result.res.body.data.scheduledDate,null);
   assert.equal(result.res.body.data.scheduledTime,null);
   assert.equal(result.res.body.data.processingStartedAt,undefined);
+  assert.deepEqual(result.notifications.map(item => [item.userId, item.shopMode]), [[1, false], [2, true]]);
  }
 });
 test('shop pickup requires a complete address and a valid future pickup request', () => {

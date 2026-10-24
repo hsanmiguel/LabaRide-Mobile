@@ -105,6 +105,15 @@ Apply the service-area migration with `npm run prisma:deploy` and regenerate the
 client with `npm run prisma:generate`. Run `npm run test:areas` in `server/` and
 `npm run test:review` in `mobile/` for the booking and distance checks.
 
+## Shop verification
+
+New shops must upload **DTI or SEC registration**, **TIN proof**, and a **Mayor’s
+Permit** after saving their shop details. Admins inspect and verify the private
+documents before enabling the shop. Account Credibility now shows real upload and
+review statuses; owners can replace documents returned for correction. Existing
+approved shops stay active. See [shop requirements](server/docs/SHOP_REQUIREMENTS.md)
+for migration, privacy and verification details.
+
 ## Service packages
 
 In the shop's **Services** screen, choose **Add Service** (or **Edit** on an existing
@@ -116,25 +125,15 @@ separately. Shops can create multiple services with different weights and prices
 Use **Delete** on a service card or **Delete Service** in its edit dialog to remove
 it from the shop's menu after confirmation. Existing orders remain available.
 
-Deliveries for services named **Full Service** require at least two hours from
-order placement. The time picker displays the earliest available delivery time;
-checkout and the API recheck the minimum when an order is submitted. Pickup
-orders do not require a preferred collection date or time. Other delivery
-services require a future schedule.
+Customers choose how dirty laundry reaches the shop (customer drop-off or rider
+pickup) separately from how clean laundry is returned (customer collection or
+delivery). Rider pickup requires a requested time within the shop's operating
+hours and a collection address inside its pickup area. Return delivery is arranged
+once the laundry is ready; checkout does not require a return delivery schedule.
 
-The delivery scheduler presents Today, Tomorrow, Next Day, and an inline
-calendar before a two-column grid of suggested times. Suggestions follow the
-selected service's preparation minimum and the shop's Philippine operating
-hours, including overnight hours. Exact minute-level entry remains available.
-Thirty-minute suggestions are a display convenience, not reserved capacity or
-a new restriction on exact-time bookings. No delivery-capacity calendar is
-configured in the current system.
-
-The modal keeps its header and confirmation footer visible while its body
-scrolls. Invalid saved times are replaced with an available time, changing the
-date refreshes suggestions, and closing discards unconfirmed changes. The API
-rechecks preparation time and current shop hours before saving the order.
-Date-only delivery fields retain the selected Philippine calendar day.
+After receiving the laundry, the shop supplies an estimated ready time based on
+its queue. Revised estimates require a reason. Customers see receipt, processing,
+and ready timestamps along with these updates.
 
 Run `npm run test:schedule` in `mobile/` and `server/` for scheduling coverage.
 After `npm run build:web` in `mobile/`, run
@@ -144,8 +143,8 @@ live orders; screenshots are saved under `mobile/artifacts/ui-redesign/`.
 
 Customers choose services and tap **Review Order** to open one **Order Summary**
 page containing service prices, weight, clothing quantities, delivery/pickup,
-addresses, schedule, notes, Cash on Delivery, fees, and the total. Address,
-quantity, and delivery schedule editors open in popup dialogs on that page. After
+addresses, requested pickup time, notes, Cash on Delivery, fees, and the total. Address,
+quantity, and requested pickup time editors open in popup dialogs on that page. After
 confirming those details, **Place Order** submits the booking directly; there
 is no separate checkout step.
 
@@ -165,13 +164,54 @@ and regenerate the Prisma client with `npm run prisma:generate` before starting
 the updated backend. Run pricing checks with `npm run test:pricing` in both
 `server/` and `mobile/`.
 
+## Rider pickup and delivery
+
+New delivery bookings use a rider job board: approved riders go online, browse
+**Available**, and claim a pickup or delivery immediately. Claimed work appears in
+**My jobs**. Customer details unlock after claiming. Admin assignment and
+reassignment remain available for intervention. Partner processing, bilateral
+handover confirmation, fallback codes and weight photos keep the existing workflow.
+Riders select **Apply as a Rider** on the login page; admins review applications in
+**Delivery Operations → Rider applications**. See the
+[rider workflow guide](server/docs/RIDER_WORKFLOW.md) for setup, role permissions,
+the full lifecycle, reassignment, exceptions, and verification. Automatic dispatch
+is disabled. Existing orders and customer self-service pickup retain their workflow.
+
+## Customer rider tracking
+
+After accepting/claiming a job, riders choose **Start sharing location** in Available
+or My jobs and grant foreground location access. Customers open their order and
+see **Track your rider**, with rider/customer/shop pins, GPS accuracy and the last
+update time. The customer screen refreshes every five seconds; the rider samples
+GPS about every 15 seconds and publishes movement at most once per ten seconds.
+
+Keep LabaRide open: switching apps, locking the phone, stopping sharing or finishing
+the job pauses/ends updates. Old readings are labeled last known after 45 seconds.
+This is foreground tracking, not background tracking or an ETA/road routing service.
+Browser GPS requires HTTPS or localhost; use the mobile app for HTTP LAN testing.
+Live coordinates are available only to that order's customer and admins. Apply
+`20261024020000_rider_location` with `npm run prisma:deploy` and regenerate Prisma
+before deploying the API. Physical-device GPS still needs a phone test.
+
+## Measured weight photos
+
+For managed delivery orders, shops must attach a clear scale photo and explanation
+when updating the measured weight and final price. Customers can view the photo,
+weight, price, timestamp and earlier records in their order details. Photos are
+private to that customer, the owning shop and admins. Run `npm run prisma:deploy`
+and `npm run prisma:generate` in `server/` for the weight-evidence table.
+
 ## Order notifications
 
 New bookings and order status changes save separate notification records for the
 customer and shop owner in the same database transaction as the order change.
 The Notifications screen shows each event with its timestamp, highlights unread
 events, and marks a notification read when opened. Earlier status messages remain
-available after an order changes again. Records start when this migration is applied;
+available after an order changes again until the user deletes them. Read items have
+**Delete**, and **Delete read** clears read items in the current customer/shop/rider/
+admin list after confirmation. Unread items and other users' notifications are
+protected by the API. Deleting notifications does not change orders or audit history.
+Records start when this migration is applied;
 historical orders are not converted into invented notification events.
 
 Apply the notifications table with `npm run prisma:deploy` and regenerate the client

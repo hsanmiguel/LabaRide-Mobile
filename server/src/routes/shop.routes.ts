@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { ShopController } from '../controllers/shop.controller';
 import { authenticateToken, requireApprovedShop } from '../middleware/auth.middleware';
 import { ShopPhotoController } from '../controllers/shop-photo.controller';
+import { ShopDocumentController as D } from '../controllers/shop-document.controller';
+import { requireAdmin } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -13,6 +15,9 @@ router.get('/:shopId/photo', ShopPhotoController.get);
 // Authenticated routes
 router.use(authenticateToken);
 router.post('/', ShopController.registerShop);
+router.get('/:shopId/documents', D.list);
+router.get('/:shopId/documents/:type', D.image);
+router.put('/:shopId/documents/:type/review', requireAdmin, D.review);
 router.delete('/:shopId/photo', requireApprovedShop, ShopPhotoController.remove);
 router.put('/:shopId/application', ShopController.resubmitApplication);
 router.put('/:shopId', ShopController.updateShop);

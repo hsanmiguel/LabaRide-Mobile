@@ -14,6 +14,7 @@ import { router, useFocusEffect } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthStore } from "../store/authStore";
+import { DeliveryOrderDesign } from './DeliveryScreens';
 import {
   Asset,
   Button,
@@ -639,6 +640,7 @@ export function OrderCard({
       <View style={styles.between}>
         <Txt style={{ fontWeight: "600" }}>Order ID: #{order.id}</Txt>
         <StatusBadge status={order.status} />
+        {order.workflowStatus && <Txt style={{ fontSize: 12 }}>{order.workflowStatus.replace(/([a-z])([A-Z])/g, '$1 $2')}</Txt>}
       </View>
       <Txt style={styles.muted}>
         {shopMode ? order.userName : order.shop?.shopName || "Laundry Shop"}
@@ -774,6 +776,7 @@ export function OrderDetailsDesign({
   const { go, inShop } = useFlowNavigation();
   const orders = useOrders();
   const order = orders.data?.find((o) => o.id === id);
+  if (order?.workflowStatus) return <DeliveryOrderDesign id={id} />;
   if (!order)
     return (
       <Screen title="Order Details">

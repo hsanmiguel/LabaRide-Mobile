@@ -18,7 +18,8 @@ async function invoke({ minutes, serviceName = '8Kg Full Service Laundry', deliv
   let writes = 0, error;
   const notifications = [];
   database.notification = { createMany: async ({ data }) => { notifications.push(...data); return { count: data.length }; } };
-  database.user = { findUnique: async () => ({ id: 1, name: 'Test User', email: 'test@example.invalid' }) };
+  database.user = { findUnique: async () => ({ id: 1, name: 'Test User', email: 'test@example.invalid' }), findMany: async () => [] };
+  database.orderEvent = { create: async () => ({}) };
   database.shop = { findUnique: async () => ({ id: 1, userId: 2, approvalStatus: 'Approved', openingTime: '08:00', closingTime: '18:00', services: [
     { id: 1, serviceName, price: new Prisma.Decimal(215), packageKilos: new Prisma.Decimal(8) },
   ], kiloPrices: [] }) };

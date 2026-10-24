@@ -4,6 +4,8 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { sendSuccess, sendError } from '../utils/response';
 import { approvalStatus, reviewShopSchema } from '../validators/admin.validator';
 import type { Server } from 'socket.io';
+import { shopRequirementsMissing } from '../utils/shop-requirements';
+import { fail } from '../services/dispatch.service';
 
 const applicationInclude = {
   user: { select: { id: true, name: true, email: true, phone: true } },
@@ -33,6 +35,11 @@ export class AdminController {
         });
         if (!updated.count) return null;
         const shop = await tx.shop.findUniqueOrThrow({ where: { id: shopId }, include: applicationInclude });
+        if (body.status === 'Approved' && shop.requirementsVersion >= 1) {
+          const documents = await tx.shopDocument.findMany({ where: { shopId }, select: { type: true, status: true } });
+          const missing = shopRequirementsMissing(documents);
+          if (missing.length) fail(`Verify the required shop documents before approval: ${missing.join(', ')}`, 400);
+        }
         await tx.user.update({ where: { id: shop.userId }, data: { isShopOwner: body.status === 'Approved' } });
         return shop;
       });

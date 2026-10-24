@@ -28,6 +28,7 @@ beforeEach(() => {
   users = new Map([1, 2, 3].map(id => [id, { id, name: `User ${id}`, email: `user${id}@example.test`, password: 'NEVER_RETURN', isAdmin: id === 3, isShopOwner: false }]));
   shops = new Map(); orders = []; nextId = 10; suspendAtCommit = false;
   database.user = {
+    findMany: async ({ where, select }) => [...users.values()].filter(row => matches(row, where)).map(row => project(row, select)),
     findUnique: async ({ where, select }) => project([...users.values()].find(row => matches(row, where)), select),
     update: async ({ where, data, select }) => {
       const user = users.get(where.id);
@@ -45,7 +46,12 @@ beforeEach(() => {
   };
   database.shopPhoto = { findFirst: async () => null };
   database.shopService = { create: async ({ data }) => ({ id: 2, ...data }) };
+  // These lifecycle cases assume completed verification; document upload/review
+  // and approval denial are exercised separately in shop-requirements.test.cjs.
+  database.shopDocument = { findMany: async () => ['DTIRegistration', 'TinProof', 'MayorsPermit'].map(type => ({ type, status: 'Verified' })), updateMany: async () => ({ count: 3 }) };
   database.transaction = { create: async ({ data }) => { const row = { id: orders.length + 1, ...data }; orders.push(row); return row; } };
+  database.orderEvent = { create: async () => ({}) };
+  database.notification = { createMany: async ({ data }) => ({ count: data.length }) };
   database.$queryRaw = async () => { if (suspendAtCommit) shops.get(10).approvalStatus = 'Suspended'; return []; };
   database.notification = { createMany: async ({ data }) => ({ count: data.length }) };
   database.$transaction = async callback => callback(database);

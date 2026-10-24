@@ -10,11 +10,13 @@ import { validateDeliveryTime } from '../utils/delivery-slots';
 import type { ShopHours } from '../utils/shop-hours';
 import { serviceAreaError, type ServiceArea } from '../utils/service-area';
 import { shopAvailability } from '../utils/shop-hours';
+import { confirmationCode, recordEvent } from '../services/dispatch.service';
 
 export class TransactionController {
   
   static async createTransaction(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      if (req.user?.isRider || req.user?.isAdmin || req.user?.riderApplicationStatus) return sendError(res, 'Use a customer account to book laundry', 'FORBIDDEN', 403);
       const validatedData = createTransactionSchema.parse(req).body;
       const userId = req.user!.userId;
 
@@ -73,6 +75,9 @@ export class TransactionController {
           ...transactionData,
           ...pricing,
           collectionAddress: collectionAddress || Prisma.DbNull,
+          ...((validatedData.deliveryType === 'Deliver' || validatedData.collectionMethod === 'ShopPickup') ? {
+            workflowStatus: 'BookingPending', pickupCode: confirmationCode(), collectionCode: confirmationCode(), deliveryCode: confirmationCode(),
+          } : {}),
           userId,
           userName: user.name,
           userEmail: user.email,
@@ -86,7 +91,8 @@ export class TransactionController {
         },
         include: { items: true }
         });
-        await tx.notification.createMany({ data: [
+        if (order.workflowStatus) await recordEvent(tx, { ...order, shop, workflowStatus: null }, userId, 'BookingCreated', 'BookingPending');
+        else await tx.notification.createMany({ data: [
           { userId, transactionId: order.id, shopMode: false, title: 'Booking submitted', message: `Order #${order.id} is waiting for shop confirmation.` },
           { userId: shop.userId, transactionId: order.id, shopMode: true, title: 'New order', message: `${user.name} submitted order #${order.id} for ${order.serviceName}.` },
         ] });
@@ -96,9 +102,11 @@ export class TransactionController {
       if ('bookingError' in transaction) return sendError(res, transaction.bookingError.message, transaction.bookingError.code, transaction.bookingError.status);
 
       // Emit socket event to shop room
-      (req.app.get('io') as Server | undefined)?.to(`shop_${transaction.shopId}`).emit('new_transaction', transaction);
+      (req.app.get('io') as Server | undefined)?.to(`shop_${transaction.shopId}`).emit('new_transaction', { id: transaction.id });
+      if (transaction.workflowStatus) (req.app.get('io') as Server | undefined)?.emit('operations_update', {});
 
-      return sendSuccess(res, transaction, 'Transaction created successfully', 201);
+      const { collectionCode, ...customerOrder } = transaction;
+      return sendSuccess(res, customerOrder, 'Transaction created successfully', 201);
     } catch (error) {
       next(error);
     }
@@ -117,7 +125,7 @@ export class TransactionController {
         include: { items: true, shop: { select: { shopName: true, address: true, contactNumber: true } } }
       });
 
-      return sendSuccess(res, transactions, 'User transactions retrieved');
+      return sendSuccess(res, transactions.map(({ collectionCode, ...order }) => order), 'User transactions retrieved');
     } catch (error) {
       next(error);
     }
@@ -137,7 +145,7 @@ export class TransactionController {
         include: { items: true }
       });
 
-      return sendSuccess(res, transactions, 'Shop transactions retrieved');
+      return sendSuccess(res, transactions.map(({ pickupCode, deliveryCode, ...order }) => order), 'Shop transactions retrieved');
     } catch (error) {
       next(error);
     }
@@ -151,6 +159,7 @@ export class TransactionController {
         where: { id: transactionId }, include: { shop: { select: { userId: true, approvalStatus: true } } },
       });
       if (!existing) return sendError(res, 'Order not found', 'NOT_FOUND', 404);
+      if (existing.workflowStatus) return sendError(res, 'Use the pickup and delivery workflow for this order', 'DELIVERY_WORKFLOW_REQUIRED', 409);
       if (existing.shop.userId !== req.user!.userId) {
         return sendError(res, 'Only the shop owner can update order status', 'FORBIDDEN', 403);
       }
@@ -230,6 +239,7 @@ export class TransactionController {
         where: { id: transactionId }, include: { shop: { select: { userId: true } } },
       });
       if (!existing) return sendError(res, 'Order not found', 'NOT_FOUND', 404);
+      if (existing.workflowStatus) return sendError(res, 'Use delivery tracking to cancel this booking', 'DELIVERY_WORKFLOW_REQUIRED', 409);
       if (existing.userId !== req.user!.userId) {
         return sendError(res, 'Only the customer can cancel this order', 'FORBIDDEN', 403);
       }

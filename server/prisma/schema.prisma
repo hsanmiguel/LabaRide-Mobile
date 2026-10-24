@@ -46,6 +46,11 @@ model User {
   building    String?
   isShopOwner Boolean   @default(false) @map("is_shop_owner")
   isAdmin     Boolean   @default(false) @map("is_admin")
+  isRider     Boolean   @default(false) @map("is_rider")
+  riderProfile RiderProfile?
+  deliveryAssignments DeliveryAssignment[]
+  orderEvents OrderEvent[]
+  weightEvidence OrderWeightEvidence[]
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
@@ -91,6 +96,8 @@ model Shop {
   createdAt     DateTime @default(now()) @map("created_at")
   approvalStatus ShopApprovalStatus @default(Pending) @map("approval_status")
   applicationVersion Int @default(1) @map("application_version")
+  requirementsVersion Int @default(1) @map("requirements_version")
+  documents ShopDocument[]
   reviewReason   String? @map("review_reason")
   reviewedAt     DateTime? @map("reviewed_at")
   reviewedById   Int? @map("reviewed_by_id")
@@ -118,6 +125,21 @@ model Shop {
 
   @@index([approvalStatus, createdAt])
   @@map("shops")
+}
+
+model ShopDocument {
+  id Int @id @default(autoincrement())
+  shopId Int @map("shop_id")
+  type String
+  bytes Bytes
+  status String @default("Pending")
+  reviewReason String? @map("review_reason")
+  reviewedById Int? @map("reviewed_by_id")
+  reviewedAt DateTime? @map("reviewed_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  @@unique([shopId, type])
+  @@map("shop_documents")
 }
 
 model ShopPhoto {
@@ -194,11 +216,20 @@ model Transaction {
   estimateReason String? @map("estimate_reason")
   readyAt DateTime? @map("ready_at") @db.Timestamptz(3)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  // Legacy schedules remain readable; new bookings use requestedPickupAt and ready estimates.
   scheduledDate   DateTime?         @map("scheduled_date") @db.Date
   scheduledTime   DateTime?         @map("scheduled_time") @db.Time()
   paymentMethod   String            @default("Cash on Delivery") @map("payment_method")
   notes           String?
   status          TransactionStatus @default(Pending)
+  workflowStatus  String? @map("workflow_status")
+  workflowVersion Int @default(0) @map("workflow_version")
+  pickupCode      String? @map("pickup_code")
+  collectionCode  String? @map("collection_code")
+  deliveryCode    String? @map("delivery_code")
+  assignments     DeliveryAssignment[]
+  events          OrderEvent[]
+  weightEvidence  OrderWeightEvidence[]
   createdAt       DateTime          @default(now()) @map("created_at")
 
   user                 User              @relation(fields: [userId], references: [id])
@@ -220,11 +251,27 @@ model Transaction {
   @@map("transactions")
 }
 
+model OrderWeightEvidence {
+  id Int @id @default(autoincrement())
+  transactionId Int @map("transaction_id")
+  actorId Int @map("actor_id")
+  kilos Decimal @db.Decimal(10, 2)
+  totalAmount Decimal @map("total_amount") @db.Decimal(10, 2)
+  note String
+  bytes Bytes
+  createdAt DateTime @default(now()) @map("created_at")
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  actor User @relation(fields: [actorId], references: [id])
+  @@index([transactionId, createdAt])
+  @@map("order_weight_evidence")
+}
+
 model Notification {
   id            Int      @id @default(autoincrement())
   userId        Int      @map("user_id")
   transactionId Int      @map("transaction_id")
   shopMode      Boolean  @default(false) @map("shop_mode")
+  audience      String   @default("customer")
   title         String
   message       String
   createdAt     DateTime @default(now()) @map("created_at")
@@ -233,6 +280,84 @@ model Notification {
 
   @@index([userId, shopMode, createdAt])
   @@map("notifications")
+}
+
+model RiderProfile {
+  userId Int @id @map("user_id")
+  active Boolean @default(true)
+  applicationStatus String @default("Approved") @map("application_status")
+  reviewReason String? @map("review_reason")
+  reviewedAt DateTime? @map("reviewed_at")
+  reviewedById Int? @map("reviewed_by_id")
+  licenseNumber String? @map("license_number")
+  licenseExpiry DateTime? @db.Date @map("license_expiry")
+  motorcycleMake String? @map("motorcycle_make")
+  motorcycleModel String? @map("motorcycle_model")
+  motorcycleYear Int? @map("motorcycle_year")
+  plateNumber String? @map("plate_number")
+  registeredOwner Boolean @default(true) @map("registered_owner")
+  requirementsVersion Int @default(0) @map("requirements_version")
+  documents RiderDocument[]
+  online Boolean @default(false)
+  latitude Float?
+  longitude Float?
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("rider_profiles")
+}
+
+model RiderDocument {
+  id Int @id @default(autoincrement())
+  userId Int @map("user_id")
+  type String
+  bytes Bytes
+  status String @default("Pending")
+  reviewReason String? @map("review_reason")
+  reviewedById Int? @map("reviewed_by_id")
+  reviewedAt DateTime? @map("reviewed_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  rider RiderProfile @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  @@unique([userId, type])
+  @@map("rider_documents")
+}
+
+model DeliveryAssignment {
+  id Int @id @default(autoincrement())
+  transactionId Int @map("transaction_id")
+  riderId Int @map("rider_id")
+  stage String
+  resumeStatus String? @map("resume_status")
+  status String @default("Offered")
+  expiresAt DateTime @map("expires_at")
+  liveLatitude Float? @map("live_latitude")
+  liveLongitude Float? @map("live_longitude")
+  liveAccuracy Float? @map("live_accuracy")
+  locationCapturedAt DateTime? @map("location_captured_at")
+  locationReceivedAt DateTime? @map("location_received_at")
+  locationSharing Boolean @default(false) @map("location_sharing")
+  locationSession String? @map("location_session")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  rider User @relation(fields: [riderId], references: [id])
+  @@index([riderId, status])
+  @@index([transactionId, stage, status])
+  @@map("delivery_assignments")
+}
+
+model OrderEvent {
+  id Int @id @default(autoincrement())
+  transactionId Int @map("transaction_id")
+  actorId Int @map("actor_id")
+  action String
+  fromStatus String? @map("from_status")
+  toStatus String @map("to_status")
+  detail String?
+  createdAt DateTime @default(now()) @map("created_at")
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  actor User @relation(fields: [actorId], references: [id])
+  @@index([transactionId, createdAt])
+  @@map("order_events")
 }
 
 model TransactionItem {

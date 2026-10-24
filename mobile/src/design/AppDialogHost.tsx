@@ -83,12 +83,12 @@ export function AppDialogHost({ blurTarget }: { blurTarget?: RefObject<View | nu
           </View>}
           <View style={{ flexDirection: width < 400 ? "column" : "row", gap: 12, paddingTop: 4 }}>
             {confirmation && <Pressable ref={safeAction} accessibilityRole="button" accessibilityLabel="Cancel" disabled={disabled} onPress={cancel}
-              style={({ pressed }) => ({ flex: width < 400 ? undefined : 1, minHeight: 46, paddingVertical: 12, paddingHorizontal: 18,
+              style={({ pressed }) => ({ flexGrow: width < 400 ? 0 : 1, flexShrink: 1, flexBasis: width < 400 ? 'auto' : 0, minHeight: 46, paddingVertical: 12, paddingHorizontal: 18,
                 borderRadius: 12, borderWidth: 1, borderColor: palette.line, backgroundColor: pressed ? palette.surface : "white", opacity: disabled ? 0.5 : 1, alignItems: "center", justifyContent: "center" })}>
               <Txt style={{ fontWeight: "600", color: palette.ink }}>Cancel</Txt>
             </Pressable>}
             <Button title={current.confirmLabel || (confirmation ? "Continue" : "Got it")} color={accent} busy={!!current.busy} disabled={disabled}
-              onPress={() => settleDialog(current.id, true)} style={{ flex: width < 400 ? undefined : 1, minHeight: 46 }} />
+              onPress={() => settleDialog(current.id, true)} style={{ flexGrow: width < 400 ? 0 : 1, flexShrink: 1, flexBasis: width < 400 ? 'auto' : 0, minHeight: 46 }} />
           </View>
         </ScrollView>
       </Animated.View>

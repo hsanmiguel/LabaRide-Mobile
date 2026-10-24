@@ -13,6 +13,7 @@ import { useWebAccessibility } from "./web-accessibility";
 import type { Service } from "./data";
 export { usePalette } from "./theme";
 type AssetName = keyof typeof flutterAssets | keyof typeof interfaceIcons;
+const brandBlue = '#2457AD';
 
 export const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 12 },
@@ -45,7 +46,7 @@ export function Brand({ white = false, compact = false }: { white?: boolean; com
   const palette = usePalette();
   return <View style={[styles.row, compact ? undefined : styles.center]}>
     <Asset name={white ? "whitelogo.png" : "blacklogo.png"} size={40} />
-    {!compact && <Txt style={{ fontSize: 26, fontWeight: "700", color: white ? "white" : palette.primary }}>LabaRide</Txt>}
+    {!compact && <Txt style={{ fontSize: 26, fontWeight: "700", color: white ? "white" : brandBlue }}>LabaRide</Txt>}
   </View>;
 }
 export function Button({ title, onPress, busy, disabled, color, outline = false, round = false, compact = false, icon, style }: {
@@ -90,7 +91,7 @@ export function Field({ label, password = false, suffix, style, appearance = "ou
     </View>
   </View>;
 }
-export function Header({ title, dark = false, back = true, right }: { title: string; dark?: boolean; back?: boolean; right?: React.ReactNode }) {
+export function Header({ title, dark = false, back = true, right, branded = false }: { title: string; dark?: boolean; back?: boolean; right?: React.ReactNode; branded?: boolean }) {
   const palette = usePalette();
   const segments = useSegments() as string[];
   const home = segments[0] === "shop" ? "/shop/home" : "/(user)/home";
@@ -98,32 +99,36 @@ export function Header({ title, dark = false, back = true, right }: { title: str
     <View style={{ width: "100%", maxWidth: 1200, alignSelf: "center", minHeight: 72, paddingHorizontal: 20, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 12 }}>
       {back && <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.canGoBack() ? router.back() : router.replace(home)}
         style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><ArrowLeft size={22} color={dark ? "white" : palette.primary} /></Pressable>}
-      <Txt accessibilityRole="header" style={{ flex: 1, fontSize: 22, fontWeight: "700", color: dark ? "white" : palette.ink }}>{title}</Txt>{right}
+      {branded ? <View style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Asset name={dark ? 'whitelogo.png' : 'blacklogo.png'} size={36} style={{ flexShrink: 0 }} />
+        <View style={{ flex: 1, minWidth: 0, gap: 1 }}><Txt numberOfLines={1} style={{ fontSize: 20, lineHeight: 26, fontWeight: '700', color: dark ? 'white' : brandBlue }}>LabaRide</Txt><Txt accessibilityRole="header" numberOfLines={1} style={{ fontSize: 12, lineHeight: 18, color: dark ? 'white' : palette.muted }}>{title}</Txt></View>
+      </View> : <Txt accessibilityRole="header" style={{ flex: 1, fontSize: 22, fontWeight: "700", color: dark ? "white" : palette.ink }}>{title}</Txt>}{right}
     </View>
   </View>;
 }
-export function Screen({ title, children, footer, dark = false, background, back = true, scroll = true, padded = true, right }: {
+export function Screen({ title, children, footer, dark = false, background, back = true, scroll = true, padded = true, right, brandedHeader = false }: {
   title?: string; children: React.ReactNode; footer?: React.ReactNode; dark?: boolean; background?: string;
   back?: boolean; scroll?: boolean; padded?: boolean; right?: React.ReactNode;
+  brandedHeader?: boolean;
 }) {
   const palette = usePalette();
   const { width } = useWindowDimensions();
   const segments = useSegments() as string[];
-  const inTab = segments[0] === "admin" || segments[0] === "shop" || (segments[0] === "(user)" && !segments.some(s => ["order", "orders", "shops"].includes(s)));
+  const inTab = segments[0] === "admin" || segments[0] === "rider" || segments[0] === "shop" || (segments[0] === "(user)" && !segments.some(s => ["order", "orders", "shops"].includes(s)));
   useWebAccessibility(palette.primary);
   const content = { width: "100%" as const, maxWidth: 1200, alignSelf: "center" as const, padding: padded ? width >= 768 ? 32 : 20 : 0, paddingBottom: padded ? 32 : 0, flexGrow: 1 };
   return <SafeAreaView style={{ flex: 1, backgroundColor: dark ? palette.primary : background || palette.surface }} edges={inTab ? ["top", "left", "right"] : ["top", "left", "right", "bottom"]}>
     <StatusBar style={dark ? "light" : "dark"} />
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: background || palette.surface }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      {!!title && <Header title={title} dark={dark} back={back} right={right} />}
+      {!!title && <Header title={title} dark={dark} back={back} right={right} branded={brandedHeader} />}
       {scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={content} showsVerticalScrollIndicator={false}>{children}</ScrollView> : <View style={[content, { flex: 1 }]}>{children}</View>}
       {footer && <View style={{ backgroundColor: "white", borderTopWidth: 1, borderTopColor: palette.line }}><View style={{ width: "100%", maxWidth: 1200, alignSelf: "center", padding: 20 }}>{footer}</View></View>}
     </KeyboardAvoidingView>
   </SafeAreaView>;
 }
-export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function Card({ children, style, testID }: { children: React.ReactNode; style?: StyleProp<ViewStyle>; testID?: string }) {
   const palette = usePalette();
-  return <View style={[styles.card, { borderColor: palette.line }, style]}>{children}</View>;
+  return <View testID={testID} style={[styles.card, { borderColor: palette.line }, style]}>{children}</View>;
 }
 export function Section({ title, action, onPress, light = false }: { title: string; action?: string; onPress?: () => void; light?: boolean }) {
   const palette = usePalette();

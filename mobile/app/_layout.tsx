@@ -60,12 +60,15 @@ export default function RootLayout() {
       queryClient.invalidateQueries({ queryKey: ["user-orders"] });
       queryClient.invalidateQueries({ queryKey: ["shop-orders"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["delivery"] });
     };
     const offStatus = socketService.onTransactionUpdate(invalidate);
     const offNew = socketService.onNewTransaction(invalidate);
+    const offOperations = socketService.onOperationsUpdate(invalidate);
     return () => {
       offStatus();
       offNew();
+      offOperations();
       socketService.disconnect();
     };
   }, [user?.id]);

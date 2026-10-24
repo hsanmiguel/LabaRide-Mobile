@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const configuration = require('../dist/config/database');
 const { env } = require('../dist/config/env');
 const prisma = configuration.default;
-const models = ['user', 'userPhoto', 'shop', 'shopPhoto', 'shopService', 'kiloPrice', 'transaction', 'transactionItem', 'householdItem', 'clothingType', 'notification'];
+const models = ['user', 'userPhoto', 'shop', 'shopPhoto', 'shopService', 'kiloPrice', 'transaction', 'transactionItem', 'householdItem', 'clothingType', 'notification', 'riderProfile', 'deliveryAssignment', 'orderEvent'];
 const snapshot = async () => {
   const counts = {};
   for (const name of models) counts[name] = await prisma[name].count();
@@ -155,6 +155,9 @@ async function main() {
           assert.equal(order.items[0].quantity, 2);
         }
         const orders = (await request(`/transactions/user/${customer.user.id}`, 'GET', undefined, customer.token)).data;
+        // This suite verifies the historical status API. Managed deliveries have
+        // a separate complete lifecycle suite in delivery.integration.cjs.
+        await tx.transaction.updateMany({ where: { id: { in: orders.map(order => order.id) } }, data: { workflowStatus: null } });
         assert.equal(orders.length, 2);
         assert.equal(orders[0].city, 'Naga');
         await request(`/transactions/shop/${registration.id}`, 'GET', undefined, stranger.token, 403);
@@ -185,7 +188,7 @@ async function main() {
         assert.ok(customerNotices.every(item => item.readAt === null));
         const shopNotices = (await request('/notifications?shopMode=true', 'GET', undefined, recovered.token)).data;
         assert.equal(shopNotices.length, 5);
-        assert.equal(shopNotices.filter(item => item.title === 'New order').length, 2);
+        assert.equal(shopNotices.filter(item => ['New order', 'Booking Pending'].includes(item.title)).length, 2);
         assert.deepEqual((await request('/notifications', 'GET', undefined, stranger.token)).data, []);
         await request(`/notifications/${customerNotices[0].id}/read`, 'PUT', {}, stranger.token, 404);
         await request(`/notifications/${customerNotices[0].id}/read`, 'PUT', {}, customer.token);

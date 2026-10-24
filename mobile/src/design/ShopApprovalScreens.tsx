@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, View, useWindowDimensions } from "react-native";
 import { ArrowRight, Check, CheckCircle2, Clock3, LockKeyhole, MapPin, Phone, RefreshCw, ShoppingBag, Store, TriangleAlert, type LucideIcon } from "lucide-react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { Button, Card, Empty, Field, Screen, SearchBox, TabsRow, Txt, styles, us
 import { FormError } from "./AddressFields";
 import { QueryState } from "./UserScreens";
 import { useLogout } from "./useLogout";
+import { ShopRequirementsPanel } from './ShopRequirements';
 
 type Status = Shop["approvalStatus"];
 const statuses: Status[] = ["Pending", "Approved", "Rejected", "Suspended"];
@@ -139,6 +140,8 @@ export function AdminDashboardDesign() {
   const [filter, setFilter] = useState("Pending");
   const [search, setSearch] = useState("");
   const [decision, setDecision] = useState<{ shop: Application; status: "Approved" | "Rejected" | "Suspended" } | null>(null);
+  const [documentsReady, setDocumentsReady] = useState(false);
+  const onDocumentsReady = useCallback((ready: boolean, version: number) => { setDocumentsReady(ready); setDecision(current => current && current.shop.applicationVersion !== version ? { ...current, shop: { ...current.shop, applicationVersion: version } } : current); }, []);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +150,7 @@ export function AdminDashboardDesign() {
     queryFn: () => api.get<Application[]>("/admin/shops"), refetchInterval: 15000,
   });
   function choose(shop: Application, status: "Approved" | "Rejected" | "Suspended") {
-    setReason(""); setError(null); setDecision({ shop, status });
+    setReason(""); setError(null); setDocumentsReady(false); setDecision({ shop, status });
   }
   async function review() {
     if (!decision || busy) return;
@@ -170,7 +173,7 @@ export function AdminDashboardDesign() {
   const list = applications.data || [];
   const visible = list.filter(shop => (filter === "All" || shop.approvalStatus === filter)
     && `${shop.shopName} ${shop.user.name} ${shop.user.email} ${address(shop)}`.toLowerCase().includes(search.toLowerCase()));
-  return <Screen title="Admin Dashboard" back={false} background={palette.surface}>
+  return <Screen title="Admin Dashboard" brandedHeader back={false} background={palette.surface}>
     <View style={styles.stack}>
       <View style={styles.between}>
         <View style={{ flex: 1, minWidth: 180, gap: 4 }}><Txt style={styles.title}>Shop management</Txt><Txt style={styles.muted}>Review applications and manage shop access.</Txt></View>
@@ -233,13 +236,14 @@ export function AdminDashboardDesign() {
     <Modal visible={!!decision} transparent animationType="fade" onRequestClose={() => !busy && setDecision(null)}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1, backgroundColor: "#00000066" }}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: compact ? 16 : 24 }}>
-        <Card style={{ width: "100%", maxWidth: 520, alignSelf: "center" }}>
+        <Card style={{ width: "100%", maxWidth: decision?.status === 'Approved' && (decision.shop.requirementsVersion || 0) >= 1 ? 760 : 520, alignSelf: "center" }}>
           <Txt style={styles.heading}>{decision?.status === "Approved" ? "Approve shop" : decision?.status === "Rejected" ? "Reject application" : "Suspend shop"}</Txt>
           <Txt>{decision?.shop.shopName}</Txt>
           <Txt style={styles.muted}>{decision?.status === "Approved" ? "The shop will be listed for customers and shop mode will be enabled." : "The shop will stay hidden and shop mode will be locked. The applicant will see your reason."}</Txt>
+          {decision?.status === 'Approved' && (decision.shop.requirementsVersion || 0) >= 1 && <ShopRequirementsPanel key={decision.shop.id} shopId={decision.shop.id} admin onReady={onDocumentsReady} />}
           <Field label={decision?.status === "Approved" ? "Note (optional)" : "Reason *"} value={reason} onChangeText={setReason} multiline maxLength={1000} />
           <FormError error={error} />
-          <Button title={decision?.status === "Suspended" ? "Suspend Shop" : decision?.status === "Rejected" ? "Reject Application" : decision?.shop.approvalStatus === "Suspended" ? "Restore Shop" : "Approve Shop"} color={decision?.status === "Approved" ? palette.success : palette.danger} busy={busy} onPress={review} />
+          <Button title={decision?.status === "Suspended" ? "Suspend Shop" : decision?.status === "Rejected" ? "Reject Application" : decision?.shop.approvalStatus === "Suspended" ? "Restore Shop" : "Approve Shop"} disabled={decision?.status === 'Approved' && (decision.shop.requirementsVersion || 0) >= 1 && !documentsReady} color={decision?.status === "Approved" ? palette.success : palette.danger} busy={busy} onPress={review} />
           <Button title="Cancel" disabled={busy} outline onPress={() => setDecision(null)} />
         </Card>
       </ScrollView>

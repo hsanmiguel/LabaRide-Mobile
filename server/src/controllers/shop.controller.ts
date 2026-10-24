@@ -15,6 +15,7 @@ export class ShopController {
   
   static async registerShop(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      if (req.user?.isRider || req.user?.isAdmin || req.user?.riderApplicationStatus) return sendError(res, 'Use a partner account to register a shop', 'FORBIDDEN', 403);
       const validatedData = registerShopSchema.parse(req).body;
       const userId = req.user!.userId;
 
@@ -29,7 +30,7 @@ export class ShopController {
         where: { id: userId },
         data: {
           isShopOwner: false,
-          shop: { create: { ...validatedData, address: formatAddress(validatedData), approvalStatus: 'Pending' } },
+          shop: { create: { ...validatedData, address: formatAddress(validatedData), approvalStatus: 'Pending', requirementsVersion: 1 } },
         },
         select: { ...userProfileSelect, shop: true },
       });
@@ -71,10 +72,11 @@ export class ShopController {
         const changed = await tx.shop.updateMany({
           where: { id: shopId, approvalStatus: expectedStatus, applicationVersion: current.applicationVersion },
           data: { ...data, address: formatAddress(data), ...(needsReview ? {
-            approvalStatus: 'Pending', applicationVersion: { increment: 1 }, reviewReason: null, reviewedAt: null, reviewedById: null,
+            approvalStatus: 'Pending', requirementsVersion: 1, applicationVersion: { increment: 1 }, reviewReason: null, reviewedAt: null, reviewedById: null,
           } : {}) },
         });
         if (!changed.count) return null;
+        if (needsReview) await tx.shopDocument.updateMany({ where: { shopId }, data: { status: 'Pending', reviewedAt: null, reviewedById: null, reviewReason: null } });
         if (needsReview) await tx.user.update({ where: { id: current.userId }, data: { isShopOwner: false } });
         return tx.shop.findUniqueOrThrow({ where: { id: shopId }, include: { photo: shopPhotoSelection } });
       });

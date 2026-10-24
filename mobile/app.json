@@ -12,6 +12,7 @@
     "android": {
       "package": "com.labaride.mobile",
       "permissions": [
+        "android.permission.CAMERA",
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ]
@@ -27,14 +28,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Choose a photo to display your laundry shop to customers.",
-          "cameraPermission": false,
+          "photosPermission": "Choose photos for your shop, rider requirements, or laundry scale measurements.",
+          "cameraPermission": "Allow LabaRide to take a photo of the laundry and scale reading for the customer.",
           "microphonePermission": false
         }
       ],
       [
         "expo-location",
         {
+          "locationWhenInUsePermission": "Allow LabaRide to share your position with customers during active jobs while the app is open.",
           "locationAlwaysAndWhenInUsePermission": "Allow LabaRide to use your location for pickup and delivery routing."
         }
       ],

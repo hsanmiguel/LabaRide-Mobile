@@ -2,8 +2,9 @@ import { View } from "react-native";
 import type { Order } from "./data";
 import { PriceRow, Section, Txt, styles } from "./ui";
 
+export type TurnaroundOrder = Pick<Order, 'status' | 'deliveryType' | 'requestedPickupAt' | 'confirmedPickupAt' | 'receivedAt' | 'processingStartedAt' | 'estimatedReadyAt' | 'estimateReason' | 'readyAt'>;
 export const turnaroundTime = (value: string) => new Date(value).toLocaleString("en-PH", { timeZone: "Asia/Manila" }) + " (Philippine time)";
-export function orderUpdateText(order: Order) {
+export function orderUpdateText(order: TurnaroundOrder) {
   const labels: Record<Order["status"], string> = {
     Pending: "Waiting for shop confirmation", Accepted: "Accepted · awaiting your laundry",
     Queued: "Laundry received · waiting in the shop’s queue", Processing: "Your laundry is being processed",
@@ -12,7 +13,7 @@ export function orderUpdateText(order: Order) {
   };
   return labels[order.status];
 }
-export function TurnaroundDetails({ order }: { order: Order }) {
+export function TurnaroundDetails({ order }: { order: TurnaroundOrder }) {
   return <View style={{ gap: 10 }}>
     <Section title="Turnaround & Updates" />
     <Txt>{orderUpdateText(order)}</Txt>

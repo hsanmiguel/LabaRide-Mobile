@@ -10,8 +10,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
-import { ArrowRight, UserRound, CheckCircle2 } from "lucide-react-native";
-import { router } from "expo-router";
+import { ArrowRight, Bike, UserRound, CheckCircle2 } from "lucide-react-native";
+import { type Href, router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/authStore";
 import {
@@ -112,7 +112,7 @@ export function SplashDesign() {
   const proceed = () =>
     router.replace(
       user
-        ? user.isAdmin ? "/admin" : user.isShopOwner
+        ? user.isAdmin ? "/admin" : user.isRider ? "/rider" : user.riderApplicationStatus ? "/rider-application" as Href : user.isShopOwner
           ? "/shop/home"
           : "/(user)/home"
         : isGuest
@@ -166,7 +166,7 @@ export function LoginDesign() {
       );
       cache.clear();
       await setAuth(result.user, result.token);
-      router.replace(result.user.isAdmin ? "/admin" : result.user.isShopOwner ? "/shop/home" : "/(user)/home");
+      router.replace(result.user.isAdmin ? "/admin" : result.user.isRider ? "/rider" : result.user.riderApplicationStatus ? "/rider-application" as Href : result.user.isShopOwner ? "/shop/home" : "/(user)/home");
     } catch (error) {
       fail(error);
     } finally {
@@ -244,7 +244,7 @@ export function LoginDesign() {
                 style={[
                   styles.row,
                   styles.center,
-                  { marginTop: 40, flexWrap: "wrap", gap: 8 },
+                  { marginTop: 24, flexWrap: "wrap", gap: 8 },
                 ]}
               >
                 <Txt style={styles.muted}>Don't have an account?</Txt>
@@ -254,21 +254,31 @@ export function LoginDesign() {
                   </Txt>
                 </Pressable>
               </View>
+              <View style={{ marginTop: 20, paddingTop: 20, borderTopWidth: 1, borderTopColor: '#E4E9F2', gap: 8 }}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Apply as a Rider"
+                onPress={() => router.push('/(auth)/rider-signup' as Href)}
+                style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14,
+                  borderRadius: 14, borderWidth: 1, borderColor: '#DCE5F5', backgroundColor: pressed ? '#E7EEFB' : '#F6F8FC' })}>
+                <View style={{ width: 38, height: 38, flexShrink: 0, borderRadius: 11, backgroundColor: '#E9EFFF', alignItems: 'center', justifyContent: 'center' }}><Bike size={21} color="#2457AD" /></View>
+                <View style={{ flex: 1, minWidth: 0, gap: 3 }}><Txt style={{ color: '#2457AD', fontSize: 14, fontWeight: '600' }}>Apply as a Rider</Txt><Txt style={{ color: '#626B7D', fontSize: 12, lineHeight: 18 }}>Join our pickup and delivery team</Txt></View>
+                <ArrowRight size={18} color="#2457AD" style={{ flexShrink: 0 }} />
+              </Pressable>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Continue as Guest"
-                style={({ pressed }) => ({ marginTop: 32, minHeight: 48, borderRadius: 24,
-                  borderWidth: 1, borderColor: "#C7D4F5", backgroundColor: pressed ? "#F5F7FC" : "white",
-                  flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 16, paddingVertical: 12 })}
+                style={({ pressed }) => ({ minHeight: 44, borderRadius: 12,
+                  backgroundColor: pressed ? "#F5F7FC" : "white",
+                  flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 10 })}
                 onPress={() => {
                   cache.clear();
                   setGuest();
                   router.replace("/(user)/home");
                 }}
               >
-                <UserRound size={20} color="#626B7D" />
-                <Txt style={{ color: "#626B7D", fontSize: 16, fontWeight: "500" }}>Continue as Guest</Txt>
+                <UserRound size={17} color="#626B7D" />
+                <Txt style={{ color: "#626B7D", fontSize: 14, fontWeight: "500" }}>Continue as Guest</Txt>
               </Pressable>
+              </View>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>

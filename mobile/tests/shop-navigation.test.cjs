@@ -115,6 +115,13 @@ test("customer mode remains separate, including deliberate mode switches", () =>
   );
 });
 
+test("admin dashboard has its own navigator and retains its URL on refresh", () => {
+  const state = getStateFromPath("/admin", config);
+  assert.deepEqual(focusedRoutes(state), ["admin", "index"]);
+  assert.equal(getPathFromState(state, config), "/admin");
+  assert.deepEqual(focusedRoutes(getStateFromPath(getPathFromState(state, config), config)), ["admin", "index"]);
+});
+
 test("profile settings, notifications, filtered customers, and order actions refresh in shop mode", () => {
   const pages = [
     ["profile", "account-information"], ["profile", "shop-details"],

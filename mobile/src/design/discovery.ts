@@ -18,3 +18,33 @@ export function nearestShops<T extends AddressData>(shops: T[], origin?: Address
     return [{ shop, distance: 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0, 1 - a))) }];
   }).sort((a, b) => a.distance - b.distance);
 }
+
+export function cleanCity(city?: string | null) {
+  if (!city) return "";
+  return city
+    .toLowerCase()
+    .replace(/\bcity\b/g, "")
+    .replace(/[^\w\s]/g, "")
+    .trim();
+}
+
+export function nearbyShops<T extends AddressData>(
+  shops: T[],
+  origin?: AddressData | null,
+  maxDistanceKm = 15,
+) {
+  const ranked = nearestShops(shops, origin);
+  const userCity = cleanCity(origin?.city);
+
+  return ranked.filter(({ shop, distance }) => {
+    // 1. Same city/municipality match
+    if (userCity) {
+      const shopCity = cleanCity(shop.city || shop.barangay || shop.address);
+      if (shopCity && (shopCity.includes(userCity) || userCity.includes(shopCity))) {
+        return true;
+      }
+    }
+    // 2. Maximum reasonable delivery distance threshold (15 km)
+    return distance <= maxDistanceKm;
+  });
+}

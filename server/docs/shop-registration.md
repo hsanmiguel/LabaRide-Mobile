@@ -2,7 +2,7 @@
 
 Shop registration now shows validation and API failures on the page, including in the browser. React Native Web's `Alert.alert()` is a no-op in the installed version, which previously hid missing-field and server errors.
 
-The backend creates the shop and sets its user's ownership flag with an atomic nested write. Its response includes the shop, the updated safe profile, and a refreshed owner token, so the app can open the dashboard without a second profile request. If a previous submission already created a shop, **Open My Shop** restores the owner session. Shop Details now saves changes through an endpoint that checks ownership.
+The backend creates a pending shop application with an atomic nested write. Its response includes the application, the safe profile, and a refreshed token. Shop ownership stays disabled until an admin approves the application. The application screen displays its current status and the admin's reason for rejection or suspension. For setup and review instructions, see [Admin shop approval](admin-approval.md).
 
 ## Run and test in PowerShell
 
@@ -27,7 +27,7 @@ Stop an old development process with Ctrl+C before restarting. Refresh the brows
 - Address types: Home, Work, Hotel, Apartment. Shop setup starts with Work; customer address setup starts with Home.
 - Latitude, longitude, the location picker, and location-permission requests have been removed from address forms.
 
-Click Register Shop. A successful submission opens the shop dashboard. Missing fields and server failures appear above the button. If the account already owns a shop, use Open My Shop and complete any missing address information in Shop Details.
+Click Submit for Approval. A successful submission displays Pending Approval. Missing fields and server failures appear above the button. Only approved applicants can use Open My Shop. Rejected applicants can correct their application and resubmit. Changes to an approved shop's details return it to pending review.
 
 ## Data compatibility
 
@@ -57,4 +57,4 @@ npm.cmd run test:shop:integration
 npm.cmd run typecheck
 ```
 
-The integration command uses the configured database and real HTTP routes inside one transaction. It tests authentication, missing-field validation, complete profile addresses, shop creation, ownership and token refresh, duplicate recovery, owner-only edits, and delivery/pickup order snapshots. It rolls back all fixtures and verifies unchanged counts in all eight tables. It neither deletes existing records nor prints credentials. PostgreSQL sequences may advance when rolled-back fixtures allocate IDs.
+The integration command uses the configured database and real HTTP routes inside one transaction. It tests authentication, validation, shop approval and suspension, stale sessions, owner-only edits, pricing, and delivery/pickup orders. It rolls back all fixtures and verifies unchanged counts in all ten application tables. It neither deletes existing records nor prints credentials. PostgreSQL sequences may advance when rolled-back fixtures allocate IDs.

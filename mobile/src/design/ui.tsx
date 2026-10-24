@@ -109,7 +109,7 @@ export function Screen({ title, children, footer, dark = false, background, back
   const palette = usePalette();
   const { width } = useWindowDimensions();
   const segments = useSegments() as string[];
-  const inTab = segments[0] === "shop" || (segments[0] === "(user)" && !segments.some(s => ["order", "orders", "shops"].includes(s)));
+  const inTab = segments[0] === "admin" || segments[0] === "shop" || (segments[0] === "(user)" && !segments.some(s => ["order", "orders", "shops"].includes(s)));
   useWebAccessibility(palette.primary);
   const content = { width: "100%" as const, maxWidth: 1200, alignSelf: "center" as const, padding: padded ? width >= 768 ? 32 : 20 : 0, paddingBottom: padded ? 32 : 0, flexGrow: 1 };
   return <SafeAreaView style={{ flex: 1, backgroundColor: dark ? palette.primary : background || palette.surface }} edges={inTab ? ["top", "left", "right"] : ["top", "left", "right", "bottom"]}>
@@ -152,7 +152,7 @@ export function TabsRow({ items, value, onChange, color }: { items: string[]; va
   const palette = usePalette();
   const accent = color || palette.primary;
   return <View accessibilityRole="tablist" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>{items.map(item =>
-    <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: value === item }} onPress={() => onChange(item)} style={{ minHeight: 44, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
+    <Pressable key={item} accessibilityRole="tab" accessibilityState={{ selected: value === item }} aria-selected={value === item} onPress={() => onChange(item)} style={{ minHeight: 44, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
       backgroundColor: value === item ? palette.soft : "white", borderColor: value === item ? accent : palette.line }}><Txt style={{ fontWeight: "600", color: value === item ? accent : palette.muted }}>{item}</Txt></Pressable>)}
   </View>;
 }

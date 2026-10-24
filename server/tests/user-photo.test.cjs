@@ -13,7 +13,7 @@ const token = userId => jwt.sign({ userId, isShopOwner: false }, 'user-photo-tes
 
 before(async () => {
   image = await sharp({ create: { width: 1800, height: 1200, channels: 3, background: '#2457AD' } }).png().toBuffer();
-  database.user.findUnique = async ({ where }) => where.id === 7 ? { id: 7 } : null;
+  database.user.findUnique = async ({ where }) => ({ id: where.id, isShopOwner: false, isAdmin: false });
   database.userPhoto.findUnique = async ({ where }) => where.userId === 7 ? stored : null;
   database.userPhoto.upsert = async ({ create, update }) => {
     writes++;

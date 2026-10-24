@@ -1,4 +1,4 @@
-export type InterfaceRole = "customer" | "shop";
+export type InterfaceRole = "customer" | "shop" | "admin";
 
 const shared = {
   ink: "#202033", white: "#FFFFFF", muted: "#626B7D",
@@ -6,6 +6,11 @@ const shared = {
 };
 
 export const themes = {
+  admin: {
+    ...shared, role: "admin" as const,
+    primary: "#0F4766", hover: "#0A344C", accent: "#176489",
+    soft: "#EDF4F7", surface: "#F5F7FA", line: "#DDE6EC",
+  },
   customer: {
     ...shared, role: "customer" as const,
     primary: "#2457AD", hover: "#19458F", accent: "#3867FF",
@@ -21,6 +26,7 @@ export const themes = {
 // The route group represents the active interface. A shop owner can deliberately
 // switch into customer mode; ownership alone must never override that choice.
 export function interfaceRole(segments: readonly string[]): InterfaceRole {
+  if (segments[0] === "admin") return "admin";
   return segments[0] === "shop" ? "shop" : "customer";
 }
 

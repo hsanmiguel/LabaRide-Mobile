@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Alert, Modal, Pressable, Switch, View } from "react-native";
+import { Modal, Pressable, Switch, View } from "react-native";
 import { ArrowLeft, ChevronRight, LogOut, Pencil } from "lucide-react-native";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -40,8 +40,10 @@ import PickerField from "./PickerField";
 import { validBirthdate } from "./form-values";
 import { useLaundryDraft } from "./store";
 import { ProfilePhotoControl } from "./ProfilePhotoControl";
+import { useLogout } from "./useLogout";
 
 export function UserProfileDesign() {
+  const logout = useLogout();
   const palette = usePalette();
   const { go } = useFlowNavigation();
   const user = useAuthStore((state) => state.user);
@@ -114,12 +116,12 @@ export function UserProfileDesign() {
               <ProfileAction title="Transactions" asset="transaction.png" onPress={() => go("history")} />
             </View>
             <Button
-              title={owned.data ? "Switch to Shop Mode" : "Create Shop"}
+              title={owned.data?.approvalStatus === "Approved" ? "Switch to Shop Mode" : owned.data ? "Shop Application Status" : "Apply to Open a Shop"}
               color={palette.blue}
               icon={<Asset name="shop.png" tint="white" size={20} />}
-              onPress={() => owned.data ? router.replace("/shop/profile") : go("register-shop")}
+              onPress={() => owned.data?.approvalStatus === "Approved" ? router.replace("/shop/profile") : go("register-shop")}
             />
-            <Pressable accessibilityRole="button" accessibilityLabel="Logout" onPress={() => go("logout")} style={({ pressed }) => [styles.row, { minHeight: 54, marginTop: 4, paddingHorizontal: 16, borderRadius: 12, backgroundColor: pressed ? "#FDECEC" : "white", borderWidth: 1, borderColor: palette.line }]}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Logout" onPress={logout} style={({ pressed }) => [styles.row, { minHeight: 54, marginTop: 4, paddingHorizontal: 16, borderRadius: 12, backgroundColor: pressed ? "#FDECEC" : "white", borderWidth: 1, borderColor: palette.line }]}>
               <LogOut size={20} color={palette.danger} />
               <Txt style={[styles.grow, { color: palette.danger, fontWeight: "600" }]}>Logout</Txt>
               <ChevronRight size={18} color={palette.muted} />
@@ -445,7 +447,7 @@ export function ChangePasswordDesign({
   async function save() {
     if (!user) return;
     if (!current || password.length < 6 || (!security && password !== confirm))
-      return Alert.alert(
+      return notify(
         "Change Password",
         "Enter your current password and matching new passwords with at least 6 characters.",
       );
@@ -525,11 +527,7 @@ export function ChangePasswordDesign({
     </Screen>
   );
 }
-export function AccountConfirmationDesign({
-  logout = false,
-}: {
-  logout?: boolean;
-}) {
+export function AccountConfirmationDesign() {
   const palette = usePalette();
   const { replaceFlow } = useFlowNavigation();
   const [busy, setBusy] = useState(false);
@@ -538,11 +536,10 @@ export function AccountConfirmationDesign({
   async function confirm() {
     setBusy(true);
     try {
-      if (!logout && auth.user) await api.delete(`/users/${auth.user.id}`);
+      if (auth.user) await api.delete(`/users/${auth.user.id}`);
       await auth.logout();
       cache.clear();
-      if (logout) router.replace("/(auth)/login");
-      else replaceFlow("account-deleted");
+      replaceFlow("account-deleted");
     } catch (error) {
       fail(error);
     } finally {
@@ -554,15 +551,11 @@ export function AccountConfirmationDesign({
       <View style={[styles.grow, styles.center]}>
         <Card style={{ width: "100%", padding: 24, gap: 24 }}>
           <Txt style={[styles.heading, { textAlign: "center" }]}>
-            {logout
-              ? "Are you sure want to logout your account?"
-              : "Are you sure want to delete\nyour account?"}
+            Are you sure want to delete your account?
           </Txt>
-          {!logout && (
-            <Txt style={[styles.muted, { textAlign: "center" }]}>
-              All data and binded accounts will be removed from the application
-            </Txt>
-          )}
+          <Txt style={[styles.muted, { textAlign: "center" }]}>
+            All data and binded accounts will be removed from the application
+          </Txt>
           <View style={styles.row}>
             <Button
               title="Cancel"
@@ -572,7 +565,7 @@ export function AccountConfirmationDesign({
               style={styles.grow}
             />
             <Button
-              title={logout ? "Confirm" : "Continue"}
+              title="Continue"
               busy={busy}
               color={palette.navy}
               onPress={confirm}
@@ -693,7 +686,7 @@ export function TwoFactorDesign({
 }
 export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
   const palette = usePalette();
-  const { go } = useFlowNavigation();
+  const { go, flowHref } = useFlowNavigation();
   const profile = useProfile();
   const user = useAuthStore((state) => state.user);
   const draft = useLaundryDraft();
@@ -707,10 +700,10 @@ export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
   });
   return (
     <Screen
-      title="Address"
+      title="Your Addresses"
       footer={
         <Button
-          title="Add New Address"
+          title="Add another address"
           color={palette.navy}
           onPress={() => go("add-address", { checkout: String(checkout) })}
         />
@@ -731,9 +724,11 @@ export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
           asset="locationblue.png"
           onPress={() => {
             draft.set({ address: profile.data });
-            go("confirm-location", { checkout: String(checkout) });
+            if (checkout) router.dismissTo(flowHref("checkout"));
+            else go("confirm-location", { checkout: "false" });
           }}
         />
+        {!!saved.data?.length && <Section title="Saved Addresses" />}
         {saved.data?.map((item, index) => (
           <MenuRow
             key={index}
@@ -741,7 +736,8 @@ export function AddressesDesign({ checkout = false }: { checkout?: boolean }) {
             asset="locationblue.png"
             onPress={() => {
               draft.set({ address: item });
-              go("confirm-location", { checkout: String(checkout) });
+              if (checkout) router.dismissTo(flowHref("checkout"));
+              else go("confirm-location", { checkout: "false" });
             }}
           />
         ))}
@@ -779,7 +775,8 @@ export function LocationDesign({ stage = "add-location", checkout = false }: { s
         await AsyncStorage.setItem(key, JSON.stringify([...entries, payload]));
         draft.set({ address: payload });
         await cache.invalidateQueries({ queryKey: ["saved-addresses"] });
-        router.back();
+        if (checkout) router.dismissTo(flowHref("checkout"));
+        else router.back();
       } else if (checkout) {
         draft.set({ address: payload });
         router.dismissTo(flowHref("checkout"));

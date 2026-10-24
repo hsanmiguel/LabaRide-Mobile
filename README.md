@@ -71,6 +71,40 @@ Use `http://localhost:5001` for the API in a browser on this computer, or
 The mobile app supports Node.js 24. In PowerShell, use `npm.cmd install` and
 `npx.cmd expo start` if `.ps1` script execution is disabled.
 
+## Delivery and laundry collection areas
+
+New orders are accepted only during the shop's operating hours in Philippine
+time (Asia/Manila). Opening time is included; closing time is excluded.
+Overnight hours, such as 10 PM to 4 AM, work across midnight. Missing or invalid
+hours block ordering. Owners can turn off **Accept orders during business
+hours** in Shop Details to temporarily stop new orders without losing approval.
+Checkout and the API both check availability, including after the order
+countdown and immediately before the booking is saved.
+
+In **Shop Profile > Shop Details**, owners can set separate minimum and maximum
+distances in kilometers for delivery and collection of unwashed laundry from a
+customer's address. Collection is opt-in. Leave a minimum blank for 0 km and a
+maximum blank for no distance limit. Hours, contact details, service areas,
+services, and prices update immediately for approved shops. Shop name and
+physical address or map location changes require admin review again and pause
+the listing and shop mode until approved. Rejected applications still require
+resubmission and approval.
+
+Service areas use straight-line distance between map pins, rather than road
+distance. A shop pin is required to configure a range; customers must pin their
+address when booking a service with distance limits. Checkout and the API both
+enforce the limits, including a final check against the shop's current rules.
+
+Checkout separates **Getting Laundry to the Shop** from receiving finished
+laundry. Customers can choose shop collection when offered and use their saved
+customer address for collection and return delivery. Collecting finished
+laundry from the shop has no distance limit or required pickup schedule.
+Collection details remain visible in customer and shop order details.
+
+Apply the service-area migration with `npm run prisma:deploy` and regenerate the
+client with `npm run prisma:generate`. Run `npm run test:areas` in `server/` and
+`npm run test:review` in `mobile/` for the booking and distance checks.
+
 ## Service packages
 
 In the shop's **Services** screen, choose **Add Service** (or **Edit** on an existing
@@ -84,8 +118,29 @@ it from the shop's menu after confirmation. Existing orders remain available.
 
 Deliveries for services named **Full Service** require at least two hours from
 order placement. The time picker displays the earliest available delivery time;
-checkout and the API recheck the minimum when an order is submitted. Pickup and
-other service names retain their future-time scheduling rule.
+checkout and the API recheck the minimum when an order is submitted. Pickup
+orders do not require a preferred collection date or time. Other delivery
+services require a future schedule.
+
+The delivery scheduler presents Today, Tomorrow, Next Day, and an inline
+calendar before a two-column grid of suggested times. Suggestions follow the
+selected service's preparation minimum and the shop's Philippine operating
+hours, including overnight hours. Exact minute-level entry remains available.
+Thirty-minute suggestions are a display convenience, not reserved capacity or
+a new restriction on exact-time bookings. No delivery-capacity calendar is
+configured in the current system.
+
+The modal keeps its header and confirmation footer visible while its body
+scrolls. Invalid saved times are replaced with an available time, changing the
+date refreshes suggestions, and closing discards unconfirmed changes. The API
+rechecks preparation time and current shop hours before saving the order.
+Date-only delivery fields retain the selected Philippine calendar day.
+
+Run `npm run test:schedule` in `mobile/` and `server/` for scheduling coverage.
+After `npm run build:web` in `mobile/`, run
+`node tests/ui-browser.cjs --schedule` for isolated Chrome checks at 320, 390,
+768, and 1440 pixels. These browser tests intercept API requests and create no
+live orders; screenshots are saved under `mobile/artifacts/ui-redesign/`.
 
 Customers choose services and tap **Review Order** to open one **Order Summary**
 page containing service prices, weight, clothing quantities, delivery/pickup,
@@ -93,6 +148,11 @@ addresses, schedule, notes, Cash on Delivery, fees, and the total. Address,
 quantity, and delivery schedule editors open in popup dialogs on that page. After
 confirming those details, **Place Order** submits the booking directly; there
 is no separate checkout step.
+
+Unsubmitted order drafts survive browser refreshes in the same tab and native
+app restarts. Drafts are restored before checkout renders and are kept separate
+per account. Successful orders clear the saved draft; a countdown is never
+resumed or submitted automatically after a refresh.
 
 Package prices are specific to their service and take precedence over general
 kilogram price ranges. **Price per kilogram** remains available; existing
@@ -104,6 +164,26 @@ Apply the service-package migration with `npm run prisma:deploy` from `server/`
 and regenerate the Prisma client with `npm run prisma:generate` before starting
 the updated backend. Run pricing checks with `npm run test:pricing` in both
 `server/` and `mobile/`.
+
+## Order notifications
+
+New bookings and order status changes save separate notification records for the
+customer and shop owner in the same database transaction as the order change.
+The Notifications screen shows each event with its timestamp, highlights unread
+events, and marks a notification read when opened. Earlier status messages remain
+available after an order changes again. Records start when this migration is applied;
+historical orders are not converted into invented notification events.
+
+Apply the notifications table with `npm run prisma:deploy` and regenerate the client
+with `npm run prisma:generate` in `server/` before deploying the updated API.
+Order lists and notification screens refresh every 15 seconds while active, including
+on the Vercel HTTP API. Standalone Socket.IO events also refresh these queries.
+Set `EXPO_PUBLIC_REALTIME_MODE=polling` for Vercel to disable unsupported socket
+connections. These are in-app notifications; device push, SMS, and email delivery
+are not configured.
+
+Run server checks with `npm run build` followed by
+`node --test tests/notifications.test.cjs tests/cancel-order.test.cjs tests/order-schedule.test.cjs`.
 
 ## Migration Notes
 

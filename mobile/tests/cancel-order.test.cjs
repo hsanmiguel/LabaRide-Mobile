@@ -30,8 +30,10 @@ function harness({ platform = 'web', confirmed = true, status = 'Pending', fail,
   let dialog, refetches = 0;
   const context = {
     exports: {}, React, Platform: { OS: platform },
-    window: { confirm: () => confirmed },
-    Alert: { alert: (...args) => { dialog = args; } },
+    showDialog: options => {
+      if (platform === 'web') return Promise.resolve(confirmed);
+      return new Promise(resolve => { dialog = { ...options, resolve }; });
+    },
     useState(initial) {
       const slot = index++;
       if (!(slot in hooks)) hooks[slot] = initial;
@@ -93,17 +95,18 @@ test('declining in the browser sends no request and allows trying again', async 
   assert.equal(app.render().props.footer.props.busy, false);
 });
 
-test('native confirmation waits for Yes; No and dismiss send no request', async () => {
-  for (const choice of ['Yes', 'No', 'dismiss']) {
+test('in-app confirmation waits for a decision; Cancel and dismissal send no request', async () => {
+  for (const choice of ['confirm', 'cancel', 'dismiss']) {
     const app = harness({ platform: 'android' });
     app.selectReason();
     const pending = app.render().props.footer.props.onPress();
     assert.equal(app.calls.length, 0);
-    const [, , buttons, options] = app.dialog();
-    if (choice === 'dismiss') options.onDismiss();
-    else buttons.find(button => button.text === choice).onPress();
+    const dialog = app.dialog();
+    assert.equal(dialog.confirmLabel, 'Cancel Order');
+    assert.equal(dialog.destructive, true);
+    dialog.resolve(choice === 'confirm');
     await pending;
-    assert.equal(app.calls.length, choice === 'Yes' ? 1 : 0);
+    assert.equal(app.calls.length, choice === 'confirm' ? 1 : 0);
     assert.equal(app.render().props.footer.props.busy, false);
   }
 });

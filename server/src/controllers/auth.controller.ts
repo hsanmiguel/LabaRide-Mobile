@@ -42,7 +42,7 @@ export class AuthController {
 
       return sendSuccess(res, {
         token,
-        user: { id: user.id, name: user.name, email: user.email, isShopOwner: user.isShopOwner }
+        user: { id: user.id, name: user.name, email: user.email, isShopOwner: user.isShopOwner, isAdmin: user.isAdmin }
       }, 'User registered successfully', 201);
 
     } catch (error) {
@@ -74,7 +74,7 @@ export class AuthController {
 
       return sendSuccess(res, {
         token,
-        user: { id: user.id, name: user.name, email: user.email, isShopOwner: user.isShopOwner }
+        user: { id: user.id, name: user.name, email: user.email, isShopOwner: user.isShopOwner, isAdmin: user.isAdmin }
       }, 'Login successful');
 
     } catch (error) {

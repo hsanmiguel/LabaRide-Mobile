@@ -26,6 +26,7 @@ interface User {
   name: string;
   email: string;
   isShopOwner: boolean;
+  isAdmin?: boolean;
   photoUrl?: string | null;
 }
 
@@ -40,7 +41,7 @@ interface AuthState {
   checkAuth: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>()((set) => ({
+export const useAuthStore = create<AuthState>()((set, get) => ({
   user: null,
   token: null,
   isGuest: false,
@@ -57,8 +58,18 @@ export const useAuthStore = create<AuthState>()((set) => ({
   },
 
   logout: async () => {
-    await storage.delete("auth_token");
-    await storage.delete("auth_user");
+    const previous = get();
+    try {
+      await storage.delete("auth_token");
+      await storage.delete("auth_user");
+    } catch (error) {
+      // Keep a failed secure-storage logout from leaving half a saved session.
+      await Promise.allSettled([
+        previous.token ? storage.set("auth_token", previous.token) : Promise.resolve(),
+        previous.user ? storage.set("auth_user", JSON.stringify(previous.user)) : Promise.resolve(),
+      ]);
+      throw error;
+    }
     set({ user: null, token: null, isGuest: false });
   },
 

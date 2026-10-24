@@ -1,6 +1,6 @@
-import { coordinates, nearestShops } from "./discovery";
-import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
+import { coordinates, nearestShops, nearbyShops } from "./discovery";
+import { useRef, useState } from "react";
+import { ActivityIndicator, Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import {
   Bell,
   ArrowUpRight,
@@ -46,6 +46,10 @@ import {
 import { useLaundryDraft } from "./store";
 import LaundryMap from "./LaundryMap";
 import { ShopPhoto } from "./ShopPhoto";
+import { RecentNotificationsModal } from "./RecentNotificationsModal";
+import { serviceAreaLabel } from "./service-area";
+import { shopAvailability } from "./shop-hours";
+import { useShopAvailability } from "./useShopAvailability";
 
 export function QueryState({
   loading,
@@ -76,6 +80,7 @@ export function ShopCard({ shop, horizontal = false, onPress, distance }: {
   shop: Shop; horizontal?: boolean; onPress?: () => void; distance?: number;
 }) {
   const palette = usePalette();
+  const availability = shopAvailability(shop);
   const { width } = useWindowDimensions();
   return <Pressable accessibilityRole="button" accessibilityLabel={"View " + shop.shopName}
     onPress={onPress || (() => router.push({ pathname: "/(user)/shops/[id]", params: { id: String(shop.id) } }))}
@@ -84,6 +89,7 @@ export function ShopCard({ shop, horizontal = false, onPress, distance }: {
       <ShopPhoto name={shop.shopName} photoUrl={shop.photoUrl} />
       <View style={{ padding: 8, paddingTop: 16, gap: 10 }}>
         <Txt numberOfLines={2} style={{ fontSize: 18, fontWeight: "700" }}>{shop.shopName}</Txt>
+        <Txt style={{ fontSize: 12, fontWeight: "600", color: availability.isOpen ? palette.primary : palette.muted }}>{availability.label}</Txt>
         <View style={[styles.row, { alignItems: "flex-start", gap: 6 }]}>
           <MapPin size={14} color={palette.muted} />
           <Txt numberOfLines={2} style={{ flex: 1, fontSize: 12, lineHeight: 18, color: palette.muted }}>{address(shop) || "Address not provided"}</Txt>
@@ -115,28 +121,46 @@ export function UserHomeDesign() {
   const deliveryAddress = useLaundryDraft(state => state.address);
   const selectedAddress = deliveryAddress || profile.data;
   const location = address(selectedAddress);
-  const nearby = nearestShops(shops.data || [], selectedAddress);
+  const nearby = nearbyShops(shops.data || [], selectedAddress);
   const point = coordinates(selectedAddress);
   const [filter, setFilter] = useState("all");
+  const notificationBell = useRef<View>(null);
+  const [notificationAnchor, setNotificationAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const toggleNotifications = () => {
+    if (Platform.OS !== "web") {
+      go("notifications");
+      return;
+    }
+    if (notificationAnchor) {
+      setNotificationAnchor(null);
+      return;
+    }
+    notificationBell.current?.measureInWindow((x, y, width, height) => {
+      setNotificationAnchor({ x, y, width, height });
+    });
+  };
   const firstName = (profile.data?.name || user?.name || "").trim().split(/\s+/)[0];
   const serviceFilters = Array.from(new Set((shops.data || []).flatMap(shop => (shop.services || []).map(service => service.serviceName)))).slice(0, 4);
   const displayed = filter === "nearby" ? nearby.map(item => item.shop) :
     (shops.data || []).filter(shop => filter === "all" || shop.services?.some(service => `service:${service.serviceName}` === filter));
   return <Screen back={false}>
     <View style={[styles.stack, { gap: 16 }]}>
-      <View style={styles.between}>
+      <View style={[styles.row, { alignItems: "flex-start", gap: width < 360 ? 8 : 16 }]}>
         <View style={styles.grow}>
           <Txt style={{ fontSize: width >= 768 ? 30 : 24, fontWeight: "700" }} numberOfLines={1}>{firstName ? `Hello, ${firstName}` : "Hello there"}</Txt>
           <Pressable accessibilityRole="button" accessibilityLabel="Choose delivery location" onPress={() => go("add-location")}
-            style={[styles.row, { minHeight: 36, gap: 6 }]}>
-            <MapPin size={14} color={palette.primary} />
-            <Txt numberOfLines={1} style={{ flex: 1, color: palette.muted, fontSize: 12 }}>{location || "Choose your delivery location"}</Txt>
-            <ChevronRight size={14} color={palette.primary} />
+            style={[styles.row, { minHeight: 44, gap: 6, alignSelf: "flex-start", maxWidth: "100%" }]}>
+            <MapPin size={14} color={palette.primary} style={{ flexShrink: 0 }} />
+            <Txt numberOfLines={1} style={{ flexShrink: 1, minWidth: 0, color: palette.muted, fontSize: 12 }}>{location || "Choose your delivery location"}</Txt>
+            <ChevronRight size={14} color={palette.primary} style={{ flexShrink: 0 }} />
           </Pressable>
         </View>
-        <IconButton label="Your profile" onPress={() => router.push("/(user)/profile")}><UserRound size={22} color={palette.primary} /></IconButton>
-        {!guest && user && <IconButton label="Notifications" onPress={() => go("notifications")}><Bell size={22} color={palette.primary} /></IconButton>}
+        <View style={[styles.row, { flexShrink: 0, gap: 8, paddingTop: 4 }]}>{!guest && user && <View ref={notificationBell} collapsable={false}>
+          <IconButton label="Notifications" onPress={toggleNotifications}><Bell size={22} color={palette.primary} /></IconButton>
+        </View>}
+        <IconButton label="Your profile" onPress={() => router.push("/(user)/profile")}><UserRound size={22} color={palette.primary} /></IconButton></View>
       </View>
+      {notificationAnchor && !guest && user && <RecentNotificationsModal anchor={notificationAnchor} onClose={() => setNotificationAnchor(null)} />}
       <SearchBox onPress={() => go("search")} />
       <View style={{ gap: 12 }}>
         <Txt style={styles.heading}>Find your laundry care</Txt>
@@ -185,13 +209,16 @@ export function ShopsDesign({
   map?: boolean;
 }) {
   const palette = usePalette();
+  const { width } = useWindowDimensions();
+  const webMap = map && Platform.OS === "web";
   const { go: openFlow, inShop } = useFlowNavigation();
   const shops = useShops();
   const [query, setQuery] = useState("");
   const draft = useLaundryDraft();
   const { nearby } = useLocalSearchParams<{ nearby?: string }>();
   const profile = useProfile();
-  const nearest = nearestShops(shops.data || [], draft.address || profile.data);
+  const point = coordinates(draft.address || profile.data);
+  const nearest = nearbyShops(shops.data || [], draft.address || profile.data);
   const filtered = (nearby === "true" ? nearest.map(item => item.shop) : shops.data || []).filter((s) =>
     `${s.shopName} ${address(s)}`.toLowerCase().includes(query.toLowerCase()),
   );
@@ -237,8 +264,8 @@ export function ShopsDesign({
           </View>
         </View>
         {map && (
-          <View style={{ height: 300, borderRadius: 16, overflow: "hidden" }}>
-            <LaundryMap shops={filtered} onSelect={open} />
+          <View style={{ height: webMap && width >= 1000 ? 380 : 300, flexShrink: 0, borderRadius: 16, overflow: "hidden" }}>
+            <LaundryMap shops={filtered} latitude={point?.latitude} longitude={point?.longitude} onSelect={open} />
           </View>
         )}
         {search && !query && (
@@ -265,7 +292,16 @@ export function ShopsDesign({
           error={shops.error}
           retry={() => shops.refetch()}
         />
-        {map ? (
+        {webMap ? (
+          <View style={{ gap: 16 }}>
+            <Txt accessibilityRole="header" style={styles.heading}>{filtered.length} {filtered.length === 1 ? "laundry shop" : "laundry shops"}</Txt>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: 16 }}>
+              {filtered.map(shop => <View key={shop.id} style={{ width: width >= 1400 ? "31.8%" : width >= 1000 ? "48.8%" : "100%", minWidth: 0 }}>
+                <ShopCard shop={shop} onPress={() => open(shop)} />
+              </View>)}
+            </View>
+          </View>
+        ) : map ? (
           <ScrollView
             style={{ maxHeight: 260 }}
             contentContainerStyle={styles.stack}
@@ -301,6 +337,7 @@ export function ShopInfoDesign({
   const result = useShop(id);
   const [tab, setTab] = useState("About");
   const shop = result.data;
+  const availability = useShopAvailability(shop);
   if (!shop)
     return (
       <Screen title="Shop Information">
@@ -333,6 +370,10 @@ export function ShopInfoDesign({
         <View style={{ gap: 8, paddingVertical: 8 }}>
           <Txt style={styles.title}>{shop.shopName}</Txt>
           <Txt style={styles.muted}>Shop ID: {shop.id}</Txt>
+          <Txt style={{ color: availability.isOpen ? palette.primary : palette.muted }}>{availability.message}</Txt>
+          <Txt style={styles.muted}>Delivery area: {serviceAreaLabel(shop, "delivery")}</Txt>
+          <Txt style={styles.muted}>{shop.pickupEnabled ? `Laundry collection area: ${serviceAreaLabel(shop, "pickup")}` : "Laundry collection is not offered"}</Txt>
+          <Txt style={{ color: palette.muted, fontSize: 12 }}>Service areas use straight-line distance from the shop. Collecting finished laundry at the shop has no distance limit.</Txt>
         </View>
         {about && (
           <TabsRow
@@ -396,6 +437,7 @@ export function ShopMenuDesign({ id }: { id: number }) {
   const result = useShop(id);
   const draft = useLaundryDraft();
   const shop = result.data;
+  const availability = useShopAvailability(shop);
   const [selected, setSelected] = useState<number[]>([]);
   const chosen = (shop?.services || []).filter((s) => selected.includes(s.id));
   const service = chosen.length
@@ -420,12 +462,12 @@ export function ShopMenuDesign({ id }: { id: number }) {
             </Txt>
           </View>
           <Button
-            title="Review Order"
+            title={availability.isOpen ? "Review Order" : "Shop closed"}
             color={palette.navy}
             icon={<ShoppingBasket size={18} color="white" />}
-            disabled={!service}
+            disabled={!service || !availability.isOpen}
             onPress={() => {
-              if (shop && service) {
+              if (shop && service && shopAvailability(shop).isOpen) {
                 draft.start(shop, service, chosen.map((selectedService) => selectedService.id));
                 if (inShop) openFlow("order-summary", { id: String(id) });
                 else router.push({
@@ -439,6 +481,7 @@ export function ShopMenuDesign({ id }: { id: number }) {
       }
     >
       <View style={styles.stack}>
+        {!availability.isOpen && <Txt accessibilityRole="alert" style={styles.muted}>{availability.message}</Txt>}
         <View style={styles.between}>
           <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()}>
             <Asset name="circlebackarrow.png" size={40} />

@@ -1,5 +1,6 @@
 import { io, Socket } from "socket.io-client";
 import { API_URL } from "../api/client";
+import { useAuthStore } from "../store/authStore";
 
 class SocketService {
   private socket: Socket | null = null;
@@ -12,6 +13,7 @@ class SocketService {
     if (this.socket) return;
 
     this.socket = io(API_URL, {
+      auth: callback => callback({ token: useAuthStore.getState().token }),
       transports: ["websocket"],
       autoConnect: true,
       reconnection: true,

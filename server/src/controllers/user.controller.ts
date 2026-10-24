@@ -115,10 +115,11 @@ export class UserController {
   static async hasShop(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const userId = parseInt(req.params.userId);
+      if (userId !== req.user?.userId) return sendError(res, 'You can only view your own application', 'FORBIDDEN', 403);
 
       const shop = await prisma.shop.findUnique({ where: { userId } });
       
-      return sendSuccess(res, { hasShop: !!shop, shopId: shop?.id || null }, 'Shop status checked');
+      return sendSuccess(res, { hasShop: !!shop, shopId: shop?.id || null, approvalStatus: shop?.approvalStatus || null }, 'Shop status checked');
     } catch (error) {
       next(error);
     }

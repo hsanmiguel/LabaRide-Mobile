@@ -5,6 +5,7 @@ import { Button, Choice, Field, Section, Txt, usePalette, styles } from "./ui";
 import LaundryMap from "./LaundryMap";
 import { coordinates } from "./discovery";
 import type { AddressData } from "./address";
+import { reverseGeocodeCoordinates } from "./geocoding";
 
 export function DeliveryDetails({ value }: { value: AddressData }) {
   return (
@@ -31,15 +32,58 @@ export function AddressFields({ values, setValues }: {
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const point = coordinates(values);
+
+  async function handlePin(coordinate: { latitude: number; longitude: number }) {
+    setValues(current => ({
+      ...current,
+      latitude: String(coordinate.latitude),
+      longitude: String(coordinate.longitude),
+    }));
+    try {
+      const geo = await reverseGeocodeCoordinates(coordinate.latitude, coordinate.longitude);
+      setValues(current => ({
+        ...current,
+        latitude: String(coordinate.latitude),
+        longitude: String(coordinate.longitude),
+        ...(geo.address_line_1 ? { address_line_1: geo.address_line_1 } : {}),
+        ...(geo.city ? { city: geo.city } : {}),
+        ...(geo.state_province ? { state_province: geo.state_province } : {}),
+        ...(geo.postal_code ? { postal_code: geo.postal_code } : {}),
+        ...(geo.country ? { country: geo.country } : {}),
+      }));
+    } catch {
+      // Retain coordinates even if reverse geocoding is unavailable
+    }
+  }
+
   async function locate() {
-    setLocating(true); setLocationError(null);
+    setLocating(true);
+    setLocationError(null);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== "granted") { setLocationError("Location access is off. You can still enter your address manually."); return; }
+      if (permission.status !== "granted") {
+        setLocationError("Location access is off. You can still enter your address manually.");
+        return;
+      }
       const result = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setValues(current => ({ ...current, latitude: String(result.coords.latitude), longitude: String(result.coords.longitude) }));
-    } catch { setLocationError("Could not find your location. Please try again or enter your address manually."); }
-    finally { setLocating(false); }
+      const lat = result.coords.latitude;
+      const lng = result.coords.longitude;
+      const geo = await reverseGeocodeCoordinates(lat, lng);
+      setValues(current => ({
+        ...current,
+        latitude: String(lat),
+        longitude: String(lng),
+        ...(geo.address_line_1 ? { address_line_1: geo.address_line_1 } : {}),
+        ...(geo.city ? { city: geo.city } : {}),
+        ...(geo.state_province ? { state_province: geo.state_province } : {}),
+        ...(geo.postal_code ? { postal_code: geo.postal_code } : {}),
+        ...(geo.country ? { country: geo.country } : {}),
+      }));
+    } catch {
+      setLocationError("Could not find your location. Please try again or enter your address manually.");
+    } finally {
+      setLocating(false);
+    }
   }
   return <View>
     <Txt style={[styles.muted, { marginBottom: 12 }]}>Fields marked * are required.</Txt>
@@ -56,9 +100,9 @@ export function AddressFields({ values, setValues }: {
     <Txt style={[styles.muted, { marginBottom: 12 }]}>If you are at this address, save your current position to help locate nearby shops. Check that it matches the address above.</Txt>
     <Button title={point ? "Update current position" : "Use current position"} outline busy={locating} onPress={locate} />
     <FormError error={locationError} />
-    {point && <View style={{ height: 240, marginVertical: 16, borderRadius: 12, overflow: "hidden" }}>
-      <LaundryMap latitude={point.latitude} longitude={point.longitude} onPin={coordinate => setValues(current => ({ ...current, latitude: String(coordinate.latitude), longitude: String(coordinate.longitude) }))} />
-    </View>}
+    <View style={{ height: 240, marginVertical: 16, borderRadius: 12, overflow: "hidden" }}>
+      <LaundryMap latitude={point?.latitude ?? 13.6217} longitude={point?.longitude ?? 123.1948} onPin={handlePin} />
+    </View>
     <Section title="Address type *" />
     <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 16, gap: 12 }}>
       {["Home", "Work", "Hotel", "Apartment"].map(type => <View key={type} style={{ width: "45%" }}><Choice label={type}

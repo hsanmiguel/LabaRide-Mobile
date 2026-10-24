@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const configuration = require('../dist/config/database');
 const { env } = require('../dist/config/env');
 const prisma = configuration.default;
-const models = ['user', 'shop', 'shopPhoto', 'shopService', 'kiloPrice', 'transaction', 'transactionItem', 'householdItem', 'clothingType'];
+const models = ['user', 'userPhoto', 'shop', 'shopPhoto', 'shopService', 'kiloPrice', 'transaction', 'transactionItem', 'householdItem', 'clothingType', 'notification'];
 const snapshot = async () => {
   const counts = {};
   for (const name of models) counts[name] = await prisma[name].count();
@@ -19,7 +19,9 @@ async function main() {
   try {
     await prisma.$transaction(async tx => {
       // The same production controllers and middleware use the transaction client for this test only.
-      configuration.default = tx;
+      configuration.default = new Proxy(tx, { get(target, name) {
+        return name === '$transaction' ? callback => callback(tx) : target[name];
+      } });
       const app = require('../dist/app').default;
       const server = await new Promise(resolve => {
         const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
@@ -63,9 +65,10 @@ async function main() {
         assert.equal(profile.password, undefined);
 
         const registration = (await request('/shops', 'POST', shopInput, signup.token, 201)).data;
-        assert.equal(registration.user.isShopOwner, true);
+        assert.equal(registration.user.isShopOwner, false);
+        assert.equal(registration.approvalStatus, 'Pending');
         assert.equal(registration.user.password, undefined);
-        assert.equal(jwt.verify(registration.token, env.JWT_SECRET).isShopOwner, true);
+        assert.equal(jwt.verify(registration.token, env.JWT_SECRET).isShopOwner, false);
         assert.equal(registration.address_line_1, location.address_line_1);
         assert.equal(registration.openingTime, '8:00 AM');
         assert.equal(registration.closingTime, '6:00 PM');
@@ -73,12 +76,25 @@ async function main() {
         assert.equal(registration.address, '12 Test Street, Unit 2, Naga, Camarines Sur, 0044, Philippines');
         await request('/shops', 'POST', shopInput, signup.token, 409);
         assert.equal(await tx.shop.count({ where: { userId: signup.user.id } }), 1);
+        assert.ok(!(await request('/shops', 'GET')).data.some(shop => shop.id === registration.id));
+        await request(`/admin/shops/${registration.id}/review`, 'PUT', {
+          status: 'Approved', expectedStatus: 'Pending', expectedVersion: registration.applicationVersion,
+        }, signup.token, 403);
+        const admin = await signupUser('Admin Integration Test');
+        await tx.user.update({ where: { id: admin.user.id }, data: { isAdmin: true } });
+        await request(`/admin/shops/${registration.id}/review`, 'PUT', {
+          status: 'Approved', expectedStatus: 'Pending', expectedVersion: registration.applicationVersion,
+        }, admin.token);
         const recovered = (await request('/auth/verify-token', 'POST', {}, signup.token)).data;
         assert.equal(recovered.user.isShopOwner, true);
         assert.equal(jwt.verify(recovered.token, env.JWT_SECRET).isShopOwner, true);
 
         const updatedInput = { ...shopInput, postal_code: '0080', latitude: 0, longitude: -0.1234567 };
         const updated = (await request(`/shops/${registration.id}`, 'PUT', updatedInput, registration.token)).data;
+        assert.equal(updated.approvalStatus, 'Pending');
+        await request(`/admin/shops/${registration.id}/review`, 'PUT', {
+          status: 'Approved', expectedStatus: 'Pending', expectedVersion: updated.applicationVersion,
+        }, admin.token);
         assert.equal(updated.postal_code, '0080');
         assert.equal(Number(updated.latitude), 0);
         const stranger = await signupUser('Other Test User');
@@ -146,20 +162,48 @@ async function main() {
         assert.equal(shopOrders.length, 2);
         assert.equal(shopOrders[0].access_code, '0123');
         await request(`/transactions/${orders[0].id}/status`, 'PUT', { status: 'Completed' }, stranger.token, 403);
-        await request(`/transactions/${orders[0].id}/cancel`, 'PUT', {}, stranger.token, 403);
-        await request(`/transactions/${orders[0].id}/status`, 'PUT', { status: 'Processing' }, customer.token, 403);
-        await request(`/transactions/${orders[0].id}/status`, 'PUT', { status: 'Processing' }, recovered.token);
+        await request(`/transactions/${orders[0].id}/cancel`, 'PUT', { reason: 'I changed my mind' }, stranger.token, 403);
+        await request(`/transactions/${orders[0].id}/status`, 'PUT', { status: 'Processing', acceptanceExplanation: 'We can process your laundry today.' }, customer.token, 403);
+        await request(`/transactions/${orders[0].id}/status`, 'PUT', { status: 'Processing', acceptanceExplanation: 'We can process your laundry today.' }, recovered.token);
         await request(`/transactions/${orders[0].id}/cancel`, 'PUT', { reason: 'I changed my mind' }, customer.token, 409);
-        await request(`/transactions/${orders[1].id}/cancel`, 'PUT', {}, recovered.token, 403);
+        await request(`/transactions/${orders[1].id}/cancel`, 'PUT', { reason: 'I changed my mind' }, recovered.token, 403);
+        await request(`/transactions/${orders[1].id}/cancel`, 'PUT', {}, customer.token, 400);
         await request(`/transactions/${orders[1].id}/cancel`, 'PUT', { reason: '  ' }, customer.token, 400);
         const cancelled = (await request(`/transactions/${orders[1].id}/cancel`, 'PUT', { reason: '  I changed my mind  ' }, customer.token)).data;
         assert.equal(cancelled.status, 'Cancelled');
         assert.equal(cancelled.notes, 'I changed my mind');
-        await request(`/transactions/${orders[1].id}/cancel`, 'PUT', {}, customer.token, 409);
-        await request(`/transactions/${orders[1].id}/status`, 'PUT', { status: 'Processing' }, recovered.token, 409);
+        await request(`/transactions/${orders[1].id}/cancel`, 'PUT', { reason: 'I changed my mind' }, customer.token, 409);
+        await request(`/transactions/${orders[1].id}/status`, 'PUT', { status: 'Processing', acceptanceExplanation: 'We can process your laundry today.' }, recovered.token, 409);
         const refreshed = (await request(`/transactions/user/${customer.user.id}`, 'GET', undefined, customer.token)).data;
         assert.equal(refreshed.find(order => order.id === cancelled.id).status, 'Cancelled');
-        console.log('PASS: real HTTP signup, shop price ownership, authoritative order pricing, addresses, authorization, and cancellation.');
+        await request(`/transactions/${orders[0].id}/status`, 'PUT', { status: 'Completed' }, recovered.token);
+        await request('/notifications', 'GET', undefined, null, 401);
+        const customerNotices = (await request('/notifications', 'GET', undefined, customer.token)).data;
+        assert.equal(customerNotices.length, 5, 'two bookings, acceptance, cancellation, and completion each persist');
+        assert.ok(customerNotices.some(item => item.title === 'Order processing' && item.message.includes('We can process your laundry today.')));
+        assert.ok(customerNotices.some(item => item.title === 'Order completed'));
+        assert.ok(customerNotices.every(item => item.readAt === null));
+        const shopNotices = (await request('/notifications?shopMode=true', 'GET', undefined, recovered.token)).data;
+        assert.equal(shopNotices.length, 5);
+        assert.equal(shopNotices.filter(item => item.title === 'New order').length, 2);
+        assert.deepEqual((await request('/notifications', 'GET', undefined, stranger.token)).data, []);
+        await request(`/notifications/${customerNotices[0].id}/read`, 'PUT', {}, stranger.token, 404);
+        await request(`/notifications/${customerNotices[0].id}/read`, 'PUT', {}, customer.token);
+        const readNotices = (await request('/notifications', 'GET', undefined, customer.token)).data;
+        assert.ok(readNotices.find(item => item.id === customerNotices[0].id).readAt);
+        await request(`/admin/shops/${registration.id}/review`, 'PUT', {
+          status: 'Suspended', expectedStatus: 'Approved', expectedVersion: updated.applicationVersion, reason: 'Integration suspension test',
+        }, admin.token);
+        assert.equal((await request('/auth/verify-token', 'POST', {}, recovered.token)).data.user.isShopOwner, false);
+        await request(`/transactions/shop/${registration.id}`, 'GET', undefined, recovered.token, 403);
+        await request(`/transactions/${orders[0].id}/status`, 'PUT', { status: 'Completed' }, recovered.token, 403);
+        await request('/transactions', 'POST', orderInput, customer.token, 403);
+        assert.ok(!(await request('/shops', 'GET')).data.some(shop => shop.id === registration.id));
+        await request(`/admin/shops/${registration.id}/review`, 'PUT', {
+          status: 'Approved', expectedStatus: 'Suspended', expectedVersion: updated.applicationVersion,
+        }, admin.token);
+        assert.equal((await request('/auth/verify-token', 'POST', {}, recovered.token)).data.user.isShopOwner, true);
+        console.log('PASS: real HTTP shop approval, suspension, orders, cancellation, notification history, and notification access controls.');
       } finally {
         await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
         configuration.default = prisma;
@@ -171,7 +215,7 @@ async function main() {
   } finally { configuration.default = prisma; }
   const after = await snapshot();
   assert.deepEqual(after, before, 'All table counts must be unchanged after rolling back fixtures');
-  console.log('PASS: transaction rolled back; all 9 table counts are unchanged.');
+  console.log(`PASS: transaction rolled back; all ${models.length} table counts are unchanged.`);
 }
 main().catch(error => {
   console.error(`FAIL: shop/address integration test (${error.code || error.name}). ${error instanceof assert.AssertionError ? error.message : 'Check database access and server configuration.'}`);

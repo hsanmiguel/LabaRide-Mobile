@@ -22,7 +22,8 @@ export function deliveryScheduleError(value: string, serviceName = "", deliveryT
 }
 
 export function earliestDeliveryTime(serviceName = "", deliveryType = "Deliver", now = Date.now()) {
-  const earliest = new Date(Math.ceil((now + deliveryLeadMinutes(serviceName, deliveryType) * 60000) / 60000) * 60000);
+  const lead = deliveryLeadMinutes(serviceName, deliveryType);
+  const earliest = new Date(Math.ceil((now + lead * 60000 + (lead === 0 ? 1 : 0)) / 60000) * 60000);
   if (earliest.getHours() < 4) earliest.setHours(4, 0, 0, 0);
   return earliest;
 }

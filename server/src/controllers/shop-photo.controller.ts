@@ -15,11 +15,11 @@ export class ShopPhotoController {
     try {
       const id = shopId(req);
       if (!id) return sendError(res, 'Choose a valid shop', 'BAD_REQUEST', 400);
-      const photo = await prisma.shopPhoto.findUnique({ where: { shopId: id } });
+      const photo = await prisma.shopPhoto.findFirst({ where: { shopId: id, shop: { approvalStatus: 'Approved' } } });
       if (!photo) { res.setHeader('Cache-Control', 'no-store'); return sendError(res, 'Shop photo not found', 'NOT_FOUND', 404); }
       const etag = `"${createHash('sha256').update(photo.bytes).digest('hex')}"`;
       res.setHeader('ETag', etag);
-      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Content-Type', 'image/jpeg');
       res.setHeader('X-Content-Type-Options', 'nosniff');
       // Native and web clients may load the image from a different API origin.

@@ -8,12 +8,20 @@ const assert = require('node:assert/strict');
 const root = path.resolve(__dirname, '..');
 const artifacts = path.join(root, 'artifacts/ui-redesign');
 const photoTest = process.argv.includes('--photos');
-let photoBytes, hasPhoto = false, cancelRemoval = false, brokenPhoto = false;
+const approvalTest = process.argv.includes('--approvals');
+const applicationTest = process.argv.includes('--application');
+const dialogTest = process.argv.includes('--dialogs');
+const logoutTest = process.argv.includes('--logout');
+const scheduleTest = process.argv.includes('--schedule');
+const nativeDialogs = [], dialogWrites = [], workflowWrites = [];
+let failServiceDelete = false;
+let photoBytes, hasPhoto = false, brokenPhoto = false;
 fs.mkdirSync(artifacts, { recursive: true });
-const user = { id: 7, name: 'Test Customer With A Long Name', email: 'ui-test@example.test', isShopOwner: true,
+const user = { id: 7, name: 'Test Customer With A Long Name', email: 'ui-test@example.test', isShopOwner: true, isAdmin: approvalTest,
   address_line_1: '123 Long Street Name, Building Two', city: 'Naga', state_province: 'Camarines Sur', postal_code: '4400', country: 'Philippines', address_type: 'Home', latitude: 13.6217, longitude: 123.1948 };
-const shops = [{ ...user, id: 101, userId: 7, shopName: 'Test Laundry & Fabric Care With A Long Shop Name', openingTime: '08:00', closingTime: '18:00', contactNumber: '09123456789', services: [{ id: 1, serviceName: 'Full Service', price: 215, packageKilos: 8 }, { id: 2, serviceName: 'Wash Only', price: 25 }], kiloPrices: [], clothingTypes: [], householdItems: [] },
-  { ...user, id: 102, userId: 8, shopName: 'Test Neighborhood Laundry', latitude: 13.63, services: [] }];
+const shops = [{ ...user, id: 101, userId: 7, approvalStatus: approvalTest || applicationTest ? 'Pending' : 'Approved', applicationVersion: 1, createdAt: new Date().toISOString(), pickupEnabled: true, shopName: 'Test Laundry & Fabric Care With A Long Shop Name', openingTime: '08:00', closingTime: '18:00', contactNumber: '09123456789', services: [{ id: 1, serviceName: 'Full Service', price: 215, packageKilos: 8 }, { id: 2, serviceName: 'Wash Only', price: 25 }], kiloPrices: [], clothingTypes: [], householdItems: [] },
+  { ...user, id: 102, userId: 8, approvalStatus: 'Approved', applicationVersion: 1, createdAt: new Date().toISOString(), shopName: 'Test Neighborhood Laundry', latitude: 13.63, services: [] }];
+const reviews = [];
 const orders = ['Pending', 'Processing', 'Completed', 'Cancelled'].map((status,i) => ({ id: 42+i, userId: 7, shopId: 101, userName: user.name,
   serviceName: 'Full Service', kiloAmount: 8, subtotal: 215, deliveryFee: 30, voucherDiscount: 0, totalAmount: 245,
   deliveryType: 'Deliver', scheduledDate: '2026-10-15', scheduledTime: '10:00 AM', paymentMethod: 'Cash on Delivery', status,
@@ -26,6 +34,7 @@ let closing = false;
 let errors = [];
 const consoleMessages = new Set();
 let nextId = 0;
+let sessionScriptId;
 const pending = new Map();
 const server = http.createServer((req,res) => {
   const requestPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
@@ -57,12 +66,18 @@ async function waitFor(expression, timeout = 10000) {
 }
 async function visit(route, width, expected, screenshot) {
   errors = [];
+  if (sessionScriptId) await command('Page.removeScriptToEvaluateOnNewDocument',{identifier:sessionScriptId});
+  const fixedClock = scheduleTest ? `const OriginalDate=Date;globalThis.Date=class extends OriginalDate{constructor(...args){super(...(args.length?args:[Date.parse('2026-10-22T02:30:00Z')]));}static now(){return OriginalDate.parse('2026-10-22T02:30:00Z');}};` : '';
+  const savedAddressFixture = scheduleTest ? `localStorage.setItem('labaride-addresses:7',${JSON.stringify(JSON.stringify([{ ...user, address_line_1: '88 Saved Address Street', address_type: 'Work', access_code: 'Gate 2', dropoff_instructions: 'Ring the bell' }]))});` : '';
+  const script = await command('Page.addScriptToEvaluateOnNewDocument',{source:`${fixedClock}${savedAddressFixture}sessionStorage.setItem('auth_token','isolated-ui-test');sessionStorage.setItem('auth_user',${JSON.stringify(JSON.stringify(user))});`});
+  sessionScriptId = script.identifier;
   await command('Emulation.setDeviceMetricsOverride', { width, height: width < 768 ? 844 : 1000, deviceScaleFactor: 1, mobile: false });
   await command('Page.navigate', { url: `http://127.0.0.1:4178${route}` });
   await waitFor(`document.body?.innerText?.includes(${JSON.stringify(expected)})`);
   await pause(250);
   assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true, route + ' must fit viewport');
-  const wrong = route.startsWith('/shop/') ? ['rgb(36, 87, 173)', 'rgb(56, 103, 255)'] : ['rgb(50, 16, 120)', 'rgb(104, 66, 217)'];
+  const actualPath = await evaluate('location.pathname');
+  const wrong = actualPath.startsWith('/shop/') ? ['rgb(36, 87, 173)', 'rgb(56, 103, 255)'] : ['rgb(50, 16, 120)', 'rgb(104, 66, 217)'];
   const leaks = await evaluate(`Array.from(document.querySelectorAll('[role="button"],[role="tab"],svg')).filter(e=>{const r=e.getBoundingClientRect();if(!r.width||!r.height)return false;const s=getComputedStyle(e);return ${JSON.stringify(wrong)}.includes(s.color)||${JSON.stringify(wrong)}.includes(s.backgroundColor)||${JSON.stringify(wrong)}.includes(s.stroke)}).length`);
   assert.equal(leaks, 0, route + ' must not contain the other interface color');
   assert.deepEqual(errors, [], route + ' runtime exceptions');
@@ -73,8 +88,9 @@ async function visit(route, width, expected, screenshot) {
   console.log('PASS', width, route, mode);
 }
 async function clickText(text) {
-  const clicked = await evaluate(`(()=>{const e=Array.from(document.querySelectorAll('[role="button"],[role="tab"],a')).find(e=>e.innerText.trim()===${JSON.stringify(text)});if(e){e.click();return true}return false})()`);
+  const clicked = await evaluate(`(()=>{const candidates=Array.from(document.querySelectorAll('[role="button"],[role="tab"],a')).filter(e=>e.innerText.trim()===${JSON.stringify(text)});const e=candidates.find(e=>e.closest('[aria-modal="true"],[role="dialog"]'))||candidates[0];if(e){e.click();return true}return false})()`);
   assert.ok(clicked,'Missing interactive control: '+text);
+  await pause(150);
 }
 (async () => {
   if (photoTest) {
@@ -95,7 +111,10 @@ async function clickText(text) {
     const message = JSON.parse(event.data);
     if (message.id) { const item=pending.get(message.id); if(!item)return; clearTimeout(item.timer);pending.delete(message.id);message.error?item.reject(new Error(message.error.message)):item.resolve(message.result);return; }
     if (message.method === 'Runtime.exceptionThrown') errors.push(message.params.exceptionDetails.exception?.description || message.params.exceptionDetails.text);
-    if (photoTest && message.method === 'Page.javascriptDialogOpening') await command('Page.handleJavaScriptDialog',{ accept: !cancelRemoval });
+    if (message.method === 'Page.javascriptDialogOpening') {
+      nativeDialogs.push(message.params.message);
+      await command('Page.handleJavaScriptDialog',{ accept: false });
+    }
     if (message.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(message.params.type)) consoleMessages.add(message.params.args.map(arg => arg.value || arg.description || '').join(' '));
     if (message.method === 'Fetch.requestPaused') {
       const { requestId, request } = message.params;
@@ -103,9 +122,28 @@ async function clickText(text) {
         if (!request.url.includes('/api/')) { await command('Fetch.continueRequest',{ requestId }); return; }
         const endpoint = new URL(request.url).pathname;
         const photoEndpoint = endpoint === '/api/shops/101/photo';
-        assert.ok(['GET','OPTIONS'].includes(request.method) || photoTest && photoEndpoint && ['PUT','DELETE'].includes(request.method), 'UI smoke tests must not mutate real records');
+        assert.ok(scheduleTest && request.method === 'PUT' && endpoint === '/api/transactions/42/status' || ['GET','OPTIONS'].includes(request.method) || photoTest && photoEndpoint && ['PUT','DELETE'].includes(request.method)
+          || dialogTest && request.method === 'DELETE' && endpoint === '/api/shops/101/services/1'
+          || approvalTest && request.method === 'PUT' && ['/api/admin/shops/101/review','/api/shops/101/application'].includes(endpoint)
+          || applicationTest && request.method === 'POST' && endpoint === '/api/auth/verify-token'
+          || approvalTest && request.method === 'POST' && endpoint === '/api/auth/login', 'UI smoke tests must not mutate real records');
         if (mode === 'loading') await pause(2500);
         if (closing) return;
+        if (scheduleTest && request.method === 'PUT' && endpoint === '/api/transactions/42/status') {
+          const body = JSON.parse(request.postData);
+          workflowWrites.push(body);
+          Object.assign(orders[0], body, { updatedAt: '2026-10-22T02:30:00Z' });
+          if (body.status === 'Processing') orders[0].processingStartedAt = '2026-10-22T02:30:00Z';
+          if (body.status === 'Ready') orders[0].readyAt = '2026-10-22T02:30:00Z';
+        }
+        if (dialogTest && request.method === 'DELETE') {
+          dialogWrites.push(endpoint);
+          if (!failServiceDelete) shops[0].services = shops[0].services.filter(service=>service.id!==1);
+          await command('Fetch.fulfillRequest',{requestId,responseCode:failServiceDelete?503:200,
+            responseHeaders:[{name:'Content-Type',value:'application/json'},{name:'Access-Control-Allow-Origin',value:'*'},{name:'Access-Control-Allow-Headers',value:'Content-Type, Authorization'},{name:'Access-Control-Allow-Methods',value:'GET, PUT, DELETE, OPTIONS'}],
+            body:Buffer.from(JSON.stringify(failServiceDelete?{success:false,error:{message:'Unable to delete this service. Try again.'}}:{success:true,data:{id:1}})).toString('base64')});
+          return;
+        }
         if (photoTest && photoEndpoint && request.method !== 'OPTIONS') {
           if (request.method === 'PUT' && mode !== 'error') {
             const input = JSON.parse(request.postData);
@@ -118,10 +156,19 @@ async function clickText(text) {
           const status = mode === 'error' ? 503 : binary && (!hasPhoto || brokenPhoto) ? 404 : 200;
           await command('Fetch.fulfillRequest',{ requestId, responseCode: status,
             responseHeaders: [{name:'Content-Type',value:binary?'image/jpeg':'application/json'}, {name:'Access-Control-Allow-Origin',value:'*'}, {name:'Access-Control-Allow-Headers',value:'Content-Type, Authorization'}, {name:'Access-Control-Allow-Methods',value:'GET, PUT, DELETE, OPTIONS'}],
-            body: binary ? photoBytes.toString('base64') : Buffer.from(JSON.stringify(status===503?{success:false,error:{message:'Test photo upload failed'}}:{success:true,data:{photoUrl:shops[0].photoUrl}})).toString('base64') });
+            body: binary ? status === 200 ? photoBytes.toString('base64') : '' : Buffer.from(JSON.stringify(status===503?{success:false,error:{message:'Test photo upload failed'}}:{success:true,data:{photoUrl:shops[0].photoUrl}})).toString('base64') });
           return;
         }
-        const data = endpoint.startsWith('/api/users/') ? user : endpoint === '/api/shops' ? mode==='empty'?[]:shops : endpoint.startsWith('/api/shops/') ? shops[0] : endpoint.startsWith('/api/transactions/') ? mode==='empty'?[]:orders : [];
+        if (approvalTest && request.method === 'PUT') {
+          const body = JSON.parse(request.postData);
+          if (endpoint.includes('/review')) {
+            assert.equal(body.expectedStatus, shops[0].approvalStatus); assert.equal(body.expectedVersion, shops[0].applicationVersion);
+            shops[0].approvalStatus = body.status; shops[0].reviewReason = body.reason; shops[0].reviewedAt = new Date().toISOString();
+            reviews.push(body);
+          } else { Object.assign(shops[0], body, { approvalStatus: 'Pending', reviewReason: null, applicationVersion: shops[0].applicationVersion + 1 }); }
+        }
+        const data = ['/api/auth/login','/api/auth/verify-token'].includes(endpoint) ? { user, token: 'isolated-ui-test' } : endpoint.startsWith('/api/users/') ? user : endpoint === '/api/admin/shops' ? shops.map(shop => ({ ...shop, user, reviewedBy: user }))
+          : endpoint === '/api/shops' ? mode==='empty'?[]:shops.filter(shop => shop.approvalStatus === 'Approved') : endpoint.startsWith('/api/shops/') ? shops[0] : endpoint.startsWith('/api/transactions/') ? mode==='empty'?[]:orders : [];
         await command('Fetch.fulfillRequest',{ requestId, responseCode: mode==='error'?503:200,
           responseHeaders: [{name:'Content-Type',value:'application/json'},{name:'Access-Control-Allow-Origin',value:'*'},{name:'Access-Control-Allow-Headers',value:'Content-Type, Authorization'}, {name:'Access-Control-Allow-Methods',value:'GET, PUT, DELETE, OPTIONS'}],
           body: Buffer.from(JSON.stringify(mode==='error'?{success:false,error:{message:'Test service unavailable'}}:{success:true,data})).toString('base64') });
@@ -130,7 +177,252 @@ async function clickText(text) {
   });
   await command('Page.enable'); await command('Runtime.enable');
   await command('Fetch.enable',{ patterns:[{urlPattern:'*/api/*'}] });
-  await command('Page.addScriptToEvaluateOnNewDocument',{source:`sessionStorage.setItem('auth_token','isolated-ui-test');sessionStorage.setItem('auth_user',${JSON.stringify(JSON.stringify(user))});`});
+  if (scheduleTest) {
+    for (const width of [320,390,768,1440]) {
+      await visit('/order/101', width, 'Review Order');
+      await evaluate(`document.querySelector('[role="checkbox"]').click()`);
+      await clickText('Review Order');
+      await waitFor('document.body.innerText.includes("Place Order")');
+      assert.ok(await evaluate('document.body.innerText.includes("Turnaround & Updates")'));
+      await evaluate(`document.querySelector('[aria-label="Laundry transport"]').click()`);
+      await evaluate(`document.querySelector('[aria-label="Pickup & delivery"]').click()`);
+      const openAddresses = async () => {
+        await evaluate(`Array.from(document.querySelectorAll('[role="button"]')).find(e=>e.innerText.trim().startsWith('Customer address')).click()`);
+        await waitFor(`!!document.querySelector('[role="radiogroup"][aria-label="Saved addresses"]')`);
+      };
+      await openAddresses();
+      assert.equal(await evaluate(`document.querySelector('[role="radiogroup"][aria-label="Saved addresses"]').parentElement.querySelectorAll('input,textarea').length`), 0, 'Checkout address selector has no address inputs');
+      await waitFor(`!!document.querySelector('[aria-label="Saved address 1"]')`);
+      if (width === 390) {
+        const shot = await command('Page.captureScreenshot', { format: 'png' });
+        fs.writeFileSync(path.join(artifacts, 'checkout-address-selector-390.png'), Buffer.from(shot.data, 'base64'));
+      }
+      await evaluate(`document.querySelector('[aria-label="Saved address 1"]').click()`);
+      await waitFor(`!document.querySelector('[role="radiogroup"][aria-label="Saved addresses"]')`);
+      assert.equal(await evaluate(`JSON.parse(sessionStorage.getItem('labaride-draft:user:7')).state.address.address_line_1`), '88 Saved Address Street');
+      await openAddresses();
+      await evaluate(`document.querySelector('[aria-label="Primary address"]').click()`);
+      await waitFor(`!document.querySelector('[role="radiogroup"][aria-label="Saved addresses"]')`);
+      assert.equal(await evaluate(`JSON.parse(sessionStorage.getItem('labaride-draft:user:7')).state.address`), null);
+      const openSchedule = async () => {
+        await evaluate(`Array.from(document.querySelectorAll('[role="button"]')).find(e=>e.innerText.trim().startsWith('Requested laundry pickup')).click()`);
+        await waitFor('!!document.querySelector("[data-testid=delivery-schedule-footer]")');
+      };
+      await openSchedule();
+      await waitFor('document.activeElement?.getAttribute("aria-label")==="Close pickup request"');
+      const bounds = await evaluate(`(()=>{const footer=document.querySelector('[data-testid=delivery-schedule-footer]');const panel=footer.parentElement.getBoundingClientRect();return {left:panel.left,right:panel.right,top:panel.top,bottom:panel.bottom,footerTop:footer.getBoundingClientRect().top};})()`);
+      assert.ok(bounds.left>=0&&bounds.right<=width&&bounds.top>=0&&bounds.bottom<=(width<768?844:1000),'Schedule fits viewport');
+      const horizontalOverflow = await evaluate(`(()=>{const e=document.querySelector('[data-testid=delivery-schedule-body]');return e.scrollWidth>e.clientWidth;})()`);
+      assert.equal(horizontalOverflow,false,'Schedule body does not overflow horizontally');
+      await evaluate(`document.querySelector('[data-testid=delivery-schedule-body]').scrollTop=99999`);
+      await pause(100);
+      assert.ok(Math.abs(await evaluate(`document.querySelector('[data-testid=delivery-schedule-footer]').getBoundingClientRect().top`)-bounds.footerTop)<1,'Footer stays fixed while content scrolls');
+      await evaluate(`document.querySelector('[data-testid=delivery-schedule-body]').scrollTop=0`);
+      await evaluate(`document.querySelector('[aria-label="Tomorrow"]').click()`);
+      await evaluate(`document.querySelector('[aria-label="9:00 AM"]').click()`);
+      assert.ok((await evaluate(`document.querySelector('[data-testid=delivery-schedule-footer]').innerText`)).includes('Tomorrow at 9:00 AM'));
+      await clickText('Choose another date');
+      await evaluate(`document.querySelector('[aria-label="2026-10-25"]').click()`);
+      assert.equal(await evaluate(`!!document.querySelector('[data-testid=delivery-calendar]')`),false);
+      if (width===320||width===390||width===1440) {
+        const shot=await command('Page.captureScreenshot',{format:'png'});
+        fs.writeFileSync(path.join(artifacts,`delivery-schedule-${width}.png`),Buffer.from(shot.data,'base64'));
+      }
+      await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+      await command('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+      await waitFor('!document.querySelector("[data-testid=delivery-schedule-footer]")');
+      await openSchedule();
+      await evaluate(`document.querySelector('[aria-label="Tomorrow"]').click()`);
+      await evaluate(`document.querySelector('[aria-label="9:00 AM"]').click()`);
+      await clickText('Save pickup request');
+      await waitFor('!document.querySelector("[data-testid=delivery-schedule-footer]")');
+      assert.equal(await evaluate(`JSON.parse(sessionStorage.getItem('labaride-draft:user:7')).state.requestedPickupAt`),'2026-10-23T01:00:00.000Z');
+      assert.deepEqual(errors,[],'Schedule has no runtime exceptions');
+      console.log('PASS laundry pickup request',width);
+    }
+    orders[0].status = 'Queued';
+    orders[0].receivedAt = '2026-10-22T02:00:00Z';
+    await visit('/shop/customers/orders/42', 390, 'Send ready estimate');
+    async function fill(label, value) {
+      await evaluate(`(()=>{const e=document.querySelector('[aria-label="'+${JSON.stringify(label)}+'"]');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;setter.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+    }
+    await fill('Ready date','2026-10-23');
+    await fill('Ready time','14:00');
+    await clickText('Send ready estimate');
+    await waitFor('document.body.innerText.includes("Update ready estimate")');
+    assert.equal(workflowWrites[0].estimatedReadyAt,'2026-10-23T06:00:00.000Z');
+    await clickText('Start processing');
+    await waitFor('!!document.querySelector("[data-testid=app-dialog]")');
+    await clickText('Confirm');
+    await waitFor('document.body.innerText.includes("Mark laundry ready")');
+    assert.equal(workflowWrites[1].status,'Processing');
+    assert.ok(await evaluate('document.body.innerText.includes("Processing started")'));
+    await clickText('Mark laundry ready');
+    await waitFor('!!document.querySelector("[data-testid=app-dialog]")');
+    await clickText('Confirm');
+    await waitFor('document.body.innerText.includes("Confirm delivered to customer")');
+    assert.equal(workflowWrites[2].status,'Ready');
+    await visit('/transaction-details?id=42',390,'Turnaround & Updates');
+    assert.ok(await evaluate('document.body.innerText.includes("arranging return delivery")'));
+    assert.ok(await evaluate('document.body.innerText.includes("Estimated ready time")'));
+    console.log('PASS shop estimate, processing, ready actions and customer updates');
+    fs.writeFileSync(path.join(artifacts,'delivery-schedule-verification.txt'),'Requested laundry pickup verified in Chrome at widths 320, 390, 768 and 1440.\nDate selection, time selection, inline calendar, initial focus, Escape dismissal, fixed footer, viewport bounds, no horizontal overflow and saved checkout state passed. Shop estimate entry, explicit processing start, ready action and customer turnaround details also passed.\nRequests intercepted with isolated fixtures; no live orders created.\n');
+    return;
+  }
+  if (logoutTest) {
+    const visible = '!!document.querySelector("[data-testid=app-dialog]")';
+    const closed = '!document.querySelector("[data-testid=app-dialog]")';
+    async function openLogout(label='Logout') {
+      await evaluate(`(()=>{const e=Array.from(document.querySelectorAll('[role="button"]')).find(e=>e.innerText.trim()===${JSON.stringify(label)});e.focus();e.click();})()`);
+      await waitFor(visible);await waitFor('document.activeElement?.getAttribute("aria-label")==="Cancel"');
+      await waitFor('Number(getComputedStyle(document.querySelector("[data-testid=app-dialog]").parentElement).opacity)>.99');
+      assert.ok((await evaluate('document.querySelector("[data-testid=app-dialog]").innerText')).includes('Are you sure you want to log out?'));
+      const blur=await evaluate('getComputedStyle(document.querySelector("[data-testid=dialog-backdrop-blur]")).backdropFilter');
+      assert.ok(blur.includes('blur('),'Backdrop actually applies blur');
+    }
+    for(const width of [320,390,768,1440]) {
+      await visit('/profile',width,'Settings');
+      const before=await evaluate('({path:location.href,token:sessionStorage.getItem("auth_token"),user:sessionStorage.getItem("auth_user"),history:history.length})');
+      await openLogout();
+      assert.equal(await evaluate('location.href'),before.path,'Opening logout keeps the same page');
+      const bounds=await evaluate('(()=>{const r=document.querySelector("[data-testid=app-dialog]").getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};})()');
+      assert.ok(bounds.left>=0&&bounds.right<=width&&bounds.top>=0,'Modal fits viewport');
+      if(width===390||width===1440){const shot=await command('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(artifacts,`logout-modal-${width}.png`),Buffer.from(shot.data,'base64'));}
+      await clickText('Cancel');await waitFor(closed);
+      assert.deepEqual(await evaluate('({path:location.href,token:sessionStorage.getItem("auth_token"),user:sessionStorage.getItem("auth_user"),history:history.length})'),before,'Cancel preserves page, credentials and history');
+    }
+    await openLogout();for(let i=0;i<8;i++){await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await command('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});}
+    assert.ok(await evaluate('document.querySelector("[data-testid=app-dialog]").contains(document.activeElement)'),'Focus remains trapped');
+    await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await command('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await waitFor(closed);
+    await waitFor('document.activeElement?.getAttribute("aria-label")==="Logout"');
+    assert.equal(await evaluate('location.pathname'),'/profile');
+    await openLogout();await evaluate(`document.querySelector('[aria-label="Dismiss dialog"]').click()`);await waitFor(closed);
+    await evaluate(`window.originalRemoveItem=Storage.prototype.removeItem;Storage.prototype.removeItem=function(key){if(key==='auth_user')throw new Error('Simulated storage failure');return window.originalRemoveItem.call(this,key);};`);
+    await openLogout();await clickText('Log Out');await waitFor('document.body.innerText.includes("We couldn\'t log you out")');
+    assert.equal(await evaluate('location.pathname'),'/profile');assert.equal(await evaluate('sessionStorage.getItem("auth_token")'),'isolated-ui-test','Failed logout restores partially removed credentials');
+    await evaluate('Storage.prototype.removeItem=window.originalRemoveItem');
+    await evaluate(`(()=>{const e=document.querySelector('[data-testid=app-dialog] [aria-label="Log Out"]');e.click();e.click();})()`);
+    await waitFor('location.pathname==="/login"');await waitFor(closed);
+    assert.equal(await evaluate('sessionStorage.getItem("auth_token")'),null);assert.equal(await evaluate('sessionStorage.getItem("auth_user")'),null);
+    await visit('/shop/profile',390,'Account Information');await openLogout();assert.equal(await evaluate('location.pathname'),'/shop/profile');await clickText('Cancel');await waitFor(closed);assert.equal(await evaluate('location.pathname'),'/shop/profile');
+    user.isAdmin=true;await visit('/admin',1440,'Shop management');await clickText('Approved');await openLogout('Sign Out');await clickText('Cancel');await waitFor(closed);
+    const selectedTabs=await evaluate('Array.from(document.querySelectorAll("[role=tab]")).map(e=>({text:e.innerText.trim(),selected:e.getAttribute("aria-selected")}))');
+    assert.ok(selectedTabs.some(tab=>tab.text==='Approved'&&tab.selected==='true'),'Admin filters remain selected after cancelling: '+JSON.stringify(selectedTabs));
+    await openLogout('Sign Out');await clickText('Log Out');await waitFor('location.pathname==="/login"');await waitFor(closed);
+    assert.equal(await evaluate('sessionStorage.getItem("auth_token")'),null);assert.deepEqual(nativeDialogs,[]);assert.deepEqual(errors,[]);
+    console.log('PASS logout blur at four sizes; customer/shop/admin current-page cancellation, focus, Escape, backdrop, storage failure, retry and success-only redirect');
+    return;
+  }
+  if (dialogTest) {
+    const dialogVisible = '!!document.querySelector("[data-testid=app-dialog]")';
+    const dialogClosed = '!document.querySelector("[data-testid=app-dialog]")';
+    async function openDelete() {
+      await waitFor('Array.from(document.querySelectorAll("[role=button]")).some(e=>e.innerText.trim()==="Delete"&&e.getAttribute("aria-disabled")!=="true")');
+      await evaluate(`(()=>{const e=Array.from(document.querySelectorAll('[role="button"]')).find(e=>e.innerText.trim()==='Delete');e.focus();e.click();})()`);
+      await waitFor(dialogVisible);
+      await waitFor('document.activeElement?.getAttribute("aria-label")==="Cancel"');
+      assert.ok((await evaluate('document.querySelector("[data-testid=app-dialog]").innerText')).includes('Full Service'));
+    }
+    await visit('/login',390,'Log In'); await clickText('Log In'); await waitFor(dialogVisible);
+    assert.ok((await evaluate('document.body.innerText')).includes('Please fill in all fields'));
+    await clickText('Got it'); await waitFor(dialogClosed);
+    await visit('/shop/services',1440,'Full Service'); await openDelete();
+    const shot=await command('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(artifacts,'delete-service-modal-desktop.png'),Buffer.from(shot.data,'base64'));
+    for(let i=0;i<8;i++){await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});await command('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9});}
+    assert.ok(await evaluate('document.querySelector("[data-testid=app-dialog]").contains(document.activeElement)'),'Keyboard focus stays in the modal');
+    await clickText('Cancel'); await waitFor(dialogClosed); assert.equal(dialogWrites.length,0);
+    await waitFor('document.activeElement?.getAttribute("aria-label")==="Delete"');
+    await openDelete();
+    await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await command('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await waitFor(dialogClosed);assert.equal(dialogWrites.length,0);
+    await openDelete();await evaluate(`document.querySelector('[aria-label="Dismiss dialog"]').click()`);await waitFor(dialogClosed);
+    await openDelete();await evaluate(`document.querySelector('[aria-label="Close dialog"]').click()`);await waitFor(dialogClosed);
+    for(const width of [320,390]) {
+      await visit('/shop/services',width,'Full Service');await openDelete();
+      assert.ok(await evaluate('document.querySelector("[data-testid=app-dialog]").getBoundingClientRect().right<=innerWidth'),'Dialog fits narrow screens');
+      const mobileShot=await command('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(artifacts,`delete-service-modal-${width}.png`),Buffer.from(mobileShot.data,'base64'));
+      await clickText('Cancel');await waitFor(dialogClosed);
+    }
+    assert.equal(dialogWrites.length,0,'All dismissal paths preserve services');
+    failServiceDelete=true;await openDelete();await clickText('Delete Service');await waitFor(dialogClosed);
+    await waitFor('document.body.innerText.includes("Unable to delete this service")');assert.equal(dialogWrites.length,1);assert.equal(shops[0].services.length,2);
+    failServiceDelete=false;await openDelete();await evaluate(`(()=>{const e=document.querySelector('[data-testid=app-dialog] [aria-label="Delete Service"]');e.click();e.click();})()`);
+    await waitFor('!document.body.innerText.includes("Full Service")');assert.equal(dialogWrites.length,2,'Double confirmation sends one request');assert.equal(shops[0].services.length,1);
+    assert.deepEqual(nativeDialogs,[],'No browser-native dialogs');assert.deepEqual(errors,[]);
+    console.log('PASS branded notices and service deletion: keyboard focus, Cancel, Escape, backdrop, close, narrow screens, API failure and single-submit confirmation');
+    return;
+  }
+  if (applicationTest) {
+    for (const width of [320,390,768,1187,1440]) {
+      await visit('/register-shop',width,'Waiting for admin approval',width===390?'application-pending-phone':width===1187?'application-pending-desktop':undefined);
+      const nameBounds = await evaluate(`(()=>{const e=Array.from(document.querySelectorAll('[data-testid="shop-application-status"] div')).find(e=>e.textContent===${JSON.stringify(shops[0].shopName)}&&!e.childElementCount);const range=document.createRange();range.setStart(e.firstChild,0);range.setEnd(e.firstChild,2);return {nameLeft:range.getBoundingClientRect().left,iconRight:e.parentElement.previousElementSibling.getBoundingClientRect().right};})()`);
+      assert.ok(nameBounds.nameLeft >= nameBounds.iconRight + 6,`Shop name must not overlap its icon at ${width}px: ${JSON.stringify(nameBounds)}`);
+    }
+    assert.equal(await evaluate(`Array.from(document.querySelectorAll('[role="button"]')).filter(e=>e.innerText.trim()==='Continue as Customer').length`),1,'Application has one primary customer action');
+    await clickText('Refresh Status'); await waitFor('document.body.innerText.includes("Last checked at")');
+    await clickText('Continue as Customer'); await waitFor('location.pathname==="/profile"');
+    for (const [status,expected] of [['Rejected','Your application needs an update'],['Suspended','Your shop access is paused'],['Approved','Your shop is ready to go']]) {
+      shops[0].approvalStatus=status;
+      shops[0].reviewReason=status==='Approved'?null:'Please confirm the business contact details before your shop can receive orders.';
+      await visit('/register-shop',390,expected,`application-${status.toLowerCase()}-phone`);
+      if (status==='Rejected') { await clickText('Edit and Resubmit'); await waitFor('document.body.innerText.includes("Resubmit for Approval")'); await clickText('Cancel'); await waitFor('document.body.innerText.includes("Admin\'s feedback")'); }
+      if (status==='Approved') { await clickText('Open My Shop'); await waitFor('location.pathname==="/shop/home"'); }
+    }
+    assert.deepEqual(errors,[]);
+    console.log('PASS application layout at five widths, all four statuses, refresh, customer navigation, rejection editing and approved shop access');
+    return;
+  }
+  if (approvalTest) {
+    await visit('/login',390,'Log In');
+    await evaluate(`(()=>{for(const [label,value] of [['Email','admin-test@example.test'],['Password','test-password-only']]){const e=document.querySelector('input[aria-label="'+label+'"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,value);e.dispatchEvent(new Event('input',{bubbles:true}));}})()`);
+    await clickText('Log In'); await waitFor('document.body.innerText.includes("Shop management")');
+    assert.equal(await evaluate('location.pathname'),'/admin','Admin login opens the dashboard');
+    for (const width of [390,1440]) await visit('/admin',width,'Shop management',`admin-approvals-${width}`);
+    const navLabels = await evaluate(`Array.from(document.querySelectorAll('[role="tablist"] [role="tab"]')).map(e=>e.innerText.trim())`);
+    assert.ok(navLabels.includes('Dashboard'),'Admin navigation includes Dashboard');
+    assert.ok(!navLabels.some(label=>['Home','Activities','Profile','Orders','Services','Customers'].includes(label)),'Admin navigation is separate from customer and shop tabs');
+    assert.equal(await evaluate(`!!document.querySelector('[aria-label="Back"]')`),false,'Admin dashboard has no back arrow');
+    assert.ok(!(await evaluate('document.body.innerText')).includes('Customer View'),'No customer-mode switch');
+    for (const path of ['/home','/profile','/shop/home','/register-shop']) {
+      await visit(path,390,'Shop management');
+      assert.equal(await evaluate('location.pathname'),'/admin','Admin direct links stay in the admin panel');
+    }
+    await command('Page.reload'); await waitFor('document.body.innerText.includes("Shop management")');
+    await evaluate('history.back()'); await waitFor('document.body.innerText.includes("Shop management")');
+    assert.equal(await evaluate('location.pathname'),'/admin','Browser Back keeps admins in their panel');
+    await clickText('Dashboard');
+    await clickText('Reject Application'); await clickText('Reject Application');
+    await waitFor('document.body.innerText.includes("Enter a reason")'); assert.equal(reviews.length,0);
+    await evaluate(`(()=>{const e=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Please correct your business contact.');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await clickText('Reject Application'); await waitFor('document.body.innerText.includes("No matching applications")');
+    assert.equal(reviews[0].status,'Rejected');
+    user.isAdmin=false;
+    await visit('/register-shop',390,'Please correct your business contact.','application-rejected');
+    await clickText('Edit and Resubmit'); await waitFor('document.body.innerText.includes("Resubmit for Approval")');
+    await clickText('Resubmit for Approval'); await waitFor('document.body.innerText.includes("Pending Approval")');
+    await visit('/shop/home',390,'Pending Approval','application-pending');
+    assert.ok((await evaluate('location.pathname')).includes('register-shop'),'Unapproved owner direct URL is guarded');
+    user.isAdmin=true;
+    await visit('/admin',390,'Approve Shop'); await clickText('Approve Shop'); await clickText('Cancel');
+    assert.equal(reviews.length,1,'Cancelled approval does not submit');
+    await clickText('Approve Shop'); await clickText('Approve Shop'); await waitFor('document.body.innerText.includes("No matching applications")');
+    user.isAdmin=false;
+    await visit('/shop/home',390,'Recent transactions');
+    user.isAdmin=true;
+    await visit('/admin',390,'Shop management'); await clickText('Approved'); await clickText('Suspend Shop');
+    await evaluate(`(()=>{const e=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Verification requires review.');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await clickText('Suspend Shop'); await waitFor('!document.body.innerText.includes("Test Laundry & Fabric Care")');
+    user.isAdmin=false;
+    await visit('/shop/home',390,'Verification requires review.','application-suspended');
+    user.isAdmin=false; await visit('/admin',390,'Admin access required','admin-denied');
+    assert.equal(await evaluate(`!!document.querySelector('[role="tab"][aria-label="Dashboard"]')`),false,'Customers do not receive admin navigation');
+    user.isAdmin=true; await visit('/admin',390,'Shop management');
+    await clickText('Sign Out'); await waitFor('!!document.querySelector("[data-testid=app-dialog]")'); await clickText('Log Out'); await waitFor('document.body.innerText.includes("Log In")');
+    assert.equal(await evaluate('sessionStorage.getItem("auth_token")'),null,'Admin sign out clears the session');
+    assert.deepEqual(reviews.map(review => review.status),['Rejected','Approved','Suspended']);
+    console.log('PASS approval dashboard, reason validation, rejection, resubmission, direct URL guards, approval, suspension and admin denial');
+    return;
+  }
   if (photoTest) {
     await visit('/home',390,'Shop photo coming soon','customer-photo-cards');
     await clickText('Full Service');
@@ -153,14 +445,15 @@ async function clickText(text) {
     await visit('/shop/profile/shop-details',390,'Change shop photo');
     mode='error'; await choosePhoto('Change shop photo'); await waitFor('document.body.innerText.includes("Test photo upload failed")');
     assert.ok(hasPhoto,'Failed replacement retains original photo'); mode='populated';
-    cancelRemoval=true; await clickText('Remove photo'); await pause(100); assert.ok(hasPhoto,'Cancel removal preserves photo');
-    cancelRemoval=false; await clickText('Remove photo'); await waitFor('document.body.innerText.includes("Shop photo removed")');
+    await clickText('Remove photo'); await waitFor('!!document.querySelector("[data-testid=app-dialog]")'); await clickText('Cancel'); assert.ok(hasPhoto,'Cancel removal preserves photo');
+    await clickText('Remove photo'); await waitFor('!!document.querySelector("[data-testid=app-dialog]")'); await clickText('Remove Photo'); await waitFor('document.body.innerText.includes("Shop photo removed")');
     await visit('/home',390,'Shop photo coming soon');
     hasPhoto=true; brokenPhoto=true; shops[0].photoUrl=`/api/shops/101/photo?v=${Date.now()}`;
     // Force a fresh app boot so React Query can't serve the earlier successful
     // photo URL from the customer shop list cache.
     await visit(`/home?photo-fallback=${Date.now()}`,390,'Shop photo unavailable');
     assert.deepEqual(errors,[]);
+    assert.deepEqual(nativeDialogs,[],'Photo removal uses an in-app modal');
     console.log('PASS photo picker, upload, display, filters, errors, confirmation, removal and image fallback');
     return;
   }

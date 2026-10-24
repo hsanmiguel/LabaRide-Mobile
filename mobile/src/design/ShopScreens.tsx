@@ -409,6 +409,7 @@ export function CustomersDesign({ filter }: { filter?: Order["status"] }) {
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
+  const recentOrders = [...(orders.data || [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 4);
   return (
     <Screen title="Customer Orders" back={!!filter} background={palette.surface} dark>
       <View style={styles.stack}>
@@ -455,6 +456,31 @@ export function CustomersDesign({ filter }: { filter?: Order["status"] }) {
                 </Pressable>
               );
             })}
+          </View>
+        )}
+        {!filter && !orders.isLoading && !orders.error && (
+          <View style={{ gap: 12, marginTop: 8 }}>
+            <Section title="Recent orders" light={false} />
+            {recentOrders.length ? recentOrders.map((order) => (
+              <Pressable key={order.id} accessibilityRole="button" accessibilityLabel={`Order ${order.id}, ${order.userName}, ${order.status}`}
+                onPress={() => go("shop-transaction", { id: String(order.id) })}>
+                <Card style={{ padding: 14, borderRadius: 16, gap: 10 }}>
+                  <View style={styles.between}>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Txt numberOfLines={1} style={{ fontWeight: "600" }}>{order.userName}</Txt>
+                      <Txt numberOfLines={1} style={{ color: palette.muted, fontSize: 12 }}>{order.serviceName} · Order #{order.id}</Txt>
+                    </View>
+                    <StatusBadge status={order.status} />
+                  </View>
+                  <View style={styles.between}>
+                    <Txt style={{ color: palette.muted, fontSize: 12 }}>{new Date(order.createdAt).toLocaleDateString()}</Txt>
+                    <View style={styles.row}><Txt style={{ fontWeight: "600", color: palette.primary }}>{money(order.totalAmount)}</Txt><ChevronRight size={16} color={palette.muted} /></View>
+                  </View>
+                </Card>
+              </Pressable>
+            )) : (
+              <Card style={{ padding: 18 }}><Txt style={{ color: palette.muted, textAlign: "center" }}>New customer orders will appear here.</Txt></Card>
+            )}
           </View>
         )}
         {filter && !orders.isLoading && !orders.error && !filtered.length && (

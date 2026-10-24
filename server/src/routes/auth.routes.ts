@@ -5,6 +5,7 @@ import { authenticateToken } from '../middleware/auth.middleware';
 const router = Router();
 
 router.post('/signup', AuthController.signup);
+router.post('/rider-signup', AuthController.riderSignup);
 router.post('/login', AuthController.login);
 router.post('/verify-token', authenticateToken, AuthController.verifyToken);
 

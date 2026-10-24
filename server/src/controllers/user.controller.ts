@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
+import { userProfileSelect, withUserPhoto } from '../utils/user-profile';
 import prisma from '../config/database';
 import { sendSuccess, sendError } from '../utils/response';
 import { updateUserSchema, updatePasswordSchema } from '../validators/user.validator';
@@ -18,18 +19,14 @@ export class UserController {
 
       const user = await prisma.user.findUnique({
         where: { id: userId },
-        select: {
-          id: true, name: true, email: true, phone: true, birthdate: true,
-          gender: true, zone: true, street: true, barangay: true, building: true,
-          isShopOwner: true, createdAt: true
-        }
+        select: userProfileSelect
       });
 
       if (!user) {
         return sendError(res, 'User not found', 'NOT_FOUND', 404);
       }
 
-      return sendSuccess(res, user, 'User details fetched successfully');
+      return sendSuccess(res, withUserPhoto(user), 'User details fetched successfully');
     } catch (error) {
       next(error);
     }
@@ -51,14 +48,10 @@ export class UserController {
           ...validatedData,
           birthdate: validatedData.birthdate ? new Date(validatedData.birthdate) : undefined
         },
-        select: {
-          id: true, name: true, email: true, phone: true, birthdate: true,
-          gender: true, zone: true, street: true, barangay: true, building: true,
-          isShopOwner: true, updatedAt: true
-        }
+        select: userProfileSelect
       });
 
-      return sendSuccess(res, updatedUser, 'User updated successfully');
+      return sendSuccess(res, withUserPhoto(updatedUser), 'User updated successfully');
     } catch (error) {
       next(error);
     }
@@ -122,10 +115,11 @@ export class UserController {
   static async hasShop(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const userId = parseInt(req.params.userId);
+      if (userId !== req.user?.userId) return sendError(res, 'You can only view your own application', 'FORBIDDEN', 403);
 
       const shop = await prisma.shop.findUnique({ where: { userId } });
       
-      return sendSuccess(res, { hasShop: !!shop, shopId: shop?.id || null }, 'Shop status checked');
+      return sendSuccess(res, { hasShop: !!shop, shopId: shop?.id || null, approvalStatus: shop?.approvalStatus || null }, 'Shop status checked');
     } catch (error) {
       next(error);
     }

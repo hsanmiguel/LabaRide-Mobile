@@ -1,5 +1,6 @@
 import { io, Socket } from "socket.io-client";
 import { API_URL } from "../api/client";
+import { useAuthStore } from "../store/authStore";
 
 class SocketService {
   private socket: Socket | null = null;
@@ -8,9 +9,11 @@ class SocketService {
   private shopId: number | null = null;
 
   initialize() {
+    if (process.env.EXPO_PUBLIC_REALTIME_MODE === "polling") return;
     if (this.socket) return;
 
     this.socket = io(API_URL, {
+      auth: callback => callback({ token: useAuthStore.getState().token }),
       transports: ["websocket"],
       autoConnect: true,
       reconnection: true,
@@ -59,6 +62,11 @@ class SocketService {
     return () => {
       this.socket?.off("new_transaction", callback);
     };
+  }
+
+  onOperationsUpdate(callback: () => void) {
+    this.socket?.on("operations_update", callback);
+    return () => { this.socket?.off("operations_update", callback); };
   }
 
   disconnect() {

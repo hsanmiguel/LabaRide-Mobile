@@ -149,7 +149,8 @@ export function SplashDesign() {
     </Pressable>
   );
 }
-export function LoginDesign({ initialSignup = false }: { initialSignup?: boolean } = {}) {
+export function LoginDesign({ initialSignup = false, initialRecovery = false }: { initialSignup?: boolean; initialRecovery?: boolean } = {}) {
+  const [recoveringPassword, setRecoveringPassword] = useState(initialRecovery);
   const [creatingAccount, setCreatingAccount] = useState(initialSignup);
   const { width } = useWindowDimensions();
   const wide = width >= 900;
@@ -209,13 +210,17 @@ export function LoginDesign({ initialSignup = false }: { initialSignup?: boolean
                 </View>
               </View>
               <View style={{ marginTop: 24, marginBottom: 24 }}>
-                <Txt accessibilityRole="header" style={{ fontSize: 32, fontWeight: "700", color: palette.ink, letterSpacing: -0.8 }}>{creatingAccount ? "Create an account." : "Welcome back."}</Txt>
-                <Txt style={{ color: palette.muted, marginTop: 8, lineHeight: 22 }}>{creatingAccount ? "Get started with a fresher laundry day." : "Sign in to make your next laundry day easier."}</Txt>
+                <Txt accessibilityRole="header" style={{ fontSize: 32, fontWeight: "700", color: palette.ink, letterSpacing: -0.8 }}>{recoveringPassword ? "Forgot password?" : creatingAccount ? "Create an account." : "Welcome back."}</Txt>
+                <Txt style={{ color: palette.muted, marginTop: 8, lineHeight: 22 }}>{recoveringPassword ? "Enter your email to reset your password." : creatingAccount ? "Get started with a fresher laundry day." : "Sign in to make your next laundry day easier."}</Txt>
               </View>
               <View accessibilityRole="tablist" style={{ flexDirection: "row", backgroundColor: palette.surface, borderRadius: 12, padding: 4, marginBottom: 24, borderWidth: 1, borderColor: palette.line }}>
-                {[false, true].map(signup => <Pressable key={String(signup)} accessibilityRole="tab" accessibilityState={{ selected: creatingAccount === signup }} onPress={() => setCreatingAccount(signup)} style={{ flex: 1, minHeight: 44, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: creatingAccount === signup ? "white" : "transparent" }}><Txt style={{ color: creatingAccount === signup ? palette.primary : palette.muted, fontSize: 13, fontWeight: creatingAccount === signup ? "600" : "400" }}>{signup ? "Create account" : "Sign in"}</Txt></Pressable>)}
+                {[false, true].map(signup => <Pressable key={String(signup)} accessibilityRole="tab" accessibilityState={{ selected: creatingAccount === signup }} onPress={() => { setCreatingAccount(signup); setRecoveringPassword(false); }} style={{ flex: 1, minHeight: 44, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: creatingAccount === signup ? "white" : "transparent" }}><Txt style={{ color: creatingAccount === signup ? palette.primary : palette.muted, fontSize: 13, fontWeight: creatingAccount === signup ? "600" : "400" }}>{signup ? "Create account" : "Sign in"}</Txt></Pressable>)}
               </View>
-              {creatingAccount ? <SignupForm /> : <>
+              {recoveringPassword ? <View>
+                <Field label="Email address" placeholder="you@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+                <Button title="Reset Password" onPress={() => unavailable("Password recovery")} />
+                <Pressable accessibilityRole="button" onPress={() => { setRecoveringPassword(false); setCreatingAccount(false); }} style={{ minHeight: 48, alignItems: "center", justifyContent: "center", marginTop: 16 }}><Txt style={{ color: palette.primary, fontWeight: "600" }}>Back to sign in</Txt></Pressable>
+              </View> : creatingAccount ? <SignupForm /> : <>
               <Field
                 label="Email address"
                 appearance="outlined"
@@ -253,7 +258,7 @@ export function LoginDesign({ initialSignup = false }: { initialSignup?: boolean
                     onPress={() => setRemember(!remember)}
                   />
                 </View>
-                <Pressable accessibilityRole="button" onPress={() => go("forgot-password")}>
+                <Pressable accessibilityRole="button" onPress={() => setRecoveringPassword(true)}>
                   <Txt style={{ fontSize: 12, color: palette.primary }}>
                     Forgot Password?
                   </Txt>
@@ -531,6 +536,7 @@ export function RecoveryDesign({
         onPress={() => router.replace("/(auth)/login")}
       />
     );
+  if (stage === "forgot-password") return <LoginDesign initialRecovery />;
   return (
     <Screen>
       <View style={{ padding: 8, paddingTop: 40 }}>

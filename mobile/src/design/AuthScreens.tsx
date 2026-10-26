@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
+  useWindowDimensions,
   Platform,
   Pressable,
   ScrollView,
@@ -10,7 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
-import { ArrowRight, Bike, UserRound, CheckCircle2 } from "lucide-react-native";
+import { ArrowRight, Bike, UserRound, CheckCircle2, WashingMachine, Sparkles } from "lucide-react-native";
 import { type Href, router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/authStore";
@@ -148,7 +149,11 @@ export function SplashDesign() {
     </Pressable>
   );
 }
-export function LoginDesign() {
+export function LoginDesign({ initialSignup = false }: { initialSignup?: boolean } = {}) {
+  const [creatingAccount, setCreatingAccount] = useState(initialSignup);
+  const { width } = useWindowDimensions();
+  const wide = width >= 900;
+  const palette = usePalette();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
@@ -156,6 +161,7 @@ export function LoginDesign() {
   const { setAuth, setGuest } = useAuthStore();
   const cache = useQueryClient();
   async function login() {
+    if (busy) return;
     if (!email.trim() || !password)
       return notify("Log In", "Please fill in all fields");
     setBusy(true);
@@ -174,34 +180,46 @@ export function LoginDesign() {
     }
   }
   return (
-    <LinearGradient colors={["#0289E0", "#1B086D"]} style={{ flex: 1 }}>
-      <StatusBar style="light" />
+    <View style={{ flex: 1, backgroundColor: palette.surface }}>
+      <StatusBar style="dark" />
       <SafeAreaView style={styles.grow}>
         <KeyboardAvoidingView
           style={styles.grow}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <View style={{ padding: 24, paddingVertical: 28 }}>
-            <Brand white />
-          </View>
           <ScrollView
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={{ padding: 20, paddingTop: 8, width: "100%", maxWidth: 520, alignSelf: "center", flexGrow: 1 }}
+            contentContainerStyle={{ padding: wide ? 32 : 12, width: "100%", flexGrow: 1, justifyContent: "center" }}
           >
-            <View
-              style={{
-                backgroundColor: "white",
-                borderRadius: 24,
-                padding: 24,
-              }}
-            >
-              <View style={[styles.center, { marginBottom: 32 }]}>
-                <Txt accessibilityRole="header" style={{ fontSize: 32, fontWeight: "700", color: "#1A0066" }}>Login</Txt>
+            <View style={{ width: "100%", maxWidth: 1120, alignSelf: "center", flexDirection: wide ? "row" : "column", borderRadius: 24, overflow: "hidden", backgroundColor: "white", borderWidth: 1, borderColor: palette.line }}>
+              <LinearGradient colors={[palette.primary, "#17346F"]} style={{ width: wide ? "46%" : "100%", minHeight: wide ? 760 : 190, padding: wide ? 40 : 24, justifyContent: "space-between", overflow: "hidden" }}>
+                <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}><Sparkles size={16} color="#C8DEFF" /><Txt style={{ color: "#DEEBFF", fontSize: 10, letterSpacing: 2 }}>A FRESHER EVERYDAY</Txt></View>
+                <View style={{ marginTop: 24, paddingRight: wide ? 0 : 124 }}><Txt style={{ color: "white", fontSize: wide ? 46 : 24, lineHeight: wide ? 58 : 36, fontWeight: "700", letterSpacing: -1 }}>Less laundry.{'\n'}More living.</Txt>{wide && <Txt style={{ color: "#DEEBFF", lineHeight: 25, marginTop: 20 }}>Fresh clothes, trusted local shops, and pickup at your doorstep. Make room for what matters.</Txt>}</View>
+                {<View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ alignItems: "center", justifyContent: "center", height: wide ? 270 : 128, width: wide ? "100%" : 128, position: wide ? "relative" : "absolute", right: wide ? undefined : 16, bottom: wide ? undefined : 12 }}><View style={{ position: "absolute", width: wide ? 260 : 124, height: wide ? 260 : 124, borderRadius: 130, backgroundColor: "rgba(255,255,255,.08)" }} /><View style={{ width: wide ? 180 : 94, height: wide ? 206 : 108, borderRadius: wide ? 24 : 15, backgroundColor: "#EDF4FF", borderWidth: wide ? 6 : 3, borderColor: "#C8DEFF", alignItems: "center", justifyContent: "center", transform: [{ rotate: "-6deg" }] }}><WashingMachine size={wide ? 120 : 64} strokeWidth={1.2} color={palette.primary} /><View style={{ position: "absolute", right: wide ? -28 : -12, bottom: 10, padding: wide ? 12 : 7, backgroundColor: "white", borderRadius: 16 }}><Sparkles size={wide ? 28 : 18} color={palette.accent} /></View></View></View>}
+                {wide && <Txt style={{ color: "#DEEBFF", fontSize: 12 }}>Your laundry day, made lighter.</Txt>}
+              </LinearGradient>
+              <View style={{ flex: 1, minWidth: 0, padding: wide ? 42 : 24 }}>
+              <View accessible accessibilityLabel="LabaRide ? Laundry pickup and delivery" style={{ flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 8 }}>
+                <View style={{ width: 76, height: 76, borderRadius: 20, backgroundColor: palette.soft, borderWidth: 1, borderColor: palette.line, alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Asset name="blacklogo.png" size={64} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Txt style={{ color: palette.primary, fontSize: wide ? 32 : 28, fontWeight: "700", letterSpacing: -0.8 }}>LabaRide</Txt>
+                  <Txt style={{ color: palette.muted, fontSize: 12, lineHeight: 18, marginTop: 2 }}>Laundry pickup & delivery</Txt>
+                </View>
               </View>
+              <View style={{ marginTop: 24, marginBottom: 24 }}>
+                <Txt accessibilityRole="header" style={{ fontSize: 32, fontWeight: "700", color: palette.ink, letterSpacing: -0.8 }}>{creatingAccount ? "Create an account." : "Welcome back."}</Txt>
+                <Txt style={{ color: palette.muted, marginTop: 8, lineHeight: 22 }}>{creatingAccount ? "Get started with a fresher laundry day." : "Sign in to make your next laundry day easier."}</Txt>
+              </View>
+              <View accessibilityRole="tablist" style={{ flexDirection: "row", backgroundColor: palette.surface, borderRadius: 12, padding: 4, marginBottom: 24, borderWidth: 1, borderColor: palette.line }}>
+                {[false, true].map(signup => <Pressable key={String(signup)} accessibilityRole="tab" accessibilityState={{ selected: creatingAccount === signup }} onPress={() => setCreatingAccount(signup)} style={{ flex: 1, minHeight: 44, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: creatingAccount === signup ? "white" : "transparent" }}><Txt style={{ color: creatingAccount === signup ? palette.primary : palette.muted, fontSize: 13, fontWeight: creatingAccount === signup ? "600" : "400" }}>{signup ? "Create account" : "Sign in"}</Txt></Pressable>)}
+              </View>
+              {creatingAccount ? <SignupForm /> : <>
               <Field
-                label="Email"
-                appearance="soft"
-                placeholder="Enter email"
+                label="Email address"
+                appearance="outlined"
+                placeholder="you@example.com"
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
@@ -210,18 +228,19 @@ export function LoginDesign() {
               />
               <Field
                 label="Password"
-                appearance="soft"
+                appearance="outlined"
                 placeholder="Enter password"
                 value={password}
                 onChangeText={setPassword}
                 password
+                onSubmitEditing={login}
                 autoComplete="current-password"
               />
               <Button
                 title="Log In"
                 onPress={login}
                 busy={busy}
-                color="#375DFB"
+                color={palette.primary}
                 round
                 style={{ marginTop: 8, minHeight: 48 }}
               />
@@ -235,7 +254,7 @@ export function LoginDesign() {
                   />
                 </View>
                 <Pressable accessibilityRole="button" onPress={() => go("forgot-password")}>
-                  <Txt style={{ fontSize: 12, color: "#375DFB" }}>
+                  <Txt style={{ fontSize: 12, color: palette.primary }}>
                     Forgot Password?
                   </Txt>
                 </Pressable>
@@ -248,8 +267,8 @@ export function LoginDesign() {
                 ]}
               >
                 <Txt style={styles.muted}>Don't have an account?</Txt>
-                <Pressable accessibilityRole="button" onPress={() => router.push("/(auth)/signup")}>
-                  <Txt style={{ color: "#375DFB", fontWeight: "600" }}>
+                <Pressable accessibilityRole="button" onPress={() => setCreatingAccount(true)}>
+                  <Txt style={{ color: palette.primary, fontWeight: "600" }}>
                     Sign Up
                   </Txt>
                 </Pressable>
@@ -279,15 +298,20 @@ export function LoginDesign() {
                 <Txt style={{ color: "#626B7D", fontSize: 14, fontWeight: "500" }}>Continue as Guest</Txt>
               </Pressable>
               </View>
+              </>}
+              <Txt style={{ textAlign: "center", color: palette.muted, fontSize: 11, marginTop: 24, paddingTop: 18, borderTopWidth: 1, borderTopColor: palette.line }}>Fresh clothes. More time for you.</Txt>
+              </View>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
-    </LinearGradient>
+    </View>
   );
 }
 export function SignupDesign() {
-  const palette = usePalette();
+  return <LoginDesign initialSignup />;
+}
+function SignupForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -314,22 +338,7 @@ export function SignupDesign() {
     }
   }
   return (
-    <Screen>
-      <View style={{ padding: 8, paddingTop: 40 }}>
-        <Pressable accessibilityRole="button" onPress={() => router.back()}>
-          <Brand compact />
-        </Pressable>
-        <Txt
-          style={{
-            fontSize: 33,
-            fontWeight: "700",
-            color: palette.navy,
-            marginTop: 24,
-            marginBottom: 40,
-          }}
-        >
-          Create an account
-        </Txt>
+    <View>
         <Field
           label="Name"
           placeholder="Enter full name"
@@ -369,8 +378,7 @@ export function SignupDesign() {
           busy={busy}
           style={{ marginTop: 16 }}
         />
-      </View>
-    </Screen>
+    </View>
   );
 }
 export function UserDetailsDesign() {

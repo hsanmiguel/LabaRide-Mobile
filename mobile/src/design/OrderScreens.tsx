@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { ORDERS_PER_PAGE, PageControls } from "./Pagination";
+import { useEffect, useCallback, useRef, useState, type ReactNode } from "react";
 import { Modal, Pressable, ScrollView, View } from "react-native";
 import {
   Clock,
@@ -690,6 +691,8 @@ export function ActivitiesDesign({
   const orders = useOrders();
   const user = useAuthStore((state) => state.user);
   const [tab, setTab] = useState(past ? "Past Order" : "Active Order");
+  const [requestedPage, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [tab, history, past]);
   const filtered = (orders.data || []).filter(
     (order) =>
       !history ||
@@ -697,6 +700,8 @@ export function ActivitiesDesign({
         ? ["Completed", "Cancelled"].includes(order.status)
         : !["Completed", "Cancelled"].includes(order.status)),
   );
+  const page = Math.min(requestedPage, Math.max(0, Math.ceil(filtered.length / ORDERS_PER_PAGE) - 1));
+  useEffect(() => { setPage(page); }, [page]);
   return (
     <Screen
       title={history ? "History" : "Activity"}
@@ -743,9 +748,10 @@ export function ActivitiesDesign({
               error={orders.error}
               retry={() => orders.refetch()}
             />
-            {filtered.map((order) => (
+            {filtered.slice(page * ORDERS_PER_PAGE, (page + 1) * ORDERS_PER_PAGE).map((order) => (
               <OrderCard key={order.id} order={order} />
             ))}
+            {!orders.isLoading && !orders.error && filtered.length > 0 && <PageControls page={page} total={filtered.length} onChange={setPage} />}
             {!orders.isLoading && !orders.error && !filtered.length && (
               <Card>
                 <Empty

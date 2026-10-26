@@ -1,3 +1,4 @@
+import { ORDERS_PER_PAGE, PageControls } from "./Pagination";
 import { useEffect, useState, useRef } from "react";
 import { Modal, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import {
@@ -186,7 +187,17 @@ export function RegisterShopDesign() {
     </View>
   </Screen>;
 }
-export function TransactionsTable({
+export function TransactionsTable(props: Parameters<typeof TransactionRows>[0]) {
+  const [requestedPage, setPage] = useState(0);
+  const page = Math.min(requestedPage, Math.max(0, Math.ceil(props.orders.length / ORDERS_PER_PAGE) - 1));
+  useEffect(() => { setPage(page); }, [page]);
+  return <View>
+    <TransactionRows {...props} orders={props.orders.slice(page * ORDERS_PER_PAGE, (page + 1) * ORDERS_PER_PAGE)} />
+    <PageControls page={page} total={props.orders.length} onChange={setPage} />
+  </View>;
+}
+
+function TransactionRows({
   orders,
   selectable = false,
   selection = [],
@@ -346,7 +357,7 @@ export function ShopHomeDesign() {
           <Card key={label} style={{ flexGrow: 1, flexBasis: width >= 768 ? "22%" : "44%", padding: 16 }}><View style={[styles.row, { gap: 8 }]}><Txt style={{ flex: 1, color: palette.muted, fontSize: 12 }}>{label}</Txt><Icon size={20} color={palette.primary} /></View>
             <Txt style={{ fontSize: 32, fontWeight: "700", color: palette.primary }}>{count}</Txt></Card>)}
         </View>
-        <Card><Section title="Recent transactions" action="View orders" onPress={() => router.push("/shop/transactions")} /><TransactionsTable dashboard orders={list.slice(0, 10)} /></Card>
+        <Card><Section title="Recent transactions" action="View orders" onPress={() => router.push("/shop/transactions")} /><TransactionsTable dashboard orders={list} /></Card>
       </>}
       {owned.data && <Card style={{ padding: 0, overflow: "hidden" }}><View style={{ paddingHorizontal: 20 }}><Section title="Shop location" action="View map" onPress={() => go("shop-location")} /></View>
         <View style={{ height: 240 }}><LaundryMap latitude={owned.data.latitude} longitude={owned.data.longitude} shops={[owned.data]} onSelect={() => go("shop-location")} /></View></Card>}
@@ -417,6 +428,7 @@ export function ShopTransactionsDesign() {
             retry={() => orders.refetch()}
           />
           {!orders.isLoading && !orders.error && <TransactionsTable
+            key={JSON.stringify([tab, query])}
             orders={filtered}
             selectable
             selection={selection}
@@ -438,6 +450,8 @@ export function CustomersDesign({ filter }: { filter?: Order["status"] }) {
   const { go } = useFlowNavigation();
   const orders = useOrders(true);
   const [query, setQuery] = useState("");
+  const [requestedPage, setPage] = useState(0);
+  useEffect(() => { setPage(0); }, [query, filter]);
   const statuses: Order["status"][] = [
     "Pending",
     "Accepted",
@@ -454,6 +468,8 @@ export function CustomersDesign({ filter }: { filter?: Order["status"] }) {
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
+  const page = Math.min(requestedPage, Math.max(0, Math.ceil(filtered.length / ORDERS_PER_PAGE) - 1));
+  useEffect(() => { setPage(page); }, [page]);
   return (
     <Screen title="Customer Orders" back={!!filter} background={palette.surface} dark>
       <View style={styles.stack}>
@@ -473,7 +489,10 @@ export function CustomersDesign({ filter }: { filter?: Order["status"] }) {
           retry={() => orders.refetch()}
         />
         {filter ? (
-          filtered.map((order) => <OrderCard key={order.id} order={order} shopMode />)
+          <>
+            {filtered.slice(page * ORDERS_PER_PAGE, (page + 1) * ORDERS_PER_PAGE).map((order) => <OrderCard key={order.id} order={order} shopMode />)}
+            {!orders.isLoading && !orders.error && <PageControls page={page} total={filtered.length} onChange={setPage} />}
+          </>
         ) : (
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
             {statuses.map((status) => {

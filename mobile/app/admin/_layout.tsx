@@ -1,6 +1,6 @@
 import { Tabs, Redirect } from "expo-router";
 import { View, useWindowDimensions } from "react-native";
-import { LayoutDashboard } from "lucide-react-native";
+import { LayoutDashboard, Truck, Bell } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { InterfaceTheme } from "../../src/design/theme";
 import { Brand, Button, Empty, Screen, Txt, usePalette } from "../../src/design/ui";
@@ -18,10 +18,10 @@ export default function AdminTabs() {
   const auth = useAuthStore();
   const profile = useProfile();
   if (!auth.user) return <Redirect href="/(auth)/login" />;
-  if (!profile.data || profile.isError) return <Screen title="Admin Panel" back={false}>
+  if (!profile.data || profile.isError) return <Screen title="Admin Panel" brandedHeader back={false}>
     <QueryState loading={profile.isLoading} error={profile.error} retry={() => profile.refetch()} />
   </Screen>;
-  if (!profile.data.isAdmin) return <Screen title="Admin Panel" back={false}>
+  if (!profile.data.isAdmin) return <Screen title="Admin Panel" brandedHeader back={false}>
     <Empty title="Admin access required" message="Only an administrator can open this panel." />
     <Button title="Sign Out" onPress={logout} />
   </Screen>;
@@ -46,5 +46,8 @@ export default function AdminTabs() {
   }}>
     <Tabs.Screen name="index" options={{ title: "Dashboard", href: "/admin",
       tabBarIcon: ({ color }) => <LayoutDashboard size={24} color={color} /> }} />
+    <Tabs.Screen name="operations" options={{ title: "Delivery Operations", tabBarLabel: desktop ? "Delivery Operations" : "Operations", tabBarAccessibilityLabel: "Delivery Operations", tabBarIcon: ({ color }) => <Truck size={24} color={color} /> }} />
+    <Tabs.Screen name="notifications" options={{ title: "Updates", tabBarIcon: ({ color }) => <Bell size={24} color={color} /> }} />
+    <Tabs.Screen name="order" options={{ href: null }} />
   </Tabs></InterfaceTheme>;
 }

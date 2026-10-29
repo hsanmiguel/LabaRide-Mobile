@@ -47,3 +47,49 @@ test('marking read checks ownership and preserves the original read timestamp', 
   assert.equal(record.readAt, firstRead);
   assert.equal(writes, 1);
 });
+
+test('deleting requires a read notification owned by the authenticated user', async () => {
+  let records = [{ id: 1, userId: 7, readAt: new Date() }, { id: 2, userId: 7, readAt: null }, { id: 3, userId: 8, readAt: new Date() }];
+  database.notification = {
+    findFirst: async ({ where }) => records.find(item => item.id === where.id && item.userId === where.userId),
+    deleteMany: async ({ where }) => {
+      assert.deepEqual(where.readAt, { not: null });
+      const before = records.length; records = records.filter(item => !(item.id === where.id && item.userId === where.userId && item.readAt));
+      return { count: before - records.length };
+    },
+  };
+  async function invoke(id) {
+    const res = response();
+    await NotificationController.remove({ user: { userId: 7 }, params: { id }, query: { userId: 8 } }, res, error => { throw error; });
+    return res;
+  }
+  for (const id of ['invalid', '0', '-1', '9007199254740992']) assert.equal((await invoke(id)).code, 400);
+  assert.equal((await invoke('3')).code, 404);
+  assert.equal((await invoke('2')).code, 409);
+  assert.equal(records.length, 3);
+  assert.equal((await invoke('1')).code, 200);
+  assert.deepEqual(records.map(item => item.id), [2, 3]);
+  assert.equal((await invoke('1')).code, 404);
+});
+
+test('delete read is scoped to the selected role and leaves unread and other users’ notifications', async () => {
+  let records = [
+    { id: 1, userId: 7, audience: 'customer', shopMode: false, readAt: new Date() },
+    { id: 2, userId: 7, audience: 'customer', shopMode: false, readAt: null },
+    { id: 3, userId: 7, audience: 'partner', shopMode: true, readAt: new Date() },
+    { id: 4, userId: 7, audience: 'rider', shopMode: false, readAt: new Date() },
+    { id: 5, userId: 7, audience: 'admin', shopMode: false, readAt: new Date() },
+    { id: 6, userId: 8, audience: 'customer', shopMode: false, readAt: new Date() },
+  ];
+  database.notification = { deleteMany: async ({ where }) => {
+    assert.equal(where.userId, 7); assert.deepEqual(where.readAt, { not: null });
+    const before = records.length;
+    records = records.filter(item => !(item.userId === where.userId && item.readAt && (typeof where.audience === 'string' ? item.audience === where.audience : !where.audience.notIn.includes(item.audience) && item.shopMode === where.shopMode)));
+    return { count: before - records.length };
+  } };
+  for (const query of [{ shopMode: 'false' }, { shopMode: 'true' }, { audience: 'rider' }, { audience: 'admin' }]) {
+    const res = response(); await NotificationController.removeRead({ user: { userId: 7 }, query: { ...query, userId: 8 } }, res, error => { throw error; });
+    assert.equal(res.body.data.deleted, 1);
+  }
+  assert.deepEqual(records.map(item => item.id), [2, 6]);
+});

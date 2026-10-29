@@ -27,6 +27,9 @@ interface User {
   email: string;
   isShopOwner: boolean;
   isAdmin?: boolean;
+  isRider?: boolean;
+  riderApplicationStatus?: string;
+  riderReviewReason?: string | null;
   photoUrl?: string | null;
 }
 

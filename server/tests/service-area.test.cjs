@@ -67,6 +67,8 @@ async function invoke({ area = {}, body = {}, currentArea } = {}) {
   database.shop = { findUnique: async () => shop };
   database.$transaction = async callback => callback({
     $queryRaw: async () => [],
+    orderEvent: { create: async () => ({}) },
+    user: { findMany: async () => [] },
     notification: { createMany: async ({ data }) => ({ count: data.length }) },
     shop: { findUnique: async () => ({ ...shop, ...currentArea }) },
     transaction: { create: async ({ data }) => { writes++; return { ...data, id: 42 }; } },
@@ -98,6 +100,7 @@ test('API enforces collection independently of return method and stores collecti
   const accepted = await invoke({ area: { pickupEnabled: true, pickupMinKm: 1, pickupMaxKm: 5 }, body });
   assert.equal(accepted.res.code, 201);
   assert.equal(accepted.res.body.data.collectionAddress.dropoff_instructions, 'Ring the bell');
+  assert.equal(accepted.res.body.data.workflowStatus, 'BookingPending');
   assert.equal(accepted.res.body.data.scheduledTime, null);
   const both = await invoke({ area: { pickupEnabled: true, pickupMaxKm: 5, deliveryMaxKm: 1 }, body: { ...body, deliveryType: 'Deliver' } });
   assert.equal(both.writes, 0);

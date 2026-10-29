@@ -41,6 +41,7 @@ import { validBirthdate } from "./form-values";
 import { useLaundryDraft } from "./store";
 import { ProfilePhotoControl } from "./ProfilePhotoControl";
 import { useLogout } from "./useLogout";
+import { ShopAccountCredibility } from './ShopRequirements';
 
 export function UserProfileDesign() {
   const logout = useLogout();
@@ -313,22 +314,7 @@ export function EditProfileDesign({ account = false }: { account?: boolean }) {
             onPress={() => { useLaundryDraft.getState().set({ address: null }); go("confirm-location"); }} />}
         </Card>
         {account ? (
-          <Card>
-            <Section title="Account Credibility" />
-            {[
-              "Philippine Department of Trade and Industry (DTI)",
-              "Securities and Exchange Commission (SEC)",
-              "TIN ID",
-              "Mayor’s Permit",
-            ].map((name) => (
-              <MenuRow
-                key={name}
-                title={name}
-                detail="Verification is not available"
-
-              />
-            ))}
-          </Card>
+          <ShopAccountCredibility />
         ) : (
           <Card
             style={{

@@ -69,9 +69,11 @@ import { message, type Shop } from "./data";
 import PickerField from "./PickerField";
 import { timeInputValue } from "./form-values";
 import { ShopPhotoEditor } from "./ShopPhotoEditor";
+import { ShopRequirementsPanel } from './ShopRequirements';
 import { ShopPhoto } from "./ShopPhoto";
 import { ShopApplicationStatus } from "./ShopApprovalScreens";
 import { useLogout } from "./useLogout";
+import { DeliveryOrderDesign } from './DeliveryScreens';
 
 const statusLabels: Record<Order["status"], string> = {
   Pending: "New Orders",
@@ -163,8 +165,9 @@ export function RegisterShopDesign() {
           onContinue={() => router.replace("/(user)/profile")} onOpen={openExistingShop} busy={busy}
           refreshing={owned.isFetching} lastCheckedAt={owned.dataUpdatedAt} />
         <FormError error={error} />
+        <ShopRequirementsPanel shopId={owned.data.id} />
       </> : !owned.isLoading && !owned.error && <>
-        <Txt style={[styles.muted, { marginBottom: 20 }]}>An admin must approve your application before your shop appears to customers and shop mode becomes available.</Txt>
+        <Txt style={[styles.muted, { marginBottom: 20 }]}>Save your shop details, then upload DTI or SEC registration, TIN proof, and a Mayor’s Permit. An admin must verify your documents and approve the shop before it goes live.</Txt>
         <Section title="Shop Information" />
         {[["shopName", "Shop Name *"], ["contactNumber", "Contact Number *"]].map(([key, label]) =>
           <Field key={key} label={label} value={values[key]} onChangeText={value => setValues(current => ({ ...current, [key]: value }))} />)}
@@ -585,6 +588,7 @@ export function ShopOrderDetailsDesign({
         )}
       </Screen>
     );
+  if (order.workflowStatus) return <DeliveryOrderDesign id={id} partner />;
   return (
     <Screen
       title={`#${order.id}`}

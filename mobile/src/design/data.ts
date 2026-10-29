@@ -13,6 +13,9 @@ export interface Profile extends AddressData {
   email: string;
   isShopOwner: boolean;
   isAdmin?: boolean;
+  isRider?: boolean;
+  riderApplicationStatus?: string;
+  riderReviewReason?: string | null;
   photoUrl?: string | null;
   phone?: string;
   birthdate?: string;
@@ -40,6 +43,7 @@ export interface KiloPrice {
 export interface Shop extends AddressData {
   approvalStatus: "Pending" | "Approved" | "Rejected" | "Suspended";
   applicationVersion: number;
+  requirementsVersion?: number;
   reviewReason?: string | null;
   reviewedAt?: string | null;
   id: number;
@@ -62,6 +66,8 @@ export interface Shop extends AddressData {
   householdItems?: LaundryItem[];
 }
 export interface Order extends AddressData {
+  workflowStatus?: string | null;
+  workflowVersion?: number;
   id: number;
   userId: number;
   shopId: number;
@@ -116,9 +122,12 @@ export const api = {
 };
 export function message(error: unknown) {
   if (typeof error === "string") return error;
-  const e = error as { error?: { message?: string; details?: { path?: (string | number)[]; message?: string }[] }; message?: string };
-  if (Array.isArray(e?.error?.details)) {
-    return e.error.details.map(detail => [detail.path?.filter(key => key !== "body").join("."), detail.message].filter(Boolean).join(": ")).join("\n");
+  type Detail = { path?: (string | number)[]; message?: string };
+  const e = error as { error?: { message?: string; details?: Detail[] }; details?: Detail[]; message?: string };
+  // The Axios interceptor unwraps response.error; both shapes can reach this helper.
+  const details = e?.error?.details || e?.details;
+  if (Array.isArray(details) && details.length) {
+    return details.map(detail => [detail.path?.filter(key => key !== "body").join("."), detail.message].filter(Boolean).join(": ")).join("\n");
   }
   return e?.error?.message || e?.message || "Please try again.";
 }

@@ -17,3 +17,11 @@ export const loginSchema = z.object({
     password: z.string().min(1, 'Password is required'),
   })
 });
+
+export const riderSignupSchema = z.object({ body: z.object({
+  name: z.string().trim().min(2).max(100),
+  email: z.string().trim().toLowerCase().email(),
+  phone: z.string().trim().regex(/^\+?[0-9][0-9\s()-]{8,19}$/, 'Enter a valid contact number'),
+  password: z.string().min(6).max(128),
+  confirmPassword: z.string().min(1),
+}).refine(body => body.password === body.confirmPassword, { message: 'Passwords do not match', path: ['confirmPassword'] }) });

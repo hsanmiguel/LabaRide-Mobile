@@ -64,6 +64,11 @@ class SocketService {
     };
   }
 
+  onOperationsUpdate(callback: () => void) {
+    this.socket?.on("operations_update", callback);
+    return () => { this.socket?.off("operations_update", callback); };
+  }
+
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();

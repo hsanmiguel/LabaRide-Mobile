@@ -20,6 +20,7 @@ function harness(shopMode) {
   const requests = [], navigation = [];
   let query, cache;
   const context = {
+    useRef: value => ({ current: value }), useState: value => [value, () => {}],
     exports: {}, React, styles: {}, usePalette: () => ({}),
     useAuthStore: select => select({ user: { id: 7 } }),
     useQuery: options => { query = options; return { data: items }; },

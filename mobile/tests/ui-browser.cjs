@@ -1049,9 +1049,14 @@ async function clickText(text) {
     await visit('/shop/transactions',width,'Test Customer');
   }
   for (const width of [390,1440]) for (const [route,expected] of [
-    ['/activities','Order ID:'],['/profile','Personal Details'],['/shops/101','Browse services'],['/shops','All laundry shops'],
+    ['/activities','View order details'],['/profile','Personal details'],['/shops/101','Browse services'],['/shops','All laundry shops'],
     ['/shop/services','Full Service'],['/shop/customers','New Orders'],['/shop/profile','Account Information'],['/shop/profile/security','Current Password'],
     ['/shop/customers/orders/42','Customer Details'],['/order/101','Review Order'],['/search','Search History']]) await visit(route,width,expected);
+  await visit('/activities',390,'Active Orders (2)');
+  await clickText('Past Orders (2)'); await waitFor('document.body.innerText.includes("Order #44")');
+  await clickText('Cancelled'); await waitFor('document.body.innerText.includes("Order #45")&&!document.body.innerText.includes("Order #44")');
+  await clickText('Active Orders (2)'); await clickText('Processing');
+  await waitFor('document.body.innerText.includes("Order #43")&&!document.body.innerText.includes("Order #42")');
   await visit('/shop/transactions',390,'Test Customer');
   await clickText('Pending'); await pause(100);
   assert.ok(!(await evaluate('document.body.innerText')).includes('#43'), 'Pending filter excludes processing orders');
@@ -1063,7 +1068,7 @@ async function clickText(text) {
   await visit('/search',390,'Search History');
   await evaluate(`(()=>{const e=document.querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'no-such-shop');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await waitFor('document.body.innerText.includes("No laundry shops matched")');
-  mode='empty'; await visit('/home',390,'No shops available yet'); await visit('/activities',390,'No recent transactions'); await visit('/shop/transactions',390,'No transactions found');
+  mode='empty'; await visit('/home',390,'No shops available yet'); await visit('/activities',390,'No active orders'); await visit('/shop/transactions',390,'No transactions found');
   mode='error'; await visit('/home',390,'Unable to load'); await visit('/shop/home',390,'Unable to load');
   mode='loading'; await command('Page.navigate',{ url:'http://127.0.0.1:4178/home' });
   await waitFor('!!document.querySelector("[role=progressbar]")'); console.log('PASS loading indicator');

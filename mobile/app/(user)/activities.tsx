@@ -1,1 +1,1 @@
-export { ActivitiesDesign as default } from "../../src/design/OrderScreens";
+export { OrdersDesign as default } from "../../src/design/OrderScreens";

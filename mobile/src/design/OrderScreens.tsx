@@ -5,7 +5,7 @@ import {
   Clock,
   CheckCircle2,
   ChevronDown,
-  History,
+  ChevronRight,
   Minus,
   Plus,
   Pencil,
@@ -59,6 +59,7 @@ import { QueryState } from "./UserScreens";
 import { serviceAreaError, serviceAreaLabel } from "./service-area";
 import { shopAvailability } from "./shop-hours";
 import { useShopAvailability } from "./useShopAvailability";
+import { ShopPhoto } from "./ShopPhoto";
 
 export function draftTotals() {
   const d = useLaundryDraft.getState();
@@ -679,7 +680,133 @@ export function OrderCard({
     </Card>
   );
 }
-export function ActivitiesDesign({
+
+type OrderSection = "Active" | "Past";
+type OrderFilter = "All" | Order["status"];
+
+const activeOrderStatuses: Order["status"][] = ["Pending", "Accepted", "Queued", "Processing", "Ready"];
+const pastOrderStatuses: Order["status"][] = ["Completed", "Cancelled"];
+
+function customerOrderStatus(order: Order): Order["status"] {
+  const workflow = order.workflowStatus;
+  if (!workflow) return order.status;
+  if (workflow === "Completed" || workflow === "Cancelled") return workflow;
+  if (workflow === "BookingPending") return "Pending";
+  if (["AtPartner", "LaundryReceived"].includes(workflow)) return "Queued";
+  if (["Washing", "Drying", "Folding"].includes(workflow)) return "Processing";
+  if (["ReadyForCollection", "ReadyForDelivery"].includes(workflow)) return "Ready";
+  return "Accepted";
+}
+
+function isPastOrder(order: Order) {
+  return pastOrderStatuses.includes(customerOrderStatus(order));
+}
+
+function orderDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function CustomerOrderCard({ order }: { order: Order }) {
+  const palette = usePalette();
+  const { go } = useFlowNavigation();
+  const shopName = order.shop?.shopName || "Laundry Shop";
+  const displayStatus = customerOrderStatus(order);
+  const details = () => go("transaction-details", { id: String(order.id) });
+  return (
+    <Card style={{ padding: 0, gap: 0, overflow: "hidden", borderRadius: 18 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`View order ${order.id} from ${shopName}`}
+        onPress={details}
+        style={({ pressed }) => ({ opacity: pressed ? 0.82 : 1 })}
+      >
+        <View style={{ padding: 16, flexDirection: "row", alignItems: "flex-start", gap: 14 }}>
+          <ShopPhoto
+            name={shopName}
+            photoUrl={order.shop?.photoUrl}
+            style={{ width: 92, height: 92, aspectRatio: 1, borderRadius: 14, flexShrink: 0 }}
+          />
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <Txt numberOfLines={2} style={{ fontSize: 16, lineHeight: 21, fontWeight: "700", color: palette.ink }}>
+              {shopName}
+            </Txt>
+            <Txt numberOfLines={1} style={{ color: palette.muted, fontSize: 13 }}>
+              {order.serviceName} · {Number(order.kiloAmount).toFixed(1)} kg
+            </Txt>
+            <Txt style={{ color: palette.muted, fontSize: 11, lineHeight: 16, marginTop: 3 }}>ORDER TOTAL</Txt>
+            <Txt style={{ color: palette.primary, fontSize: 24, lineHeight: 30, fontWeight: "700" }}>
+              {money(order.totalAmount)}
+            </Txt>
+            {Number(order.deliveryFee) > 0 && (
+              <Txt style={{ color: palette.muted, fontSize: 11, lineHeight: 15 }}>
+                Includes {money(order.deliveryFee)} delivery
+              </Txt>
+            )}
+          </View>
+        </View>
+        <View style={{ minHeight: 68, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: palette.line, backgroundColor: "#FCFDFE", flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Txt style={{ fontWeight: "700", fontSize: 13 }}>View order details</Txt>
+            <Txt style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>
+              Order #{order.id} · {orderDate(order.createdAt)}
+            </Txt>
+          </View>
+          <StatusBadge status={displayStatus} />
+          <ChevronRight size={19} color={palette.primary} />
+        </View>
+      </Pressable>
+    </Card>
+  );
+}
+
+function OrderSectionTabs({ value, onChange, activeCount, pastCount }: {
+  value: OrderSection;
+  onChange: (value: OrderSection) => void;
+  activeCount: number;
+  pastCount: number;
+}) {
+  const palette = usePalette();
+  return (
+    <View accessibilityRole="tablist" style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: palette.line }}>
+      {(["Active", "Past"] as const).map((item) => {
+        const selected = value === item;
+        const count = item === "Active" ? activeCount : pastCount;
+        return (
+          <Pressable
+            key={item}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            onPress={() => onChange(item)}
+            style={{ flex: 1, minHeight: 52, alignItems: "center", justifyContent: "center", borderBottomWidth: 3, borderBottomColor: selected ? palette.primary : "transparent" }}
+          >
+            <Txt style={{ color: selected ? palette.primary : palette.muted, fontWeight: "700", fontSize: 14 }}>
+              {item} Orders{count ? ` (${count})` : ""}
+            </Txt>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function StatusFilters({ items, value, onChange }: { items: Order["status"][]; value: OrderFilter; onChange: (value: OrderFilter) => void }) {
+  const palette = usePalette();
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+      {(["All", ...items] as OrderFilter[]).map((item) => {
+        const selected = value === item;
+        return (
+          <Pressable key={item} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => onChange(item)}
+            style={{ minHeight: 40, justifyContent: "center", paddingHorizontal: 15, borderRadius: 20, borderWidth: 1, borderColor: selected ? palette.primary : palette.line, backgroundColor: selected ? palette.primary : "white" }}>
+            <Txt style={{ color: selected ? "white" : palette.muted, fontWeight: "600", fontSize: 12 }}>{item}</Txt>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+export function OrdersDesign({
   history = false,
   past = false,
 }: {
@@ -687,79 +814,55 @@ export function ActivitiesDesign({
   past?: boolean;
 }) {
   const palette = usePalette();
-  const { go } = useFlowNavigation();
   const orders = useOrders();
   const user = useAuthStore((state) => state.user);
-  const [tab, setTab] = useState(past ? "Past Order" : "Active Order");
+  const [section, setSection] = useState<OrderSection>(past ? "Past" : "Active");
+  const [status, setStatus] = useState<OrderFilter>("All");
   const [requestedPage, setPage] = useState(0);
-  useEffect(() => { setPage(0); }, [tab, history, past]);
-  const filtered = (orders.data || []).filter(
-    (order) =>
-      !history ||
-      (tab === "Past Order"
-        ? ["Completed", "Cancelled"].includes(order.status)
-        : !["Completed", "Cancelled"].includes(order.status)),
-  );
+  const allOrders = orders.data || [];
+  const activeCount = allOrders.filter((order) => !isPastOrder(order)).length;
+  const pastCount = allOrders.length - activeCount;
+  const sectionStatuses = section === "Active" ? activeOrderStatuses : pastOrderStatuses;
+  const filtered = allOrders.filter((order) =>
+    (section === "Past" ? isPastOrder(order) : !isPastOrder(order)) &&
+    (status === "All" || customerOrderStatus(order) === status));
+  useEffect(() => { setPage(0); setStatus("All"); }, [section]);
   const page = Math.min(requestedPage, Math.max(0, Math.ceil(filtered.length / ORDERS_PER_PAGE) - 1));
   useEffect(() => { setPage(page); }, [page]);
   return (
     <Screen
-      title={history ? "History" : "Activity"}
-      dark={!history}
+      title="Orders"
       background={palette.surface}
       back={history}
-      right={
-        !history && (
-          <Pressable accessibilityRole="button"
-            onPress={() => go("history")}
-            style={{ backgroundColor: "white", padding: 10, borderRadius: 12 }}
-          >
-            <View style={[styles.row, { gap: 6 }]}>
-              <History size={16} color={palette.primary} />
-              <Txt style={{ fontSize: 12, color: palette.primary }}>History</Txt>
-            </View>
-          </Pressable>
-        )
-      }
     >
-      <View style={styles.stack}>
+      <View style={{ width: "100%", maxWidth: 760, alignSelf: "center", gap: 16 }}>
         {!user ? (
           <Card>
             <Empty
               title="Login Required"
-              message="Please login to view your activities"
+              message="Please login to view your orders"
               action="Login"
               onPress={() => router.push("/(auth)/login")}
             />
           </Card>
         ) : (
           <>
-            {history ? (
-              <TabsRow
-                items={["Active Order", "Past Order"]}
-                value={tab}
-                onChange={setTab}
-              />
-            ) : (
-              <Section title="Recent" light={false} />
-            )}
+            <OrderSectionTabs value={section} onChange={setSection} activeCount={activeCount} pastCount={pastCount} />
+            <StatusFilters items={sectionStatuses} value={status} onChange={(value) => { setStatus(value); setPage(0); }} />
             <QueryState
               loading={orders.isLoading}
               error={orders.error}
               retry={() => orders.refetch()}
             />
             {filtered.slice(page * ORDERS_PER_PAGE, (page + 1) * ORDERS_PER_PAGE).map((order) => (
-              <OrderCard key={order.id} order={order} />
+              <CustomerOrderCard key={order.id} order={order} />
             ))}
             {!orders.isLoading && !orders.error && filtered.length > 0 && <PageControls page={page} total={filtered.length} onChange={setPage} />}
             {!orders.isLoading && !orders.error && !filtered.length && (
               <Card>
                 <Empty
-                  title={
-                    history
-                      ? `No ${tab === "Past Order" ? "past" : "active"} orders`
-                      : "No recent transactions"
-                  }
+                  title={`No ${status === "All" ? section.toLowerCase() : status.toLowerCase()} orders`}
+                  message={status === "All" ? `Your ${section.toLowerCase()} orders will appear here.` : "Try another status filter."}
                 />
               </Card>
             )}
@@ -769,6 +872,9 @@ export function ActivitiesDesign({
     </Screen>
   );
 }
+
+// Keep the previous export available for older route mappings.
+export const ActivitiesDesign = OrdersDesign;
 export function OrderDetailsDesign({
   id,
   delivered = false,

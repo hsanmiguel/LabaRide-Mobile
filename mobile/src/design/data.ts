@@ -99,7 +99,7 @@ export interface Order extends AddressData {
   status: "Pending" | "Accepted" | "Queued" | "Processing" | "Ready" | "Completed" | "Cancelled";
   createdAt: string;
   items?: { itemName: string; quantity: number }[];
-  shop?: { shopName: string; address?: string; contactNumber?: string };
+  shop?: { shopName: string; address?: string; contactNumber?: string; photoUrl?: string | null };
 }
 interface Envelope<T> {
   success: boolean;

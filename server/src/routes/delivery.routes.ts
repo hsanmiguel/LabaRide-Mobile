@@ -20,6 +20,7 @@ router.get('/orders/:id/rider-options', requireAdmin, C.riderOptions);
 router.get('/rider', (req: AuthRequest, res, next) => req.user?.isRider ? next() : sendError(res, 'Rider access required', 'FORBIDDEN', 403), C.jobs);
 router.put('/location', (req: AuthRequest, res, next) => req.user?.isRider ? next() : sendError(res, 'Rider access required', 'FORBIDDEN', 403), T.update);
 router.get('/orders/:id/tracking', T.get);
+router.get('/orders/:id/route-preview', C.routePreview);
 router.get('/available-jobs', (req: AuthRequest, res, next) => req.user?.isRider ? next() : sendError(res, 'Rider access required', 'FORBIDDEN', 403), C.availableJobs);
 router.put('/orders/:id/claim', (req: AuthRequest, res, next) => req.user?.isRider ? next() : sendError(res, 'Rider access required', 'FORBIDDEN', 403), C.claim);
 router.put('/availability', (req: AuthRequest, res, next) => req.user?.isRider ? next() : sendError(res, 'Rider access required', 'FORBIDDEN', 403), C.availability);

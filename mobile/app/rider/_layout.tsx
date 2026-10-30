@@ -1,6 +1,6 @@
 import { Tabs, Redirect } from 'expo-router';
 import { View, useWindowDimensions } from 'react-native';
-import { Bike, History, Bell, ListTodo } from 'lucide-react-native';
+import { Bike, History, Bell, LayoutDashboard } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useProfile } from '../../src/design/data';
 import { Brand, Button, Empty, Screen, Txt, usePalette } from '../../src/design/ui';
@@ -25,7 +25,7 @@ export default function RiderTabs() {
     tabBarBackground: desktop ? () => <View pointerEvents="none" style={{ position: 'absolute', top: 24, left: 20 }}><Brand /><Txt style={{ color: palette.muted, marginTop: 8 }}>Rider workspace</Txt></View> : undefined,
     tabBarStyle: { width: desktop ? 224 : undefined, minWidth: desktop ? 224 : undefined, maxWidth: desktop ? 224 : undefined, backgroundColor: 'white', borderColor: palette.line, height: desktop ? undefined : 68 + insets.bottom, paddingTop: desktop ? 116 : 8, paddingBottom: Math.max(insets.bottom, 8) },
   }}>
-    <Tabs.Screen name="index" options={{ title: 'Available', tabBarIcon: ({ color }) => <ListTodo color={color} size={24} /> }} />
+    <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarIcon: ({ color }) => <LayoutDashboard color={color} size={24} /> }} />
     <Tabs.Screen name="jobs" options={{ title: 'My jobs', tabBarIcon: ({ color }) => <Bike color={color} size={24} /> }} />
     <Tabs.Screen name="history" options={{ title: 'History', tabBarIcon: ({ color }) => <History color={color} size={24} /> }} />
     <Tabs.Screen name="notifications" options={{ title: 'Updates', tabBarIcon: ({ color }) => <Bell color={color} size={24} /> }} />

@@ -177,6 +177,16 @@ Riders select **Apply as a Rider** on the login page; admins review applications
 the full lifecycle, reassignment, exceptions, and verification. Automatic dispatch
 is disabled. Existing orders and customer self-service pickup retain their workflow.
 
+The Rider Dashboard job-details sheet previews a driving route between the saved
+customer collection pin and the shop for pickup jobs, or the shop and the saved
+return-address pin for delivery jobs. Only active, online riders can request a
+route for an approved shop's currently available, unassigned job. The board itself
+still returns approximate areas. Names, written addresses, contact details and
+handoff codes remain protected until claiming. Missing pins show an unavailable
+state; no location is guessed. Routing uses the existing public
+`EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` and the Mapbox Directions API. Redeploy both the
+API and app for the route-preview endpoint; this feature needs no schema migration.
+
 ## Customer rider tracking
 
 After accepting/claiming a job, riders choose **Start sharing location** in Available

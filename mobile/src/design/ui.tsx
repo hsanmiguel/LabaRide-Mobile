@@ -49,13 +49,14 @@ export function Brand({ white = false, compact = false }: { white?: boolean; com
     {!compact && <Txt style={{ fontSize: 26, fontWeight: "700", color: white ? "white" : brandBlue }}>LabaRide</Txt>}
   </View>;
 }
-export function Button({ title, onPress, busy, disabled, color, textColor, outline = false, round = false, compact = false, icon, style }: {
+export function Button({ title, onPress, busy, disabled, color, textColor, outline = false, round = false, compact = false, icon, style, accessibilityLabel }: {
   title: string; onPress: () => void; busy?: boolean; disabled?: boolean; color?: string;
   textColor?: string; outline?: boolean; round?: boolean; compact?: boolean; icon?: React.ReactNode; style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
 }) {
   const palette = usePalette();
   const accent = color || palette.primary;
-  return <Pressable accessibilityRole="button" accessibilityLabel={title} accessibilityState={{ disabled: !!disabled || !!busy, busy: !!busy }}
+  return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel || title} accessibilityState={{ disabled: !!disabled || !!busy, busy: !!busy }}
     disabled={disabled || busy} onPress={onPress} style={({ pressed }) => [{
       minHeight: 44, paddingHorizontal: compact ? 14 : 20, paddingVertical: compact ? 10 : 12,
       borderRadius: round ? 24 : 12, backgroundColor: outline ? "white" : pressed && !busy && !disabled && accent === palette.primary ? palette.hover : accent,

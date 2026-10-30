@@ -6,6 +6,7 @@ import { useAuthStore } from "../store/authStore";
 
 import { formatAddress, type AddressData } from "./address";
 import { flowTarget } from "../navigation/flow-target";
+import type { ProcessingTimingOrder } from "./processing-timer";
 
 export interface Profile extends AddressData {
   id: number;
@@ -26,6 +27,8 @@ export interface Service {
   serviceName: string;
   price: string | number;
   packageKilos?: string | number | null;
+  washingMinutes?: string | number | null;
+  dryingMinutes?: string | number | null;
   color?: string;
 }
 export interface LaundryItem {
@@ -65,7 +68,7 @@ export interface Shop extends AddressData {
   clothingTypes?: LaundryItem[];
   householdItems?: LaundryItem[];
 }
-export interface Order extends AddressData {
+export interface Order extends AddressData, ProcessingTimingOrder {
   workflowStatus?: string | null;
   workflowVersion?: number;
   id: number;

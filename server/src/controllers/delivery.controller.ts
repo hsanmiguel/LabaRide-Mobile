@@ -6,6 +6,7 @@ import { AuthRequest } from '../middleware/auth.middleware';
 import { sendSuccess } from '../utils/response';
 import { AUTOMATIC_DISPATCH_ENABLED, collectionPoint, changeState, dispatchPoint, dispatchStage, expireOffers, fail, jobTransitions, lockOrder, openAssignments, partnerTransitions, recommendRiders, recordEvent } from '../services/dispatch.service';
 import { priceOrder } from '../utils/order-pricing';
+import { withProcessingTiming } from '../utils/processing-timing';
 import { handoffState } from '../services/handoff.service';
 import { clearedRiderLocation } from '../services/rider-tracking.service';
 import { prepareShopPhoto } from '../utils/shop-photo';
@@ -261,7 +262,7 @@ export class DeliveryController {
       const partner = order.shop.userId === actor(req);
       if (!req.user!.isAdmin && !customer && !partner) fail('Order access denied', 403);
       const { pickupCode, collectionCode, deliveryCode, ...safe } = order;
-      return sendSuccess(res, { ...safe, handoff: handoffState(order, order.events), pickupCode: customer ? pickupCode : undefined, deliveryCode: customer ? deliveryCode : undefined, collectionCode: partner ? collectionCode : undefined });
+      return sendSuccess(res, { ...withProcessingTiming(safe, order.shop.services, order.events), handoff: handoffState(order, order.events), pickupCode: customer ? pickupCode : undefined, deliveryCode: customer ? deliveryCode : undefined, collectionCode: partner ? collectionCode : undefined });
     } catch (error) { next(error); }
   }
 

@@ -25,6 +25,10 @@ const dialogTest = process.argv.includes('--dialogs');
 const logoutTest = process.argv.includes('--logout');
 const scheduleTest = process.argv.includes('--schedule');
 const shopOrdersTest = process.argv.includes('--shop-orders');
+const liveOperationsTest = process.argv.includes('--live-operations');
+const processingTimerTest = process.argv.includes('--processing-timers');
+const orderStepsTest = process.argv.includes('--order-steps');
+const originalOrderStepsTest = process.argv.includes('--original-order-steps');
 const analyticsTest = process.argv.includes('--analytics');
 const servicesTest = process.argv.includes('--services');
 const serviceWrites = [];
@@ -57,11 +61,27 @@ const orders = ['Pending', 'Processing', 'Completed', 'Cancelled'].map((status,i
   serviceName: 'Full Service', kiloAmount: 8, subtotal: 215, deliveryFee: 30, voucherDiscount: 0, totalAmount: 245,
   deliveryType: 'Deliver', scheduledDate: '2026-10-15', scheduledTime: '10:00 AM', paymentMethod: 'Cash on Delivery', status,
   createdAt: new Date().toISOString(), shop: shops[0], ...Object.fromEntries(Object.entries(user).filter(([key]) => ['address_line_1','city','state_province','country','postal_code','address_type'].includes(key))) }));
-if (shopOrdersTest) {
+if (shopOrdersTest || liveOperationsTest) {
   for (const [index, stage] of ['PickupEnRoute', 'AtPartner', 'LaundryReceived', 'Washing', 'ReadyForDelivery', 'OutForDelivery'].entries())
     orders.push({ ...orders[0], id: 50 + index, workflowStatus: stage, createdAt: `2026-10-${20 + index}T01:00:00Z`, collectionMethod: 'ShopPickup' });
 }
+if (liveOperationsTest) {
+  shops[0].services[0].color = '#321078';
+  shops[0].services[1].color = '#D0C1E8';
+  orders[1].serviceName = 'Wash Only';
+  orders[1].estimatedReadyAt = new Date(Date.now() - 3600000).toISOString();
+}
+if (processingTimerTest) {
+  const started = new Date(Date.now() - 5 * 60000).toISOString();
+  Object.assign(orders[1], { washingMinutes: 30, dryingMinutes: 45, processingStartedAt: started, workflowStatus: 'Washing', processingTimingSource: 'snapshot' });
+  Object.assign(orders[0], { status: 'Processing', washingMinutes: 30, dryingMinutes: 45, processingStartedAt: new Date(Date.now() - 50 * 60000).toISOString(), dryingStartedAt: started, workflowStatus: 'Drying', processingTimingSource: 'snapshot' });
+}
 const dispatchOrders = orders.slice(0, 2).map((order,index) => ({ ...order, workflowStatus: index ? 'ReadyForDelivery' : 'PickupQueued', workflowVersion: 3, assignments: [], events: [] }));
+if (orderStepsTest) Object.assign(orders[0], {
+  status: 'Queued', workflowStatus: 'LaundryReceived', workflowVersion: 0, collectionMethod: 'Dropoff',
+  receivedAt: new Date(Date.now()-60000).toISOString(), washingMinutes: 30, dryingMinutes: 45, processingTimingSource: 'snapshot',
+  assignments: [], events: [{ id: 1, action: 'receive', toStatus: 'LaundryReceived', createdAt: new Date().toISOString(), actor: { name: 'Laundry partner' } }],
+});
 const dispatchWrites = [];
 let handoffFixture;
 const weightRecords = [], weightWrites = [];
@@ -181,13 +201,15 @@ async function clickText(text) {
         if (!request.url.includes('/api/')) { await command('Fetch.continueRequest',{ requestId }); return; }
         const endpoint = new URL(request.url).pathname;
         const photoEndpoint = endpoint === '/api/shops/101/photo';
-        assert.ok(scheduleTest && request.method === 'PUT' && endpoint === '/api/transactions/42/status' || ['GET','OPTIONS'].includes(request.method) || photoTest && photoEndpoint && ['PUT','DELETE'].includes(request.method)
+        if (originalOrderStepsTest) assert.ok(!endpoint.startsWith('/api/delivery/orders/'),'Original orders retain their existing API');
+        assert.ok((scheduleTest || originalOrderStepsTest) && request.method === 'PUT' && endpoint === '/api/transactions/42/status' || ['GET','OPTIONS'].includes(request.method) || photoTest && photoEndpoint && ['PUT','DELETE'].includes(request.method)
           || dispatchTest && request.method === 'PUT' && /^\/api\/delivery\/orders\/\d+\/assign$/.test(endpoint)
           || deliveryTest && handoffFixture && request.method === 'PUT' && endpoint === '/api/delivery/orders/42/action'
           || weightTest && request.method === 'PUT' && endpoint === '/api/delivery/orders/42/weight'
           || responseTest && request.method === 'PUT' && endpoint === '/api/delivery/assignments/1/respond'
           || pullTest && request.method === 'PUT' && (/^\/api\/delivery\/orders\/\d+\/claim$/.test(endpoint) || endpoint === '/api/delivery/availability')
           || bookingTest && request.method === 'PUT' && endpoint === '/api/delivery/orders/42/action'
+          || orderStepsTest && request.method === 'PUT' && endpoint === '/api/delivery/orders/42/action'
           || trackingTest && request.method === 'PUT' && endpoint === '/api/delivery/location'
           || shopRequirementsTest && request.method === 'PUT' && (/^\/api\/shops\/101\/documents\/[^/]+(?:\/review)?$/.test(endpoint) || endpoint === '/api/admin/shops/101/review')
           || notificationsTest && request.method === 'DELETE' && endpoint.startsWith('/api/notifications/')
@@ -202,12 +224,28 @@ async function clickText(text) {
           || approvalTest && request.method === 'POST' && endpoint === '/api/auth/login', 'UI smoke tests must not mutate real records');
         if (mode === 'loading') await pause(2500);
         if (closing) return;
-        if (scheduleTest && request.method === 'PUT' && endpoint === '/api/transactions/42/status') {
+        if (orderStepsTest && request.method === 'PUT' && endpoint === '/api/delivery/orders/42/action') {
+          const body = JSON.parse(request.postData);
+          assert.equal(body.expectedVersion,orders[0].workflowVersion);
+          const next = { wash: 'Washing', dry: 'Drying', fold: 'Folding', ready: 'ReadyForDelivery', confirmReceipt: 'Completed' }[body.action];
+          assert.ok(next,'Only expected step actions are submitted');
+          workflowWrites.push(body); orders[0].workflowStatus=next; orders[0].workflowVersion++;
+          if (next==='Washing') orders[0].processingStartedAt=new Date().toISOString();
+          if (next==='Drying') orders[0].dryingStartedAt=new Date().toISOString();
+          if (next==='Completed') orders[0].completedAt=new Date().toISOString();
+          orders[0].events.push({ id: orders[0].events.length+1, action: body.action, toStatus: next, createdAt: new Date().toISOString(), actor: { name: user.name } });
+          await command('Fetch.fulfillRequest',{requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'application/json'},{name:'Access-Control-Allow-Origin',value:'*'}],body:Buffer.from(JSON.stringify({success:true,data:{id:42}})).toString('base64')});
+          return;
+        }
+        if ((scheduleTest || originalOrderStepsTest) && request.method === 'PUT' && endpoint === '/api/transactions/42/status') {
           const body = JSON.parse(request.postData);
           workflowWrites.push(body);
-          Object.assign(orders[0], body, { updatedAt: '2026-10-22T02:30:00Z' });
-          if (body.status === 'Processing') orders[0].processingStartedAt = '2026-10-22T02:30:00Z';
-          if (body.status === 'Ready') orders[0].readyAt = '2026-10-22T02:30:00Z';
+          const changedAt = scheduleTest ? '2026-10-22T02:30:00Z' : new Date().toISOString();
+          Object.assign(orders[0], body, { updatedAt: changedAt });
+          if (body.status === 'Queued') orders[0].receivedAt = changedAt;
+          if (body.status === 'Processing') orders[0].processingStartedAt = changedAt;
+          if (body.status === 'Ready') orders[0].readyAt = changedAt;
+          if (body.status === 'Completed') orders[0].completedAt = changedAt;
         }
         if (notificationsTest && endpoint.startsWith('/api/notifications')) {
           const params = new URL(request.url).searchParams;
@@ -377,6 +415,8 @@ async function clickText(text) {
         const data = endpoint === '/api/delivery/available-jobs' ? { rider: { online: boardOnline, workload: boardWorkload, capacity: 3, hasPosition: true }, limit: 100, jobs: boardOnline ? publicBoardJobs.filter(job => !job.claimed) : [] }
           : pullTest && endpoint === '/api/delivery/rider' ? { rider: { online: boardOnline }, jobs: pullAssignedJobs }
           : dispatchTest && endpoint.endsWith('/rider-options') ? dispatchOptions
+          : processingTimerTest && /^\/api\/delivery\/orders\/(42|43)$/.test(endpoint) ? { ...orders.find(order => String(order.id) === endpoint.split('/').pop()), assignments: [], events: [] }
+          : orderStepsTest && endpoint === '/api/delivery/orders/42' ? { ...orders[0], collectionCode: user.isShopOwner ? '234567' : undefined, pickupCode: user.isShopOwner ? undefined : '123456', deliveryCode: user.isShopOwner ? undefined : '345678' }
           : dispatchTest && endpoint === '/api/delivery/operations' ? { orders: dispatchOrders, riders: [] }
           : riderApplicationTest && (endpoint === '/api/delivery/application' || endpoint === '/api/delivery/applications/12') ? requirementFixture
           : deliveryTest && endpoint === '/api/delivery/orders/42' ? { ...orders[0], weightEvidence: weightRecords, handoff: handoffFixture, workflowStatus: trackingTest ? trackingPhase : bookingTest ? bookingState : handoffFixture ? deliveryJobs[0].order.status : 'Folding', workflowVersion: bookingTest ? bookingVersion : handoffFixture ? deliveryJobs[0].order.version : 8 + weightWrites.length, pickupCode: user.isShopOwner ? undefined : '123456', deliveryCode: user.isShopOwner ? undefined : '345678', collectionCode: user.isShopOwner ? '234567' : undefined, assignments: [{ ...deliveryJobs[0], rider: { name: 'Assigned Rider' } }], events: [{ id: 1, action: 'fold', toStatus: 'Folding', createdAt: new Date().toISOString(), actor: { name: 'Laundry Partner' }, detail: 'Laundry is being folded.' }] }
@@ -473,7 +513,8 @@ async function clickText(text) {
     }
     orders[0].status = 'Queued';
     orders[0].receivedAt = '2026-10-22T02:00:00Z';
-    await visit('/shop/customers/orders/42', 390, 'Send ready estimate');
+    await visit('/shop/customers/orders/42', 390, 'Ready time estimate');
+    await clickText('Ready time estimate');
     async function fill(label, value) {
       await evaluate(`(()=>{const e=document.querySelector('[aria-label="'+${JSON.stringify(label)}+'"]');const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;setter.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
     }
@@ -493,9 +534,10 @@ async function clickText(text) {
     await clickText('Confirm');
     await waitFor('document.body.innerText.includes("Confirm delivered to customer")');
     assert.equal(workflowWrites[2].status,'Ready');
-    await visit('/transaction-details?id=42',390,'Turnaround & Updates');
+    await visit('/transaction-details?id=42',390,'Step 4 of 5');
     assert.ok(await evaluate('document.body.innerText.includes("arranging return delivery")'));
-    assert.ok(await evaluate('document.body.innerText.includes("Estimated ready time")'));
+    await clickText('Order step 3: Processing');
+    assert.ok(await evaluate('document.body.innerText.includes("Estimated ready:")'));
     console.log('PASS shop estimate, processing, ready actions and customer updates');
     fs.writeFileSync(path.join(artifacts,'delivery-schedule-verification.txt'),'Requested laundry pickup verified in Chrome at widths 320, 390, 768 and 1440.\nDate selection, time selection, inline calendar, initial focus, Escape dismissal, fixed footer, viewport bounds, no horizontal overflow and saved checkout state passed. Shop estimate entry, explicit processing start, ready action and customer turnaround details also passed.\nRequests intercepted with isolated fixtures; no live orders created.\n');
     return;
@@ -751,15 +793,16 @@ async function clickText(text) {
       await clickText('Confirm booking');
       await waitFor('document.body.innerText.includes("Enter an acceptance explanation before confirming")');
       assert.equal(bookingWrites.length, before, 'Blank explanation is blocked locally');
-      await evaluate(`(()=>{const e=document.querySelector('[aria-label="Acceptance explanation or cancellation reason"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'ok');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+      await evaluate(`(()=>{const e=document.querySelector('[aria-label="Acceptance explanation"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'ok');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
       await clickText('Confirm booking'); await clickText('Continue');
       await waitFor('document.body.innerText.includes("Pickup Queued") && !document.body.innerText.includes("Confirm booking")');
       assert.equal(bookingWrites.length, before + 1);
+      await clickText('Add a note');
       assert.equal(await evaluate(`document.querySelector('[aria-label="Notes / issue details"]').value`), '', 'Successful confirmation clears the explanation');
     }
     bookingState = 'BookingPending'; bookingVersion = 0; bookingConflict = true;
     await visit('/shop/customers/orders/42', 390, 'Confirm booking');
-    await evaluate(`(()=>{const e=document.querySelector('[aria-label="Acceptance explanation or cancellation reason"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'ok');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await evaluate(`(()=>{const e=document.querySelector('[aria-label="Acceptance explanation"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'ok');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     await clickText('Confirm booking'); await clickText('Continue');
     await waitFor('document.body.innerText.includes("Order changed. Refresh and try again.")');
     await clickText('Confirm booking'); await clickText('Continue');
@@ -821,7 +864,8 @@ async function clickText(text) {
     user.isRider = false; user.isShopOwner = true;
     orders[0].workflowStatus = 'Folding';
     for (const width of [320, 390, 1440]) {
-      await visit('/shop/customers/orders/42', width, 'Scale photo required', `scale-photo-form-${width}`);
+      await visit('/shop/customers/orders/42', width, 'Update weight & scale photo', `scale-photo-form-${width}`);
+      await clickText('Update weight & scale photo');
       await clickText('Save weight, photo & final price');
       await waitFor('document.body.innerText.includes("Add a scale photo before updating")');
       const before = weightWrites.length;
@@ -835,11 +879,14 @@ async function clickText(text) {
       await clickText('Save weight, photo & final price'); await clickText('Cancel');
       assert.equal(weightWrites.length, before, 'Cancelling does not save weight or photo');
       await clickText('Save weight, photo & final price'); await clickText('Continue');
+      await waitFor('document.body.innerText.includes("Measured weight & scale photos")');
+      await clickText('Measured weight & scale photos');
       await waitFor('document.body.innerText.includes("Test Laundry Partner")');
       assert.equal(weightWrites.length, before + 1);
       assert.equal(weightWrites.at(-1).kilos, 7.5);
       user.isShopOwner = false;
       await visit('/order/tracking/42', width, 'Measured weight & scale photos', `scale-photo-customer-${width}`);
+      await clickText('Measured weight & scale photos');
       await waitFor(`!!document.querySelector('[aria-label="Shop scale photo for 7.5 kilograms"]')`);
       assert.ok(!(await evaluate('document.body.innerText')).includes('Save weight, photo & final price'), 'Customer cannot edit measured weight');
       await clickText('Enlarge scale photo'); await waitFor('document.body.innerText.includes("Close scale photo")');
@@ -848,7 +895,9 @@ async function clickText(text) {
       user.isShopOwner = true;
     }
     user.isShopOwner = false; weightPhotoFailure = true;
-    await visit('/order/tracking/42', 390, 'Retry scale photo');
+    await visit('/order/tracking/42', 390, 'Measured weight & scale photos');
+    await clickText('Measured weight & scale photos');
+    await waitFor('document.body.innerText.includes("Retry scale photo")');
     weightPhotoFailure = false; await clickText('Retry scale photo');
     await waitFor(`!!document.querySelector('[aria-label="Shop scale photo for 7.5 kilograms"]')`);
     console.log('PASS scale photo required, preview, cancel, save, customer privacy, history, enlarge, retry and mobile/desktop layout');
@@ -867,9 +916,9 @@ async function clickText(text) {
     user.isAdmin=true;user.isRider=false;
     for (const width of [390,1440]) await visit('/admin/operations',width,'Delivery Operations',`delivery-operations-${width}`);
     user.isAdmin=false;user.isShopOwner=false;orders[0].workflowStatus='Folding';
-    for (const width of [390,1440]) await visit('/order/tracking/42',width,'Your pickup & delivery',`delivery-customer-${width}`);
+    for (const width of [390,1440]) await visit('/order/tracking/42',width,'Step 3 of 5',`delivery-customer-${width}`);
     user.isShopOwner=true;
-    for (const width of [390,1440]) await visit('/shop/customers/orders/42',width,'Manage laundry',`delivery-partner-${width}`);
+    for (const width of [390,1440]) await visit('/shop/customers/orders/42',width,'Mark laundry ready',`delivery-partner-${width}`);
     for (const width of [320, 390, 1440]) {
       handoffFixture = { kind: 'pickup', arrived: false, released: false };
       deliveryJobs[0].status = 'Accepted'; deliveryJobs[0].order.status = 'PickupEnRoute'; deliveryJobs[0].order.handoff = handoffFixture;
@@ -948,11 +997,11 @@ async function clickText(text) {
     for (const [width,height] of [[320,640],[390,844],[768,1000],[1440,1000]]) {
       await visit('/shop/services',width,'Full Service');
       await command('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
-      await clickText('Add Service'); await waitFor(editor); await checkFit();
+      await clickText('Add Service'); await waitFor(editor); await checkFit(false);
       if (width===390) { const shot=await command('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(artifacts,'service-editor-compact-phone.png'),Buffer.from(shot.data,'base64')); }
       await clickText('Price per kilogram');
       assert.equal(await evaluate(`!!document.querySelector('input[aria-label="Weight per load"]')`),false);
-      await checkFit(); await clickText('Fixed price per load'); await checkFit();
+      await checkFit(false); await clickText('Fixed price per load'); await checkFit(false);
       await clickText('Close service editor'); await waitFor(closed);
     }
     await visit('/shop/services',390,'Full Service','service-color-cards');
@@ -963,16 +1012,18 @@ async function clickText(text) {
       await evaluate(`(()=>{const e=document.querySelector('input[aria-label="'+${JSON.stringify(label)}+'"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
     }
     await input('Service Name','Compact Test'); await input('Weight per load','8'); await input('Price per load','255');
+    await input('Standard washing time','30'); await input('Standard drying time','45');
     assert.equal(await evaluate(`document.querySelector('[aria-label="Service color #D0C1E8"]').getAttribute('aria-disabled')`),'true');
     assert.equal(await evaluate(`document.querySelector('[aria-label="Service color #321078"]').getAttribute('aria-disabled')`),'true');
-    for(const color of ['#7EA8BE','#28536B','#5C374C','#052F5F','#AA5042']) assert.ok(await evaluate(`!!document.querySelector('[aria-label="Service color ${color}"]')`));
+    for(const color of ['#7EA8BE','#28536B','#5C374C','#052F5F']) assert.ok(await evaluate(`!!document.querySelector('[aria-label="Service color ${color}"]')`));
+    assert.equal(await evaluate(`!!document.querySelector('[aria-label="Service color #AA5042"]')`),false);
     await clickText('Service color #7EA8BE');
     await evaluate(`document.querySelector('[data-testid=service-editor-actions] [aria-label="Add Service"]').click()`);
     await waitFor(closed); await waitFor('!!document.querySelector("[data-testid=service-card-3]")');
-    assert.deepEqual(serviceWrites[0].body,{serviceName:'Compact Test',price:255,packageKilos:8,color:'#7EA8BE'});
+    assert.deepEqual(serviceWrites[0].body,{serviceName:'Compact Test',price:255,packageKilos:8,washingMinutes:30,dryingMinutes:45,color:'#7EA8BE'});
     assert.equal(await evaluate('getComputedStyle(document.querySelector("[data-testid=service-card-3]")).backgroundColor'),'rgb(126, 168, 190)');
     await evaluate('document.querySelector("[data-testid=service-card-3] [aria-label=Edit]").click()');
-    await waitFor(editor); await checkFit();
+    await waitFor(editor); await checkFit(false);
     assert.equal(await evaluate(`document.querySelector('input[aria-label="Service Name"]').value`),'Compact Test');
     assert.notEqual(await evaluate(`document.querySelector('[aria-label="Service color #7EA8BE"]').getAttribute('aria-disabled')`),'true','Own color stays available while editing');
     await clickText('Price per kilogram'); await input('Price per kilogram','35'); await clickText('Service color #5C374C');
@@ -1006,7 +1057,7 @@ async function clickText(text) {
     await pause(100); await checkFit(false);
     await clickText('Cancel'); await waitFor(closed);
     assert.deepEqual(errors,[]);
-    console.log('PASS compact service editor, non-scrolling standard layouts, short-screen footer, pricing switch and persisted card colors');
+    console.log('PASS compact service editor, fixed footer, pricing switch, standard times and persisted card colors');
     return;
   }
   if (dialogTest) {
@@ -1192,6 +1243,181 @@ async function clickText(text) {
     console.log('PASS dashboard metric toggle, exact values, presets, custom validation, aggregation, workload links, empty and error states');
     return;
   }
+  if (originalOrderStepsTest) {
+    orders[0].washingMinutes=30; orders[0].dryingMinutes=45;
+    for (const [status, step] of [['Pending',1],['Accepted',2],['Queued',2],['Processing',3],['Ready',4],['Completed',5],['Cancelled',1]]) {
+      Object.assign(orders[0],{ status, receivedAt:null,processingStartedAt:status==='Processing'?new Date(Date.now()-5*60000).toISOString():null,readyAt:null,completedAt:null });
+      await visit('/shop/transactions/shop-transaction?id=42',390,`Step ${step} of 5`);
+      assert.equal(await evaluate('document.querySelectorAll("[data-testid=order-step-indicator] [role=tab]").length'),5,status);
+    }
+    orders[0].status='Pending';
+    await visit('/shop/transactions/shop-transaction?id=42',390,'Accept order');
+    await clickText('Order step 5: Complete'); assert.equal(workflowWrites.length,0);
+    await clickText('Back to current step');
+    await evaluate(`(()=>{const e=document.querySelector('[aria-label="Acceptance explanation (required)"]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'We can accept this order today.');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    for (const [button, expected] of [['Accept order','Confirm laundry received'],['Confirm laundry received','Start processing'],['Start processing','Mark laundry ready'],['Mark laundry ready','Confirm delivered to customer'],['Confirm delivered to customer','Order complete']]) {
+      await clickText(button); await clickText('Confirm'); await waitFor(`document.body.innerText.includes(${JSON.stringify(expected)})`);
+    }
+    assert.deepEqual(workflowWrites.map(body=>body.status),['Accepted','Queued','Processing','Ready','Completed']);
+    assert.ok(workflowWrites.every(body=>!body.action),'Status updates retain the original endpoint and payload');
+    orders[0].status='Processing';
+    for (const width of [320,390,768]) await visit('/shop/transactions/shop-transaction?id=42',width,'Mark laundry ready',`original-order-processing-${width}`);
+    await clickText('Ready time estimate');
+    await waitFor(`!!document.querySelector('[aria-label="Ready date"]')`);
+    await clickText('Order information'); await waitFor('document.body.innerText.includes("Customer Details")');
+    await clickText('Payment information'); assert.ok(await evaluate('document.body.innerText.includes("Cash on Delivery")'));
+    user.isShopOwner=false;
+    for (const [status, step] of [['Pending',1],['Accepted',2],['Queued',2],['Processing',3],['Ready',4],['Completed',5],['Cancelled',1]]) {
+      orders[0].status=status;
+      if(status==='Cancelled') Object.assign(orders[0],{receivedAt:null,processingStartedAt:null,readyAt:null,completedAt:null});
+      await visit('/transaction-details?id=42',390,`Step ${step} of 5`,status==='Processing'?'original-order-customer-phone':undefined);
+      if(status==='Processing') assert.equal(await evaluate('document.querySelectorAll("[data-testid=processing-timer]").length'),1);
+      if(status==='Pending') assert.ok(await evaluate('document.body.innerText.includes("Cancel Order")'));
+      if(status==='Completed') assert.ok(await evaluate('document.body.innerText.includes("Order Again")'));
+    }
+    assert.deepEqual(errors,[]);
+    console.log('PASS original order steps for all statuses, both roles, legacy actions, timers, estimates, payment and mobile layouts');
+    return;
+  }
+  if (orderStepsTest) {
+    for (const width of [320,390,768]) await visit('/shop/transactions/shop-transaction?id=42',width,'Start washing',`order-steps-received-${width}`);
+    assert.equal(await evaluate('document.querySelectorAll("[data-testid=order-step-indicator] [role=tab]").length'),5);
+    assert.equal(await evaluate(`!!document.querySelector('[aria-label="Measured weight (kg)"]')`),false,'Weight form is initially collapsed');
+    assert.equal(await evaluate('document.body.innerText.includes("234567")'),false,'Return code is absent during receipt');
+    await clickText('Order step 5: Complete');
+    await waitFor('document.querySelector("[data-testid=order-step-content]").innerText.includes("Not reached")');
+    assert.equal(workflowWrites.length,0,'Reviewing future steps never advances the order');
+    await clickText('Back to current step');
+    await clickText('Update weight & scale photo');
+    await evaluate(`(()=>{const e=document.querySelector('[aria-label="Measured weight (kg)"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'7.2');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await clickText('Update weight & scale photo'); await clickText('Update weight & scale photo');
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Measured weight (kg)"]').value`),'7.2','Collapsing preserves unsaved input');
+    await clickText('Order step 1: Booking'); await clickText('Back to current step');
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Measured weight (kg)"]').value`),'7.2','Reviewing a step preserves unsaved input');
+    await clickText('Start washing'); await clickText('Continue');
+    await waitFor('document.querySelector("[data-testid=order-step-content]").innerText.includes("Step 3 of 5")');
+    assert.equal(workflowWrites.length,1);
+    assert.ok(await evaluate('document.querySelector("[data-testid=order-step-content]").innerText.includes("Wash & dry timers")'));
+    await visit('/shop/transactions/shop-transaction?id=42',390,'Start drying','order-steps-processing-phone');
+    await clickText('Start drying'); await clickText('Continue'); await waitFor('document.body.innerText.includes("Start folding")');
+    await clickText('Start folding'); await clickText('Continue'); await waitFor('document.body.innerText.includes("Mark laundry ready")');
+    await clickText('Mark laundry ready'); await clickText('Continue'); await waitFor('document.querySelector("[data-testid=order-step-content]").innerText.includes("Step 4 of 5")');
+    await clickText('Handoff confirmation'); await waitFor('document.body.innerText.includes("234567")');
+    await clickText('Order history'); assert.ok(await evaluate('document.body.innerText.includes("Laundry Received")'));
+    user.isShopOwner=false; orders[0].workflowStatus='Delivered';
+    await visit('/order/tracking/42',390,'Confirm receipt','order-steps-customer-return');
+    await clickText('Confirm receipt'); await clickText('Continue');
+    await waitFor('document.querySelector("[data-testid=order-step-content]").innerText.includes("Step 5 of 5")');
+    assert.equal(await evaluate('document.body.innerText.includes("Confirm receipt")'),false);
+    assert.equal(await evaluate('document.body.innerText.includes("Cancellation & issues")'),false);
+    user.isShopOwner=true; orders[0].workflowStatus='Cancelled';
+    orders[0].events=[{id:1,toStatus:'LaundryReceived',createdAt:new Date().toISOString(),actor:{name:user.name}}];
+    await visit('/shop/transactions/shop-transaction?id=42',390,'Order cancelled.');
+    assert.equal(await evaluate('document.body.innerText.includes("Start washing")'),false);
+    assert.equal(await evaluate('document.body.innerText.includes("Clean laundry received by the customer.")'),false);
+    assert.deepEqual(errors,[]);
+    console.log('PASS order steps: responsive layout, review-only navigation, preserved form input, current actions, timers, return handoff, completion and cancellation');
+    return;
+  }
+  if (processingTimerTest) {
+    await visit('/shop/transactions/shop-live-operations',390,'Wash & dry timers','processing-timers-shop');
+    const washSelector = '[data-testid=live-order-43] [data-testid=processing-timer]';
+    const read = () => evaluate(`document.querySelector(${JSON.stringify(washSelector)}).innerText`);
+    const first = await read();
+    assert.ok(first.includes('Waiting'));
+    await waitFor(`document.querySelector(${JSON.stringify(washSelector)}).innerText!==${JSON.stringify(first)}`,4000);
+    assert.ok((await read()).match(/24:\d{2}/),'Washing counts down from recorded start, not page open');
+    const drying = await evaluate('document.querySelector("[data-testid=live-order-42] [data-testid=processing-timer]").innerText');
+    assert.ok(drying.includes('Finished')&&drying.match(/39:\d{2}/),'Drying has its own countdown');
+    await evaluate(`document.querySelector('[aria-label="Compact live operations"]').click()`);
+    assert.ok((await read()).includes('remaining'),'Compact mode keeps processing timers');
+    await visit('/shop/transactions/shop-live-operations',320,'Wash & dry timers','processing-timers-small-phone');
+    await visit('/shop/transactions',390,'Wash & dry timers');
+    user.isShopOwner = false;
+    await visit('/activities',390,'Wash & dry timers','processing-timers-customer');
+    await clickText(`View order 43 from ${shops[0].shopName}`);
+    await waitFor('document.body.innerText.includes("Step 3 of 5")&&!!document.querySelector("[data-testid=processing-timer]")');
+    assert.ok(await evaluate('Array.from(document.querySelectorAll("[data-testid=processing-timer]")).filter(e=>e.getBoundingClientRect().width>0).some(e=>e.innerText.includes("Waiting"))'));
+    orders[1].workflowStatus = null;
+    await visit('/activities',390,'Wash & dry estimate');
+    // Expiry is an indicator; it must never write an order transition.
+    orders[1].workflowStatus = 'Washing';
+    orders[1].processingStartedAt = new Date(Date.now() - 60 * 60000).toISOString();
+    await visit('/activities',390,'Time elapsed');
+    assert.equal(orders[1].workflowStatus,'Washing');
+    assert.equal(workflowWrites.length,0);
+    orders[0].workflowStatus='Completed'; orders[1].workflowStatus='ReadyForCollection';
+    await visit('/activities',390,'Active Orders');
+    assert.equal(await evaluate('document.querySelectorAll("[data-testid=processing-timer]").length'),0);
+    assert.deepEqual(errors,[]);
+    console.log('PASS processing timers for shop and customer, ticking, actual phase starts, compact mode, legacy estimates, expiry and ready');
+    return;
+  }
+  if (liveOperationsTest) {
+    await visit('/shop/home',390,'Recent orders');
+    await clickText('Live operations');
+    await waitFor('location.pathname==="/shop/home/shop-live-operations"&&!!document.querySelector("[data-testid=live-operations-board]")');
+    assert.equal(await evaluate('document.querySelectorAll("[data-testid^=live-stage-]").length'),5);
+    assert.equal(await evaluate('document.querySelectorAll("[data-testid^=live-order-]").length'),8,'Closed orders excluded');
+    for (const [stage, id] of [['awaiting',50],['queue',52],['processing',53],['ready',54],['returning',55]])
+      assert.equal(await evaluate(`!!document.querySelector('[data-testid=live-stage-${stage}] [data-testid=live-order-${id}]')`),true);
+    assert.ok(await evaluate('document.body.innerText.includes("Past ready estimate")'));
+    await clickText('Open live order 42, Test Customer With A Long Name');
+    await waitFor('location.pathname==="/shop/home/shop-transaction"&&!!document.querySelector("[data-testid=order-step-indicator]")');
+    await clickText('Back');
+    await waitFor('!!document.querySelector("[data-testid=live-operations-board]")');
+    await visit('/shop/transactions',390,'Your laundry orders');
+    await clickText('Live operations');
+    await waitFor('location.pathname==="/shop/transactions/shop-live-operations"&&!!document.querySelector("[data-testid=live-operations-board]")');
+    await clickText('Live service: Wash Only');
+    assert.equal(await evaluate('document.querySelectorAll("[data-testid^=live-order-]").length'),1);
+    assert.equal(await evaluate('!!document.querySelector("[data-testid=live-order-43]")'),true);
+    const detailedHeight = await evaluate('document.querySelector("[data-testid=live-order-43]").getBoundingClientRect().height');
+    await evaluate(`document.querySelector('[aria-label="Compact live operations"]').click()`);
+    await waitFor('!document.body.innerText.includes("Last fetched:")');
+    assert.equal(await evaluate('document.querySelectorAll("[data-testid^=live-order-]").length'),1,'Compact toggle preserves service filter');
+    assert.ok(await evaluate('document.querySelector("[data-testid=live-order-43]").getBoundingClientRect().height') < detailedHeight,'Compact cards take less height');
+    const compactCard = await evaluate('document.querySelector("[data-testid=live-order-43]").innerText');
+    for (const text of ['#43',user.name,'Wash Only','8 kg','245.00','Laundry in progress','Past ready estimate']) assert.ok(compactCard.includes(text),'Compact keeps '+text);
+    assert.equal(compactCard.includes('Drop-off'),false,'Compact hides transport details');
+    assert.equal(compactCard.includes('(PHT)'),false,'Compact hides timestamp details');
+    await evaluate(`document.querySelector('[aria-label="Compact live operations"]').click()`);
+    await waitFor('document.body.innerText.includes("Last fetched:")');
+    assert.equal(await evaluate('document.querySelector("[data-testid=live-order-43]").getBoundingClientRect().height'),detailedHeight,'Detailed view can be restored');
+    const outline = await evaluate('(()=>{const s=getComputedStyle(document.querySelector("[data-testid=live-order-43]"));return [s.borderTopWidth,s.borderRightWidth,s.borderBottomWidth,s.borderLeftWidth,s.borderTopColor,s.borderRightColor,s.borderBottomColor,s.borderLeftColor]})()');
+    assert.deepEqual(outline.slice(0,4),['2px','2px','2px','2px']);
+    assert.deepEqual(outline.slice(4),Array(4).fill('rgb(208, 193, 232)'),'Service color outlines all four sides');
+    await clickText('Live service: All services');
+    async function search(value) {
+      await evaluate(`(()=>{const e=document.querySelector('input[aria-label="Search order, customer or service"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    }
+    await search('#52');
+    await waitFor('document.querySelectorAll("[data-testid^=live-order-]").length===1');
+    assert.equal(await evaluate('!!document.querySelector("[data-testid=live-stage-queue] [data-testid=live-order-52]")'),true);
+    await search('no match'); await waitFor('document.body.innerText.includes("No matching orders")');
+    await clickText('Clear filters');
+    for (const width of [320,390,768]) {
+      await visit('/shop/transactions/shop-live-operations',width,'Oldest orders first',`live-operations-${width}`);
+      await evaluate(`document.querySelector('[aria-label="Compact live operations"]').click()`);
+      await waitFor('!document.body.innerText.includes("Bookings, pickups & arrivals")');
+      assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'),true,'Compact fits viewport');
+      const shot=await command('Page.captureScreenshot',{format:'png'});
+      fs.writeFileSync(path.join(artifacts,`live-operations-compact-${width}.png`),Buffer.from(shot.data,'base64'));
+    }
+    // Refreshed server state moves the same card and removes completed work.
+    orders[0].status = 'Queued';
+    orders.find(order => order.id===55).workflowStatus = 'Completed';
+    await clickText('Refresh live operations');
+    await waitFor('!!document.querySelector("[data-testid=live-stage-queue] [data-testid=live-order-42]")&&!document.querySelector("[data-testid=live-order-55]")');
+    // The existing 15-second fallback also moves cards without a manual refresh.
+    orders[0].status = 'Processing';
+    await waitFor('!!document.querySelector("[data-testid=live-stage-processing] [data-testid=live-order-42]")',22000);
+    mode='empty'; await visit('/shop/transactions/shop-live-operations',390,'No ongoing orders');
+    mode='error'; await visit('/shop/transactions/shop-live-operations',390,'Unable to load');
+    assert.deepEqual(errors,[]);
+    console.log('PASS Live Operations navigation, five mobile rows, search, services, refresh, polling, empty/error');
+    return;
+  }
   if (shopOrdersTest) {
     await visit('/shop/transactions',390,'Your laundry orders');
     const ids = () => evaluate('Array.from(document.querySelectorAll("[data-testid^=shop-order-]")).map(e=>e.getAttribute("data-testid"))');
@@ -1224,7 +1450,7 @@ async function clickText(text) {
   for (const width of [390,1440]) for (const [route,expected] of [
     ['/activities','View order details'],['/profile','Personal details'],['/shops/101','Browse services'],['/shops','All laundry shops'],
     ['/shop/services','Full Service'],['/shop/customers','Your laundry orders'],['/shop/profile','Account Information'],['/shop/profile/security','Current Password'],
-    ['/shop/customers/orders/42','Customer Details'],['/order/101','Review Order'],['/search','Search History']]) await visit(route,width,expected);
+    ['/shop/customers/orders/42','Order #42'],['/order/101','Review Order'],['/search','Search History']]) await visit(route,width,expected);
   await visit('/activities',390,'Active Orders (2)');
   await clickText('Past Orders (2)'); await waitFor('document.body.innerText.includes("Order #44")');
   await clickText('Cancelled'); await waitFor('document.body.innerText.includes("Order #45")&&!document.body.innerText.includes("Order #44")');
@@ -1245,7 +1471,7 @@ async function clickText(text) {
   await evaluate(`(()=>{const e=document.querySelector('input[aria-label="Search customer, order ID or service"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'#42');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await waitFor('!!document.querySelector("[data-testid=shop-order-42]")&&!document.querySelector("[data-testid=shop-order-43]")');
   await clickText('View order 42, Test Customer With A Long Name');
-  await waitFor('location.pathname==="/shop/transactions/shop-transaction"&&document.body.innerText.includes("Customer Details")');
+  await waitFor('location.pathname==="/shop/transactions/shop-transaction"&&!!document.querySelector("[data-testid=order-step-indicator]")');
   await visit('/shop/transactions?status=Completed',390,'Your laundry orders');
   await waitFor('!!document.querySelector("[data-testid=shop-order-44]")');
   assert.equal(await evaluate('!!document.querySelector("[data-testid=shop-order-42]")'),false,'URL status selects Past');

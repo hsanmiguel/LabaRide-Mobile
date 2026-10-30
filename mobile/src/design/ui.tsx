@@ -58,8 +58,8 @@ export function Button({ title, onPress, busy, disabled, color, textColor, outli
   return <Pressable accessibilityRole="button" accessibilityLabel={title} accessibilityState={{ disabled: !!disabled || !!busy, busy: !!busy }}
     disabled={disabled || busy} onPress={onPress} style={({ pressed }) => [{
       minHeight: 44, paddingHorizontal: compact ? 14 : 20, paddingVertical: compact ? 10 : 12,
-      borderRadius: round ? 24 : 12, backgroundColor: outline ? "white" : pressed && accent === palette.primary ? palette.hover : accent,
-      borderColor: accent, borderWidth: 1, opacity: disabled ? 0.45 : pressed ? 0.85 : 1,
+      borderRadius: round ? 24 : 12, backgroundColor: outline ? "white" : pressed && !busy && !disabled && accent === palette.primary ? palette.hover : accent,
+      borderColor: accent, borderWidth: 1, opacity: disabled && !busy ? 0.45 : pressed && !busy ? 0.85 : 1,
       flexDirection: "row", gap: 8, justifyContent: "center", alignItems: "center", flexShrink: 1,
     }, style]}>
     {busy ? <ActivityIndicator accessibilityLabel={`${title}, please wait`} color={outline ? accent : "white"} /> : <>

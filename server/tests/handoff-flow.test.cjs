@@ -8,8 +8,9 @@ const { handoffState } = require('../dist/services/handoff.service');
 
 function fixture(status = 'PickupEnRoute', stage = 'Pickup') {
   const events = [], notifications = [];
-  const order = { id: 47, userId: 1, workflowStatus: status, workflowVersion: 0, shop: { userId: 2, approvalStatus: 'Approved' }, assignments: [{ id: 10, riderId: 3, status: 'Accepted', stage }] };
+  const order = { id: 47, userId: 1, shopId: 5, serviceName: 'Full Service', workflowStatus: status, workflowVersion: 0, shop: { userId: 2, approvalStatus: 'Approved' }, assignments: [{ id: 10, riderId: 3, status: 'Accepted', stage }] };
   db.$transaction = callback => callback(db);
+  db.shopService = { findMany: async () => [] };
   db.$queryRaw = async () => [];
   db.transaction = { findUnique: async () => order, update: async ({ data }) => { const { workflowVersion, ...fields } = data; Object.assign(order, fields); order.workflowVersion++; } };
   db.orderEvent = { findMany: async () => events, create: async ({ data }) => { events.push(data); } };

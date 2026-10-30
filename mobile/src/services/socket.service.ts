@@ -7,6 +7,18 @@ class SocketService {
   private isConnected: boolean = false;
   private userId: number | null = null;
   private shopId: number | null = null;
+  private connectionListeners = new Set<() => void>();
+
+  getConnectionStatus = () => this.isConnected ? "connected" as const : "polling" as const;
+  subscribeConnection = (listener: () => void) => {
+    this.connectionListeners.add(listener);
+    return () => { this.connectionListeners.delete(listener); };
+  };
+  private setConnected(connected: boolean) {
+    if (this.isConnected === connected) return;
+    this.isConnected = connected;
+    this.connectionListeners.forEach(listener => listener());
+  }
 
   initialize() {
     if (process.env.EXPO_PUBLIC_REALTIME_MODE === "polling") return;
@@ -23,7 +35,7 @@ class SocketService {
 
     this.socket.on("connect", () => {
       console.log("Socket Connected");
-      this.isConnected = true;
+      this.setConnected(true);
       if (this.userId !== null)
         this.socket?.emit("join_user_room", { user_id: this.userId });
       if (this.shopId !== null)
@@ -32,7 +44,7 @@ class SocketService {
 
     this.socket.on("disconnect", () => {
       console.log("Socket Disconnected");
-      this.isConnected = false;
+      this.setConnected(false);
     });
   }
 
@@ -73,7 +85,7 @@ class SocketService {
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
-      this.isConnected = false;
+      this.setConnected(false);
       this.userId = null;
       this.shopId = null;
     }

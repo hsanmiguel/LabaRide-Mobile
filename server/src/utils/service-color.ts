@@ -15,7 +15,7 @@ export async function withUniqueServiceColor<T>(shopId: number, color: string | 
     await tx.$queryRaw`SELECT id FROM shops WHERE id = ${shopId} FOR UPDATE`;
     const others = await tx.shopService.findMany({ where: { shopId, ...(serviceId ? { id: { not: serviceId } } : {}) }, select: { color: true } });
     const used = new Set(others.map(service => normalizeServiceColor(service.color || '#321078')));
-    const assignedColor = color || ['#321078', '#6842D9', '#886AB8', '#D0C1E8', '#7EA8BE', '#28536B', '#5C374C', '#052F5F', '#AA5042'].find(option => !used.has(option));
+    const assignedColor = color || ['#321078', '#6842D9', '#886AB8', '#D0C1E8', '#7EA8BE', '#28536B', '#5C374C', '#052F5F'].find(option => !used.has(option));
     if (!assignedColor || used.has(assignedColor)) {
       throw Object.assign(new Error('This color is already used by another service. Choose a different color.'), { statusCode: 409 });
     }

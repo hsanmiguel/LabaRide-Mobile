@@ -43,6 +43,8 @@ export const createServiceSchema = z.object({
     packageKilos: z.number().finite().positive('Package weight must be above 0 kg').max(99999999.99).refine(
       (value) => Number(value.toFixed(2)) === value, 'Enter a weight with up to two decimal places',
     ).nullable().optional(),
+    washingMinutes: z.number().int().positive('Washing time must be at least 1 minute').max(10080, 'Washing time cannot exceed 10,080 minutes').optional(),
+    dryingMinutes: z.number().int().positive('Drying time must be at least 1 minute').max(10080, 'Drying time cannot exceed 10,080 minutes').optional(),
     color: z.string().trim().regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Choose a valid service color').transform(value => {
       const hex = value.toUpperCase();
       return hex.length === 4 ? '#' + hex.slice(1).split('').map(part => part + part).join('') : hex;

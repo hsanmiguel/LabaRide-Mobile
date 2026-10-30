@@ -12,6 +12,7 @@ import { serviceAreaError, type ServiceArea } from '../utils/service-area';
 import { shopAvailability } from '../utils/shop-hours';
 import { confirmationCode, recordEvent } from '../services/dispatch.service';
 import { shopPhotoSelection, withShopPhoto } from '../utils/shop-photo';
+import { processingEventSelection, serviceProcessingTimes, serviceTimingSelection, withProcessingTiming } from '../utils/processing-timing';
 
 export class TransactionController {
   
@@ -123,10 +124,10 @@ export class TransactionController {
       const transactions = await prisma.transaction.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
-        include: { items: true, shop: { select: { id: true, shopName: true, address: true, contactNumber: true, photo: shopPhotoSelection } } }
+        include: { items: true, events: processingEventSelection, shop: { select: { id: true, shopName: true, address: true, contactNumber: true, photo: shopPhotoSelection, services: { select: serviceTimingSelection } } } }
       });
 
-      return sendSuccess(res, transactions.map(({ collectionCode, shop, ...order }) => ({ ...order, shop: withShopPhoto(shop) })), 'User transactions retrieved');
+      return sendSuccess(res, transactions.map(({ collectionCode, shop: { services, ...shop }, events, ...order }) => ({ ...withProcessingTiming(order, services, events), shop: withShopPhoto(shop) })), 'User transactions retrieved');
     } catch (error) {
       next(error);
     }
@@ -135,7 +136,7 @@ export class TransactionController {
   static async getShopTransactions(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const shopId = parseInt(req.params.shopId);
-      const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { userId: true } });
+      const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { userId: true, services: { select: serviceTimingSelection } } });
       if (!shop || shop.userId !== req.user!.userId) {
         return sendError(res, 'Only the shop owner can view these orders', 'FORBIDDEN', 403);
       }
@@ -143,10 +144,10 @@ export class TransactionController {
       const transactions = await prisma.transaction.findMany({
         where: { shopId },
         orderBy: { createdAt: 'desc' },
-        include: { items: true }
+        include: { items: true, events: processingEventSelection }
       });
 
-      return sendSuccess(res, transactions.map(({ pickupCode, deliveryCode, ...order }) => order), 'Shop transactions retrieved');
+      return sendSuccess(res, transactions.map(({ pickupCode, deliveryCode, events, ...order }) => withProcessingTiming(order, shop.services, events)), 'Shop transactions retrieved');
     } catch (error) {
       next(error);
     }
@@ -191,11 +192,13 @@ export class TransactionController {
         : notes || undefined;
       const now = new Date();
       const updated = await prisma.$transaction(async tx => {
+        const timing = status === 'Processing' && existing.status !== status
+          ? serviceProcessingTimes(existing.serviceName, await tx.shopService.findMany({ where: { shopId: existing.shopId }, select: serviceTimingSelection })) : undefined;
         const result = await tx.transaction.updateMany({
         where: { id: transactionId, status: existing.status, shop: { approvalStatus: 'Approved' } },
         data: { status, notes: savedNotes,
           ...(status === 'Queued' && existing.status !== status ? { receivedAt: now } : {}),
-          ...(status === 'Processing' && existing.status !== status ? { processingStartedAt: now } : {}),
+          ...(timing ? { processingStartedAt: now, ...timing, processingTimingCapturedAt: now } : {}),
           ...(status === 'Ready' && existing.status !== status ? { readyAt: now } : {}),
           ...(status === 'Completed' && existing.status !== status ? { completedAt: now } : {}),
           ...(status === 'Cancelled' && existing.status !== status ? { cancelledAt: now } : {}),

@@ -14,6 +14,7 @@ export const legacyShopFlows: Record<string, ShopTab> = {
   "shop-location": "home",
   "shop-customers": "transactions",
   "shop-transaction": "transactions",
+  "shop-live-operations": "transactions",
   "shop-details": "profile",
   "account-information": "profile",
   security: "profile",

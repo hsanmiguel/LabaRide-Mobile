@@ -60,6 +60,6 @@ test('simultaneous requests for a color produce exactly one assignment', async (
 test('older clients receive an unused color and legacy fallback colors remain reserved', async () => {
   fixture([{ id: 1, shopId: 5, color: null }]);
   assert.equal(await withUniqueServiceColor(5, undefined, undefined, async (tx, color) => color), '#6842D9');
-  fixture(['#321078','#6842D9','#886AB8','#D0C1E8','#7EA8BE','#28536B','#5C374C','#052F5F','#AA5042'].map((color, index) => ({ id: index + 1, shopId: 5, color })));
+  fixture(['#321078','#6842D9','#886AB8','#D0C1E8','#7EA8BE','#28536B','#5C374C','#052F5F'].map((color, index) => ({ id: index + 1, shopId: 5, color })));
   await assert.rejects(withUniqueServiceColor(5, undefined, undefined, async () => assert.fail('Must not write')), error => error.statusCode === 409);
 });

@@ -11,7 +11,6 @@ import {
   ActivitiesDesign,
   CancelOrderDesign,
   CheckoutDesign,
-  LaundryCountDesign,
   OrderDetailsDesign,
   OrderSummaryDesign,
   PaymentDesign,
@@ -34,6 +33,7 @@ import {
   ShopOrderDetailsDesign,
 } from "./ShopScreens";
 import { NotificationsDesign } from "./NotificationsScreen";
+import { LiveOperationsDesign } from "./LiveOperations";
 import { Empty, Screen } from "./ui";
 import type { Order } from "./data";
 import { useFlowNavigation } from "./data";
@@ -89,9 +89,9 @@ export default function DesignFlow() {
   if (screen === "order-summary") return <OrderSummaryDesign />;
   if (screen === "notifications") return <NotificationsDesign />;
   if (screen === "shop-notifications") return <NotificationsDesign shopMode />;
+  if (screen === "shop-live-operations") return <LiveOperationsDesign />;
   if (screen === "history" || screen === "past-orders")
     return <ActivitiesDesign history past={screen === "past-orders"} />;
-  if (screen === "laundries") return <LaundryCountDesign />;
   if (screen === "checkout") return <CheckoutDesign />;
   if (screen === "delivery-schedule") return <ScheduleDesign />;
   if (screen === "payment-method") return <PaymentDesign />;

@@ -6,15 +6,16 @@ import { Button, Card, PriceRow, Screen, Section, Txt, money, styles, usePalette
 import { OrderStepIndicator } from "./OrderStepIndicator";
 import { OrderDisclosure } from "./OrderDisclosure";
 import { originalOrderDetailProgress, orderDetailSteps } from "./order-detail-steps";
-import { ProcessingTimer } from "./ProcessingTimer";
+import { ProcessingTimer, type ProcessingTimerActions } from "./ProcessingTimer";
 import { orderUpdateText } from "./TurnaroundDetails";
 import { DeliveryDetails } from "./AddressFields";
 
 const timestamp = (value: string) => new Date(value).toLocaleString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " (PHT)";
 
-export function OriginalOrderDetails({ order, partner = false, primaryAction, bookingFields, estimateEditor, confirmPickupAction, right, extraAction }: {
+export function OriginalOrderDetails({ order, partner = false, primaryAction, bookingFields, estimateEditor, confirmPickupAction, right, extraAction, timerActions }: {
   order: Order; partner?: boolean; primaryAction?: ReactNode; bookingFields?: ReactNode;
   estimateEditor?: ReactNode; confirmPickupAction?: ReactNode; right?: ReactNode; extraAction?: ReactNode;
+  timerActions?: ProcessingTimerActions;
 }) {
   const palette = usePalette();
   const progress = originalOrderDetailProgress(order);
@@ -26,6 +27,8 @@ export function OriginalOrderDetails({ order, partner = false, primaryAction, bo
     { label: "Order placed", value: order.createdAt },
     { label: "Laundry received", value: order.receivedAt },
     { label: "Processing started", value: order.processingStartedAt },
+    { label: "Washing started", value: order.washingStartedAt },
+    { label: "Drying started", value: order.dryingStartedAt },
     { label: "Laundry ready", value: order.readyAt },
     { label: "Order completed", value: order.completedAt },
     { label: "Order cancelled", value: order.cancelledAt },
@@ -63,7 +66,7 @@ export function OriginalOrderDetails({ order, partner = false, primaryAction, bo
             {currentView && !progress.cancelled && confirmPickupAction}
           </>}
           {viewedStep === 2 && <>
-            <ProcessingTimer order={order} />
+            <ProcessingTimer order={order} actions={partner && currentView && !progress.cancelled ? timerActions : undefined} />
             {!!order.processingStartedAt && <Txt style={styles.muted}>Processing started: {timestamp(order.processingStartedAt)}</Txt>}
           </>}
           {(viewedStep === 1 || viewedStep === 2) && !!order.estimatedReadyAt && <View style={{ gap: 4 }}>

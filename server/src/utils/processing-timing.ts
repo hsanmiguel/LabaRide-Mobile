@@ -3,6 +3,7 @@ type TimingOrder = {
   serviceName: string; status: string; workflowStatus?: string | null;
   washingMinutes?: number | null; dryingMinutes?: number | null;
   processingStartedAt?: Date | string | null; dryingStartedAt?: Date | string | null;
+  washingStartedAt?: Date | string | null;
   processingTimingCapturedAt?: Date | string | null;
 };
 type TimingEvent = { toStatus: string; fromStatus?: string | null; createdAt: Date | string };
@@ -31,6 +32,7 @@ export function withProcessingTiming<T extends TimingOrder>(order: T, services: 
   const entered = (stage: string) => events.find(event => event.toStatus === stage && event.fromStatus !== stage)?.createdAt;
   return { ...order, ...times,
     processingStartedAt: order.processingStartedAt || entered('Washing') || null,
+    washingStartedAt: order.washingStartedAt || (order.workflowStatus ? entered('Washing') || order.processingStartedAt : null) || null,
     dryingStartedAt: order.dryingStartedAt || entered('Drying') || null,
     processingTimingSource: captured ? 'snapshot' as const : 'current-service' as const,
   };

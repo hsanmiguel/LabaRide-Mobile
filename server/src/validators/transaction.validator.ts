@@ -63,3 +63,8 @@ export const cancelTransactionSchema = z.object({
     reason: z.string({ required_error: 'Choose a cancellation reason' }).trim().min(1, 'Choose a cancellation reason').max(500),
   }),
 });
+
+export const startProcessingTimerSchema = z.object({
+  params: z.object({ id: z.coerce.number().int().positive() }),
+  body: z.object({ phase: z.enum(['washing', 'drying']) }).strict(),
+});

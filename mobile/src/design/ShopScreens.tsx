@@ -367,10 +367,23 @@ export function ShopOrderDetailsDesign({
   const order = result.data?.find((o) => o.id === id);
   const [busy, setBusy] = useState(false);
   const [acceptanceExplanation, setAcceptanceExplanation] = useState("");
+  const timerInFlight = useRef(false);
   const cache = useQueryClient();
   const [estimateDate, setEstimateDate] = useState("");
   const [estimateTime, setEstimateTime] = useState("");
   const [estimateReason, setEstimateReason] = useState("");
+  async function startTimer(phase: "washing" | "drying") {
+    if (timerInFlight.current || busy) return;
+    timerInFlight.current = true;
+    setBusy(true);
+    try {
+      await api.put(`/transactions/${id}/timer`, { phase });
+      await Promise.all(["shop-orders", "user-orders", "notifications"].map(key => cache.invalidateQueries({ queryKey: [key] })));
+    } catch (error) {
+      fail(error);
+      await cache.invalidateQueries({ queryKey: ["shop-orders"] });
+    } finally { timerInFlight.current = false; setBusy(false); }
+  }
   useEffect(() => {
     setEstimateDate(order?.estimatedReadyAt ? deliveryDay(order.estimatedReadyAt) : "");
     setEstimateTime(order?.estimatedReadyAt ? new Date(order.estimatedReadyAt).toLocaleTimeString("en-GB", { timeZone: "Asia/Manila", hour: "2-digit", minute: "2-digit" }) : "");
@@ -408,6 +421,7 @@ export function ShopOrderDetailsDesign({
     );
   if (order.workflowStatus) return <DeliveryOrderDesign id={id} partner />;
   return <OriginalOrderDetails order={order} partner
+    timerActions={{ onStart: phase => { void startTimer(phase); }, busy }}
     right={order.status === "Pending" ? <Button title="Decline" compact outline onPress={() => go("decline-order", { id: String(id) })} /> : undefined}
     bookingFields={<View style={{ gap: 8 }}>
       <Field label="Acceptance explanation (required)" placeholder="Let the customer know why you can accept and what to expect."

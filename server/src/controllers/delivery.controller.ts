@@ -7,6 +7,7 @@ import { sendSuccess } from '../utils/response';
 import { AUTOMATIC_DISPATCH_ENABLED, collectionPoint, changeState, dispatchPoint, dispatchStage, expireOffers, fail, jobTransitions, lockOrder, openAssignments, partnerTransitions, recommendRiders, recordEvent } from '../services/dispatch.service';
 import { priceOrder } from '../utils/order-pricing';
 import { withProcessingTiming } from '../utils/processing-timing';
+import { jobRouteEndpoints } from '../utils/job-route';
 import { handoffState } from '../services/handoff.service';
 import { clearedRiderLocation } from '../services/rider-tracking.service';
 import { prepareShopPhoto } from '../utils/shop-photo';
@@ -22,6 +23,23 @@ const riderSelect = { id: true, name: true, email: true, phone: true } as const;
 const orderInclude = { weightEvidence: { orderBy: [{ createdAt: 'desc' as const }, { id: 'desc' as const }], select: { id: true, kilos: true, totalAmount: true, note: true, createdAt: true, actor: { select: { name: true } } } }, shop: { include: { services: true, kiloPrices: true } }, assignments: { select: { id: true, transactionId: true, riderId: true, stage: true, resumeStatus: true, status: true, expiresAt: true, createdAt: true, updatedAt: true, rider: { select: { id: true, name: true } } } }, events: { orderBy: { createdAt: 'asc' as const }, include: { actor: { select: { name: true } } } } };
 
 export class DeliveryController {
+  static async routePreview(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const id = idSchema.parse(req.params.id);
+      if (!req.user?.isRider) fail('Rider access required', 403);
+      const rider = await prisma.riderProfile.findUnique({ where: { userId: actor(req) } });
+      if (!rider?.active) fail('Rider access required', 403);
+      if (!rider.online) fail('Go online to preview job routes');
+      const order = await prisma.transaction.findFirst({ where: {
+        id, workflowStatus: { in: claimableStatuses }, shop: { approvalStatus: 'Approved' },
+        assignments: { none: { status: { in: openAssignments } } },
+      }, select: { id: true, workflowStatus: true, workflowVersion: true, collectionMethod: true, collectionAddress: true,
+        latitude: true, longitude: true, shop: { select: { latitude: true, longitude: true } } } });
+      if (!order) fail('This job is no longer available', 404);
+      res.setHeader('Cache-Control', 'private, no-store');
+      return sendSuccess(res, jobRouteEndpoints(order));
+    } catch (error) { next(error); }
+  }
   static async availableJobs(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       await prisma.$transaction(tx => expireOffers(tx));

@@ -98,8 +98,10 @@ const bookingWrites = [];
 let bookingState = 'BookingPending', bookingVersion = 0, bookingConflict = false;
 const gpsWrites = [];
 let gpsLocation = null, gpsSession = null, trackingReadFailure = false, trackingPhase = 'PickupEnRoute';
-let boardOnline = true, boardWorkload = 0, claimConflict = false;
+let boardOnline = true, boardHasPosition = true, boardWorkload = 0, claimConflict = false;
 const publicClaimWrites = [], pullAssignedJobs = [];
+let missingRoutePin=false, roadRouteFailure=false;
+const roadRouteRequests=[];
 const publicBoardJobs = [
   { id: 42, stage: 'Pickup', workflowVersion: 3, serviceName: 'Full Service', kilos: '8', scheduledDate: '2026-10-24', scheduledTime: '1970-01-01T09:00:00.000Z', createdAt: '2026-10-24T01:00:00Z', shopName: 'Test Laundry Partner With A Long Name', pickupArea: 'Naga, Camarines Sur', dropoffArea: 'Basud, Camarines Norte', distanceKm: 1.2 },
   { id: 43, stage: 'Delivery', workflowVersion: 6, serviceName: 'Wash Only', kilos: '5', scheduledDate: null, scheduledTime: null, createdAt: '2026-10-24T02:00:00Z', shopName: 'Test Laundry Partner', pickupArea: 'Basud, Camarines Norte', dropoffArea: 'Naga, Camarines Sur', distanceKm: null },
@@ -198,6 +200,18 @@ async function clickText(text) {
     if (message.method === 'Fetch.requestPaused') {
       const { requestId, request } = message.params;
       try {
+        if(pullTest && request.url.includes('unpkg.com/leaflet')) {
+          const js = `window.L={map:function(id){var node=document.getElementById(id);node.style.background='repeating-linear-gradient(0deg,#EDF3F7,#EDF3F7 39px,#DEE7EF 40px)';return{node:node,layers:[],fitBounds:function(points){this.points=points;var self=this;var ys=points.map(p=>p[0]),xs=points.map(p=>p[1]);function project(p){return[25+(p[1]-Math.min(...xs))/(Math.max(...xs)-Math.min(...xs)||1)*(node.clientWidth-50),25+(Math.max(...ys)-p[0])/(Math.max(...ys)-Math.min(...ys)||1)*(node.clientHeight-50)]}this.layers.forEach(layer=>{if(layer.point){var p=project(layer.point);layer.node.style.cssText='position:absolute;left:'+p[0]+'px;top:'+p[1]+'px;transform:translate(-50%,-50%);z-index:2'}else if(layer.coords){layer.poly.setAttribute('points',layer.coords.map(p=>project(p).join(',')).join(' '))}})},invalidateSize:function(){},removeLayer:function(layer){layer.node.remove();this.layers=this.layers.filter(x=>x!==layer)}}},tileLayer:function(){return{addTo:function(){return this},on:function(){return this}}},divIcon:function(o){return o},marker:function(point,opts){return{point:point,node:document.createElement('div'),addTo:function(map){this.node.innerHTML=opts.icon.html;map.node.appendChild(this.node);map.layers.push(this);return this},setLatLng:function(point){this.point=point;return this},setIcon:function(icon){this.node.innerHTML=icon.html;return this},bindTooltip:function(label){this.node.setAttribute('aria-label',label.textContent);return this}}},polyline:function(coords,opts){var svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');svg.style.cssText='position:absolute;width:100%;height:100%;inset:0';poly.setAttribute('fill','none');poly.setAttribute('stroke',opts.color);poly.setAttribute('stroke-width',opts.weight);svg.appendChild(poly);return{coords:coords,node:svg,poly:poly,addTo:function(map){map.node.appendChild(svg);map.layers.push(this);return this}}}};`;
+          await command('Fetch.fulfillRequest',{requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:request.url.includes('.js')?'application/javascript':'text/css'},{name:'Access-Control-Allow-Origin',value:'*'}],body:Buffer.from(request.url.includes('.js')?js:'').toString('base64')});
+          return;
+        }
+        if(pullTest && request.url.startsWith('https://api.mapbox.com/directions/')) {
+          const points=new URL(request.url).pathname.split('/').pop().split(';').map(point=>point.split(',').map(Number));
+          roadRouteRequests.push(points);
+          const geometry=[points[0],[points[0][0],(points[0][1]+points[1][1])/2],points[1]];
+          await command('Fetch.fulfillRequest',{requestId,responseCode:roadRouteFailure?503:200,responseHeaders:[{name:'Content-Type',value:'application/json'},{name:'Access-Control-Allow-Origin',value:'*'}],body:Buffer.from(JSON.stringify(roadRouteFailure?{code:'Error'}:{code:'Ok',routes:[{distance:1500,duration:360,geometry:{type:'LineString',coordinates:geometry}}]})).toString('base64')});
+          return;
+        }
         if (trackingTest && request.url.includes('unpkg.com/leaflet')) {
           const js = `window.L={map:function(id){return{node:document.getElementById(id),setView:function(){return this},fitBounds:function(){},invalidateSize:function(){},removeLayer:function(m){m.node.remove()}}},tileLayer:function(){return{addTo:function(){return this},on:function(){return this}}},divIcon:function(o){return o},marker:function(coords,options){return{coords:coords,node:document.createElement('div'),addTo:function(map){this.node.style.cssText='position:absolute;left:45%;top:45%';this.node.innerHTML=options.icon.html;map.node.appendChild(this.node);return this},setLatLng:function(p){this.coords=p;return this},setIcon:function(icon){this.node.innerHTML=icon.html;return this},bindTooltip:function(text){this.node.setAttribute('aria-label',text.textContent);return this},getLatLng:function(){return{lat:this.coords[0],lng:this.coords[1]}}}}};`;
           const isJS = request.url.includes('.js');
@@ -207,6 +221,13 @@ async function clickText(text) {
         if (!request.url.includes('/api/')) { await command('Fetch.continueRequest',{ requestId }); return; }
         const endpoint = new URL(request.url).pathname;
         const photoEndpoint = endpoint === '/api/shops/101/photo';
+        if(pullTest && request.method==='GET' && /^\/api\/delivery\/orders\/(42|43)\/route-preview$/.test(endpoint)) {
+          const pickup=endpoint.includes('/42/');
+          const customer=missingRoutePin?null:{latitude:pickup?13.62:13.64,longitude:pickup?123.19:123.21},shop={latitude:13.63,longitude:123.2};
+          const data={orderId:pickup?42:43,workflowVersion:3,stage:pickup?'Pickup':'Delivery',origin:pickup?customer:shop,destination:pickup?shop:customer,missingPins:missingRoutePin?['customer']:[]};
+          await command('Fetch.fulfillRequest',{requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'application/json'},{name:'Access-Control-Allow-Origin',value:'*'}],body:Buffer.from(JSON.stringify({success:true,data})).toString('base64')});
+          return;
+        }
         if (originalOrderStepsTest) assert.ok(!endpoint.startsWith('/api/delivery/orders/'),'Original orders retain their existing API');
         assert.ok((scheduleTest || originalOrderStepsTest) && request.method === 'PUT' && endpoint === '/api/transactions/42/status' || ['GET','OPTIONS'].includes(request.method) || photoTest && photoEndpoint && ['PUT','DELETE'].includes(request.method)
           || dispatchTest && request.method === 'PUT' && /^\/api\/delivery\/orders\/\d+\/assign$/.test(endpoint)
@@ -431,7 +452,7 @@ async function clickText(text) {
         }
         const dispatchDelivery = endpoint.includes('/orders/43/');
         const dispatchOptions = { stage: dispatchDelivery ? 'Delivery' : 'Pickup', workflowVersion: 3, origin: { source: dispatchDelivery ? 'shop' : 'customer', name: dispatchDelivery ? 'Laundry Partner' : 'Test Customer', address: 'Naga, Camarines Sur', coordinatesAvailable: !missingDispatchOrigin }, riders: dispatchDelivery ? [{ userId: 22, name: 'Rider near shop', workload: 0, distance: missingDispatchOrigin ? null : 0.2 }, { userId: 21, name: 'Rider near customer', workload: 2, distance: missingDispatchOrigin ? null : 4 }] : [{ userId: 21, name: 'Rider near customer', workload: 2, distance: 0.5 }, { userId: 22, name: 'Rider near shop', workload: 0, distance: 4 }, { userId: 23, name: 'Rider without position', workload: 0, distance: null }] };
-        const data = endpoint === '/api/delivery/available-jobs' ? { rider: { online: boardOnline, workload: boardWorkload, capacity: 3, hasPosition: true }, limit: 100, jobs: boardOnline ? publicBoardJobs.filter(job => !job.claimed) : [] }
+        const data = endpoint === '/api/delivery/available-jobs' ? { rider: { online: boardOnline, workload: boardWorkload, capacity: 3, hasPosition: boardHasPosition }, limit: 100, jobs: boardOnline ? publicBoardJobs.filter(job => !job.claimed).map(job=>boardHasPosition?job:{...job,distanceKm:null}) : [] }
           : pullTest && endpoint === '/api/delivery/rider' ? { rider: { online: boardOnline }, jobs: pullAssignedJobs }
           : dispatchTest && endpoint.endsWith('/rider-options') ? dispatchOptions
           : processingTimerTest && /^\/api\/delivery\/orders\/(42|43)$/.test(endpoint) ? { ...orders.find(order => String(order.id) === endpoint.split('/').pop()), assignments: [], events: [] }
@@ -465,7 +486,7 @@ async function clickText(text) {
     }
   });
   await command('Page.enable'); await command('Runtime.enable');
-  await command('Fetch.enable',{ patterns:[{urlPattern:'*/api/*'}, ...(trackingTest ? [{urlPattern:'*unpkg.com/leaflet*'}] : [])] });
+  await command('Fetch.enable',{ patterns:[{urlPattern:'*/api/*'}, ...(trackingTest || pullTest ? [{urlPattern:'*unpkg.com/leaflet*'}] : []), ...(pullTest?[{urlPattern:'https://api.mapbox.com/directions/*'}]:[])] });
   if (callTest) await command('Page.addScriptToEvaluateOnNewDocument', { source: `window.copiedPhoneNumbers=[];Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async number=>{window.copiedPhoneNumbers.push(number)}}});` });
   if (scheduleTest) {
     for (const width of [320,390,768,1440]) {
@@ -830,34 +851,117 @@ async function clickText(text) {
     return;
   }
   if (pullTest) {
+    const panelRest = '(()=>{const p=document.querySelector("[data-testid=rider-dashboard-panel]");if(!p)return false;const m=new DOMMatrix(getComputedStyle(p).transform);return Math.abs(m.m41)<0.1&&Math.abs(m.m42)<0.1})()';
+    const panelClosed = '!document.querySelector("[data-testid=rider-dashboard-panel]")';
+    await command('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'no-preference'}]});
+    boardOnline=false; boardHasPosition=false;
+    await command('Browser.setPermission',{permission:{name:'geolocation'},setting:'denied',origin:'http://127.0.0.1:4178'});
+    await visit('/rider',390,'Go online to receive jobs','rider-offline-go-online-phone');
+    assert.equal(await evaluate('document.querySelectorAll("[data-testid^=available-job-]").length'),0);
+    await clickText('Open rider tools');
+    await waitFor(panelRest);
+    await clickText('Update dispatch position');
+    await waitFor('document.body.innerText.includes("Location access is off")');
+    assert.equal(boardOnline,false,'Location permission never changes availability');
+    await clickText('Close Rider tools');
+    await waitFor(panelClosed);
+    await clickText('Go online');
+    await waitFor('document.body.innerText.includes("You are online")&&!!document.querySelector("[data-testid=available-job-42]")');
+    assert.equal(boardHasPosition,false);
+    assert.ok(await evaluate('document.body.innerText.includes("Distance unavailable")'),'Jobs appear without location permission or a position');
+    boardHasPosition=true;
     for (const width of [320, 390, 768, 1440]) {
-      await visit('/rider', width, 'Choose your next job', `pull-job-board-${width}`);
+      await visit('/rider', width, '2 jobs', `pull-job-board-${width}`);
       const text = await evaluate('document.body.innerText');
       assert.ok(!text.includes('Private Claimed Customer') && !text.includes('123 Private Customer Street'));
       await clickText('Pickup');
-      assert.ok(!(await evaluate('document.body.innerText')).includes('Claim delivery job'));
-      await clickText('All'); await clickText('Nearest first');
+      assert.equal(await evaluate('!!document.querySelector("[data-testid=available-job-43]")'),false);
+      await clickText('All'); await clickText('Filter and sort jobs');
+      await waitFor('!!document.querySelector("[data-testid=rider-dashboard-panel]")');
+      await waitFor(panelRest);
+      const bounds=await evaluate('(()=>{const r=document.querySelector("[data-testid=rider-dashboard-panel]").getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}})()');
+      assert.ok(bounds.left>=-1&&bounds.right<=width+1&&bounds.top>=-1&&bounds.bottom<=(width<768?845:1001),'Filter panel fits viewport: '+JSON.stringify(bounds));
+      await clickText('Nearest first');
+      if(width===390) {
+        await pause(250);
+        const shot=await command('Page.captureScreenshot',{format:'png'});
+        fs.writeFileSync(path.join(artifacts,'rider-filters-sheet-phone.png'),Buffer.from(shot.data,'base64'));
+      }
+      await clickText('Show 2 jobs');
       assert.equal(await evaluate('document.querySelector("[data-testid^=available-job-]").getAttribute("data-testid")'), 'available-job-42');
+      assert.ok(await evaluate('document.querySelector("[data-testid=available-job-42]").getBoundingClientRect().height<260'),'Dashboard job cards are compact');
+      if(width===390) {
+        const motion=await evaluate(`new Promise((resolve,reject)=>{let first=null;const until=performance.now()+2000;document.querySelector('[aria-label="View pickup job #42"]').click();function sample(){const p=document.querySelector('[data-testid=rider-dashboard-panel]');if(p){const y=new DOMMatrix(getComputedStyle(p).transform).m42;if(y>1&&first===null)first=y;if(first!==null&&Math.abs(y)<0.1){resolve({first,last:y});return;}}if(performance.now()>until){reject(new Error('Sheet did not slide up'));return;}requestAnimationFrame(sample);}requestAnimationFrame(sample);})`);
+        assert.ok(motion.first>motion.last,'Mobile sheet translates upward into place');
+      } else await clickText('View pickup job #42');
+      await waitFor('!!document.querySelector("[data-testid=rider-dashboard-panel]")');
+      await waitFor(panelRest);
+      await waitFor('!!document.querySelector("[data-testid=job-route-summary]")');
+      await waitFor(`document.querySelector('iframe[title="Job route map"]')?.contentWindow.line!==null&&document.querySelector('iframe[title="Job route map"]')?.contentWindow.latest?.coordinates.length===3`);
+      assert.ok(await evaluate('document.querySelector("[data-testid=rider-dashboard-panel]").innerText.includes("Customer → laundry shop")'));
+      assert.ok(await evaluate('document.querySelector("[data-testid=rider-dashboard-panel]").innerText.includes("Booked")'),'Details retain booking information');
+      assert.ok(await evaluate(`!!document.querySelector('[data-testid=rider-panel-footer] [aria-label="Claim pickup job #42 from details"]')`));
+      await pause(250);
+      const detailShot=await command('Page.captureScreenshot',{format:'png'});
+      fs.writeFileSync(path.join(artifacts,`rider-job-details-${width}.png`),Buffer.from(detailShot.data,'base64'));
+      await clickText('Close Pickup · Order #42');
+      await waitFor(panelClosed);
+      if(width===390) {
+        await clickText('Filter and sort jobs');
+        await waitFor('document.activeElement?.getAttribute("aria-label")==="Close Filter jobs"');
+        await command('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+        await command('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+        await waitFor('!document.querySelector("[data-testid=rider-dashboard-panel]")');
+      }
     }
-    await clickText('Claim pickup job'); await clickText('Cancel'); assert.equal(publicClaimWrites.length, 0);
-    await clickText('Claim pickup job'); await clickText('Claim job');
+    await clickText('Open rider tools');
+    await waitFor(panelRest);
+    const drawer=await evaluate('(()=>{const r=document.querySelector("[data-testid=rider-dashboard-panel]").getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,height:r.height}})()');
+    assert.equal(drawer.right,1440); assert.equal(drawer.width,400); assert.equal(drawer.height,1000);
+    await pause(250);
+    const drawerShot=await command('Page.captureScreenshot',{format:'png'});
+    fs.writeFileSync(path.join(artifacts,'rider-tools-drawer-desktop.png'),Buffer.from(drawerShot.data,'base64'));
+    await clickText('Sign Out'); await waitFor('!!document.querySelector("[data-testid=app-dialog]")'); await clickText('Cancel');
+    await waitFor('!document.querySelector("[data-testid=app-dialog]")');
+    missingRoutePin=true;
+    const beforeMissing=roadRouteRequests.length;
+    await clickText('View pickup job #42'); await waitFor('document.body.innerText.includes("Route unavailable:")');
+    assert.equal(roadRouteRequests.length,beforeMissing,'Missing pins do not invent a road route');
+    await clickText('Close Pickup · Order #42'); await waitFor(panelClosed);
+    missingRoutePin=false; roadRouteFailure=true;
+    await clickText('View pickup job #42'); await waitFor('document.body.innerText.includes("Only saved pins are shown")');
+    await waitFor(`document.querySelector('iframe[title="Job route map"]')?.contentWindow.latest?.coordinates.length===0`);
+    roadRouteFailure=false; await clickText('Retry road route'); await waitFor('!!document.querySelector("[data-testid=job-route-summary]")');
+    await clickText('Close Pickup · Order #42'); await waitFor(panelClosed);
+    assert.deepEqual(roadRouteRequests[0],[[123.19,13.62],[123.2,13.63]],'Pickup road route runs customer to shop');
+    await clickText('Claim pickup job #42'); await clickText('Cancel'); assert.equal(publicClaimWrites.length, 0);
+    await clickText('View pickup job #42'); await clickText('Claim pickup job #42 from details'); await clickText('Claim job');
     await waitFor('location.pathname === "/rider/jobs" && document.body.innerText.includes("Start pickup trip")');
     assert.equal(publicClaimWrites.length, 1);
     assert.ok((await evaluate('document.body.innerText')).includes('Private Claimed Customer'));
     assert.ok(!(await evaluate('document.body.innerText')).includes('Accept job'), 'Claimed jobs do not require a second acceptance');
     claimConflict = true;
-    await visit('/rider', 390, 'Claim delivery job');
-    await clickText('Claim delivery job'); await clickText('Claim job');
+    await visit('/rider', 390, '1 job');
+    await clickText('View delivery job #43'); await waitFor('!!document.querySelector("[data-testid=job-route-summary]")');
+    assert.ok(await evaluate('document.querySelector("[data-testid=rider-dashboard-panel]").innerText.includes("Laundry shop → customer")'));
+    assert.deepEqual(roadRouteRequests.at(-1),[[123.2,13.63],[123.21,13.64]],'Delivery road route runs shop to return address');
+    await clickText('Close Delivery · Order #43'); await waitFor(panelClosed);
+    await clickText('Claim delivery job #43'); await clickText('Claim job');
     await waitFor('document.body.innerText.includes("This job was claimed or changed") && !document.querySelector("[data-testid=available-job-43]")');
     publicBoardJobs.forEach(job => { job.claimed = false; }); boardWorkload = 3;
     await visit('/rider', 320, 'Your job slots are full');
-    assert.equal(await evaluate('Array.from(document.querySelectorAll("[role=button]")).find(e=>e.innerText.trim()==="Claim pickup job").getAttribute("aria-disabled")'), 'true');
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Claim pickup job #42"]').getAttribute('aria-disabled')`), 'true');
     boardOnline = false;
     await visit('/rider', 390, 'You are offline');
-    assert.ok(!(await evaluate('document.body.innerText')).includes('Claim pickup job'));
-    await evaluate(`document.querySelector('[aria-label="Rider availability"]').click()`);
+    assert.equal(await evaluate('!!document.querySelector("[data-testid^=available-job-]")'),false);
+    await clickText('Go online');
     await waitFor('document.body.innerText.includes("You are online")');
     assert.equal(boardOnline, true);
+    await clickText('Go offline');
+    await waitFor('document.body.innerText.includes("Go online to receive jobs")&&!document.querySelector("[data-testid^=available-job-]")');
+    assert.equal(boardOnline,false);
+    await clickText('Go online');
+    await waitFor('document.body.innerText.includes("You are online")');
     publicBoardJobs.forEach(job => { job.claimed = true; }); boardWorkload = 0;
     await visit('/rider', 390, 'No available jobs right now');
     console.log('PASS pull board mobile/desktop privacy, filters, sorting, cancel, immediate claim, conflict refresh, capacity, online toggle and empty state');

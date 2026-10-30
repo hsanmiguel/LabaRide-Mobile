@@ -13,15 +13,17 @@ function fixture(status = 'PickupQueued') {
   db.$transaction = callback => callback(db); db.$queryRaw = async () => [];
   db.riderProfile = { findUnique: async () => rider };
   db.user = { findUnique: async () => ({ isRider: true }), findMany: async () => [{ id: 4 }] };
-  db.transaction = { findUnique: async () => order, findMany: async options => { selection = options; return [order]; }, update: async ({ data }) => { order.workflowStatus = data.workflowStatus; order.workflowVersion++; } };
+  db.transaction = { findUnique: async () => order,
+    findFirst: async options => { selection = options; return options.where.id === order.id && options.where.workflowStatus.in.includes(order.workflowStatus) && order.shop.approvalStatus === 'Approved' && !order.assignments.some(job=>['Offered','Accepted'].includes(job.status)) ? order : null; },
+    findMany: async options => { selection = options; return [order]; }, update: async ({ data }) => { order.workflowStatus = data.workflowStatus; order.workflowVersion++; } };
   db.deliveryAssignment = { findMany: async () => [], count: async () => workload, create: async ({ data }) => { const job = { ...data, id: 32 }; order.assignments.push(job); return job; } };
   db.orderEvent = { create: async ({ data }) => events.push(data) };
   db.notification = { createMany: async ({ data }) => notices.push(...data) };
   async function invoke(method, body = { stage: status === 'PickupQueued' ? 'Pickup' : 'Delivery', expectedVersion: 0 }, userId = 7) {
     let error;
-    const res = { status() { return this; }, json(body) { this.body = body; return this; } };
-    await DeliveryController[method]({ params: { id: '47' }, body, user: { userId }, app: { get: () => undefined } }, res, failure => { error = failure; });
-    return { error, data: res.body?.data };
+    const res = { setHeader(name,value) { this.headers ||= {}; this.headers[name]=value; }, status() { return this; }, json(body) { this.body = body; return this; } };
+    await DeliveryController[method]({ params: { id: '47' }, body, user: { userId, isRider: [7,8].includes(userId) }, app: { get: () => undefined } }, res, failure => { error = failure; });
+    return { error, data: res.body?.data, headers: res.headers };
   }
   return { order, rider, events, notices, invoke, get selection() { return selection; }, set workload(value) { workload = value; } };
 }
@@ -84,4 +86,43 @@ test('pickup preview uses the collection address instead of the return address w
   f.order.workflowStatus = 'ReadyForDelivery';
   const delivery = await f.invoke('availableJobs');
   assert.equal(delivery.data.jobs[0].dropoffArea, 'Naga, Camarines Sur');
+});
+
+test('route previews use collection-to-shop for pickup and shop-to-return-address for delivery',async()=>{
+  const f=fixture();
+  Object.assign(f.order,{collectionMethod:'ShopPickup',collectionAddress:{address_line_1:'PRIVATE_COLLECTION_STREET',city:'Collection City',state_province:'Province',postal_code:'4400',country:'Philippines',address_type:'Home',latitude:0,longitude:2}});
+  const pickup=await f.invoke('routePreview');
+  assert.equal(pickup.error,undefined);
+  assert.deepEqual(pickup.data.origin,{latitude:0,longitude:2});
+  assert.deepEqual(pickup.data.destination,{latitude:0,longitude:1});
+  assert.deepEqual(pickup.data.missingPins,[]);
+  assert.equal(pickup.headers['Cache-Control'],'private, no-store');
+  assert.ok(!JSON.stringify(pickup.data).includes('PRIVATE_'));
+  assert.equal(f.selection.select.userName,undefined);
+  assert.equal(f.selection.where.shop.approvalStatus,'Approved');
+  f.order.workflowStatus='ReadyForDelivery';
+  const delivery=await f.invoke('routePreview');
+  assert.equal(delivery.data.stage,'Delivery');
+  assert.deepEqual(delivery.data.origin,{latitude:0,longitude:1});
+  assert.deepEqual(delivery.data.destination,{latitude:0,longitude:0});
+});
+
+test('route previews reject offline/inactive/non-riders and unavailable, assigned, unapproved or original orders',async()=>{
+  for(const alter of [f=>{f.rider.online=false;},f=>{f.rider.active=false;},f=>{f.order.shop.approvalStatus='Suspended';},f=>{f.order.assignments.push({riderId:8,status:'Accepted'});},f=>{f.order.workflowStatus='Washing';},f=>{f.order.workflowStatus=null;}]){
+    const f=fixture();alter(f);
+    assert.ok((await f.invoke('routePreview')).error);
+    assert.equal(f.events.length,0);
+  }
+  const f=fixture();assert.equal((await f.invoke('routePreview',{},1)).error.statusCode,403);
+});
+
+test('route previews report missing pins without geocoding or inventing coordinates',async()=>{
+  const f=fixture();f.order.latitude=null;f.order.shop.longitude=null;
+  const result=await f.invoke('routePreview');
+  assert.equal(result.error,undefined);
+  assert.equal(result.data.origin,null);assert.equal(result.data.destination,null);
+  assert.deepEqual(result.data.missingPins,['customer','shop']);
+  f.order.collectionMethod='ShopPickup';f.order.collectionAddress=null;f.order.latitude=14;f.order.longitude=123;
+  const missingCollection=await f.invoke('routePreview');
+  assert.equal(missingCollection.data.origin,null,'Missing collection pin never substitutes the return address');
 });

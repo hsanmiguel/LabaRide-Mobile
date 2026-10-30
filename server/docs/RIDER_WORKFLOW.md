@@ -56,13 +56,22 @@ Accepted assignment. Pending bookings, processing laundry, in-custody exceptions
 closed orders and jobs reserved by admin offers never appear. Expired normal offers
 and failed pickups return to the board when their state becomes eligible.
 
-Previews include order ID, service, kilograms, schedule, shop name, approximate city/
+Board previews include order ID, service, kilograms, schedule, shop name, approximate city/
 province areas and approximate distance to the collection point. They exclude
 customer names, exact addresses/coordinates, contact, instructions, notes, access
-codes, handoff codes and images. Exact customer details unlock only in an accepted
-job. Distances are rounded straight-line estimates from the rider's saved position;
+codes, handoff codes and images. Names, written addresses and contacts unlock only
+in an accepted job. Distances are rounded straight-line estimates from the rider's saved position;
 missing coordinates remain claimable with Distance unavailable. The oldest 100 jobs
 are loaded; riders can filter Pickup/Delivery and sort oldest or nearest first.
+
+The Dashboard details sheet separately requests
+`GET /api/delivery/orders/:id/route-preview`. It exposes just the saved route pins
+to active, online riders while the job is still eligible, unassigned and from an
+approved shop. Pickup routes use the collection address; delivery routes use the
+return address. Responses are private/no-store. Missing collection pins never
+substitute a different return address. The app draws a Mapbox driving route, or
+shows the available pins and an explicit unavailable/error message. Opening a map
+does not claim a job or bypass the normal claim checks.
 
 `PUT /api/delivery/orders/:id/claim` accepts `{stage, expectedVersion}`. It locks the
 order before the rider user row, rechecks availability, online/active access, shop

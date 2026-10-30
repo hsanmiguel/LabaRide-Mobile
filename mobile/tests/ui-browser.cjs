@@ -25,6 +25,9 @@ const dialogTest = process.argv.includes('--dialogs');
 const logoutTest = process.argv.includes('--logout');
 const scheduleTest = process.argv.includes('--schedule');
 const shopOrdersTest = process.argv.includes('--shop-orders');
+const analyticsTest = process.argv.includes('--analytics');
+const analyticsRequests = [];
+const { analyticsRange, analyticsSeries } = require('../../server/dist/utils/shop-analytics');
 const nativeDialogs = [], dialogWrites = [], workflowWrites = [];
 let failServiceDelete = false;
 let photoBytes, hasPhoto = false, brokenPhoto = false;
@@ -367,7 +370,17 @@ async function clickText(text) {
           ] }
           : deliveryTest && endpoint === '/api/delivery/operations' ? { orders: [], riders: [{ userId: 7, active: true, online: true, workload: 2, user }] }
           : ['/api/auth/login','/api/auth/verify-token'].includes(endpoint) ? { user, token: 'isolated-ui-test' } : endpoint.startsWith('/api/users/') ? user : endpoint === '/api/admin/shops' ? shops.map(shop => ({ ...shop, user, reviewedBy: user }))
-          : endpoint === '/api/shops' ? mode==='empty'?[]:shops.filter(shop => shop.approvalStatus === 'Approved') : endpoint.startsWith('/api/shops/') ? shops[0] : endpoint.startsWith('/api/transactions/') ? mode==='empty'?[]:orders : [];
+          : endpoint === '/api/shops' ? mode==='empty'?[]:shops.filter(shop => shop.approvalStatus === 'Approved') : endpoint.endsWith('/analytics') ? (() => {
+            const params = new URL(request.url).searchParams;
+            analyticsRequests.push({ start: params.get('start'), end: params.get('end') });
+            const range = analyticsRange(params.get('start'), params.get('end'));
+            const series = analyticsSeries(range, mode === 'empty' ? [] : [{ local: range.start + 'T09', count: 4 }, { local: range.end + 'T14', count: 8 }],
+              mode === 'empty' ? [] : [{ local: range.start + 'T10', count: 1, value: 215, kilos: 8 }, { local: range.end + 'T15', count: 2, value: 430, kilos: 16 }]);
+            const summary = series.reduce((sum, p) => ({ orders: sum.orders + p.orders, completedOrders: sum.completedOrders + p.completedOrders, completedValue: sum.completedValue + p.completedValue, kilos: sum.kilos + p.kilos }), { orders: 0, completedOrders: 0, completedValue: 0, kilos: 0 });
+            return { range: { start: range.start, end: range.end, granularity: range.granularity, timeZone: 'Asia/Manila' }, summary, series,
+              popularServices: mode === 'empty' ? [] : [{ name: 'Full Service', orders: 2, kilos: 16, value: 430 }, { name: 'Wash Only', orders: 1, kilos: 8, value: 215 }],
+              workload: mode === 'empty' ? { pending: 0, queued: 0, ready: 0 } : { pending: 3, queued: 2, ready: 1 }, undatedCompletedOrders: mode === 'empty' ? 0 : 2 };
+          })() : endpoint.startsWith('/api/shops/') ? shops[0] : endpoint.startsWith('/api/transactions/') ? mode==='empty'?[]:orders : [];
         await command('Fetch.fulfillRequest',{ requestId, responseCode: mode==='error'?503:200,
           responseHeaders: [{name:'Content-Type',value:'application/json'},{name:'Access-Control-Allow-Origin',value:'*'},{name:'Access-Control-Allow-Headers',value:'Content-Type, Authorization'}, {name:'Access-Control-Allow-Methods',value:'GET, PUT, DELETE, OPTIONS'}],
           body: Buffer.from(JSON.stringify(mode==='error'?{success:false,error:{message:'Test service unavailable'}}:{success:true,data})).toString('base64') });
@@ -1046,6 +1059,45 @@ async function clickText(text) {
     assert.deepEqual(errors,[]);
     assert.deepEqual(nativeDialogs,[],'Photo removal uses an in-app modal');
     console.log('PASS photo picker, upload, display, filters, errors, confirmation, removal and image fallback');
+    return;
+  }
+  if (analyticsTest) {
+    for (const width of [320,390,768,1440]) {
+      await visit('/shop/home',width,'Popular services',width===390?'dashboard-analytics-phone':width===1440?'dashboard-analytics-desktop':undefined);
+      assert.equal(await evaluate('document.querySelector("[data-testid=dashboard-chart-total]").innerText'), '12 orders');
+      await clickText('Show revenue graph');
+      await waitFor('document.querySelector("[data-testid=dashboard-chart-total]").innerText.includes("645.00")');
+      assert.equal(await evaluate('document.querySelectorAll("[data-testid=dashboard-line-chart] path[fill=none]").length'),1,'Only the selected metric has a line');
+      await evaluate('document.querySelector("[data-testid=dashboard-line-chart] [role=button]").click()');
+      await waitFor('document.querySelector("[data-testid=dashboard-performance]").innerText.includes("215.00")');
+      if (width === 390) {
+        await evaluate('document.querySelector("[data-testid=dashboard-performance]").scrollIntoView({block:"start"})');
+        await pause(100);
+        const shot = await command('Page.captureScreenshot', { format: 'png' });
+        fs.writeFileSync(path.join(artifacts,'dashboard-revenue-phone.png'),Buffer.from(shot.data,'base64'));
+      }
+    }
+    const beforeToggle = analyticsRequests.length;
+    await clickText('Show orders graph');
+    assert.equal(analyticsRequests.length,beforeToggle,'Toggling metrics reuses the selected range');
+    await clickText('Dashboard Today'); await waitFor('document.body.innerText.includes("Hourly totals")');
+    await clickText('Dashboard Custom');
+    async function dateInput(label,value) {
+      await evaluate(`(()=>{const e=document.querySelector('input[aria-label=${JSON.stringify(label)}]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    }
+    await dateInput('Analytics start date','2020-01-03'); await dateInput('Analytics end date','2020-01-01');
+    await clickText('Apply dates'); await waitFor('document.body.innerText.includes("End date must be on or after")');
+    await dateInput('Analytics start date','2020-01-01'); await dateInput('Analytics end date','2020-06-01');
+    await clickText('Apply dates'); await waitFor('document.body.innerText.includes("Monthly totals")');
+    assert.deepEqual(analyticsRequests.at(-1), { start: '2020-01-01', end: '2020-06-01' });
+    await clickText('3 Pending'); await waitFor('location.pathname==="/shop/transactions"&&!!document.querySelector("[data-testid=shop-order-42]")');
+    mode='empty'; await visit('/shop/home',390,'No completed services in this period.');
+    assert.equal(await evaluate('document.querySelector("[data-testid=dashboard-chart-total]").innerText'),'0 orders');
+    await clickText('Show revenue graph'); await waitFor('document.querySelector("[data-testid=dashboard-chart-total]").innerText.includes("0.00")');
+    mode='error'; await visit('/shop/home',390,'Unable to load');
+    assert.equal(await evaluate('!!document.querySelector("[data-testid=dashboard-performance]")'),false,'Errors never show invented chart data');
+    assert.deepEqual(errors,[]);
+    console.log('PASS dashboard metric toggle, exact values, presets, custom validation, aggregation, workload links, empty and error states');
     return;
   }
   if (shopOrdersTest) {

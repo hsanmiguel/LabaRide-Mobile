@@ -197,6 +197,8 @@ export class TransactionController {
           ...(status === 'Queued' && existing.status !== status ? { receivedAt: now } : {}),
           ...(status === 'Processing' && existing.status !== status ? { processingStartedAt: now } : {}),
           ...(status === 'Ready' && existing.status !== status ? { readyAt: now } : {}),
+          ...(status === 'Completed' && existing.status !== status ? { completedAt: now } : {}),
+          ...(status === 'Cancelled' && existing.status !== status ? { cancelledAt: now } : {}),
           ...(estimatedReadyAt ? { estimatedReadyAt: new Date(estimatedReadyAt), estimateUpdatedAt: now, estimateReason: estimateReason || null } : {}),
           ...(confirmPickup ? { confirmedPickupAt: existing.requestedPickupAt } : {}),
         },
@@ -251,7 +253,7 @@ export class TransactionController {
       const updated = await prisma.$transaction(async tx => {
         const result = await tx.transaction.updateMany({
           where: { id: transactionId, userId: req.user!.userId, status: 'Pending' },
-          data: { status: 'Cancelled', notes: reason },
+          data: { status: 'Cancelled', notes: reason, cancelledAt: new Date() },
         });
         if (result.count) await tx.notification.createMany({ data: [
           { userId: existing.userId, transactionId, shopMode: false, title: 'Order cancelled', message: `You cancelled order #${transactionId}: ${reason}` },

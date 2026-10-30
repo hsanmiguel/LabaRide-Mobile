@@ -215,6 +215,8 @@ model Transaction {
   estimateUpdatedAt DateTime? @map("estimate_updated_at") @db.Timestamptz(3)
   estimateReason String? @map("estimate_reason")
   readyAt DateTime? @map("ready_at") @db.Timestamptz(3)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(3)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   // Legacy schedules remain readable; new bookings use requestedPickupAt and ready estimates.
   scheduledDate   DateTime?         @map("scheduled_date") @db.Date
@@ -248,6 +250,8 @@ model Transaction {
   access_code          String?
   dropoff_instructions String?
 
+  @@index([shopId, createdAt])
+  @@index([shopId, completedAt])
   @@map("transactions")
 }
 

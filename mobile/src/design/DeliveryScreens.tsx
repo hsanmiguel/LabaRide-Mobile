@@ -76,7 +76,7 @@ function useCommand() {
     setBusy(true); setError('');
     try {
       await api.put(path, body);
-      await Promise.all(['delivery', 'notifications', 'user-orders', 'shop-orders', 'user'].map(key => cache.invalidateQueries({ queryKey: [key] })));
+      await Promise.all(['delivery', 'notifications', 'user-orders', 'shop-orders', 'shop-analytics', 'user'].map(key => cache.invalidateQueries({ queryKey: [key] })));
       return true;
     } catch (failure) {
       setError(message(failure));

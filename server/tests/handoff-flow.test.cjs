@@ -70,6 +70,7 @@ test('shop collection and final delivery follow the appropriate counterpart conf
     assert.equal(await f.act(counterpart, 'releaseHandoff'), undefined);
     assert.equal(await f.act(3, 'receiveHandoff'), undefined);
     assert.equal(f.order.workflowStatus, result);
+    assert.equal(f.order.completedAt instanceof Date, result === 'Completed');
     assert.equal(f.order.assignments[0].status, result === 'Completed' ? 'Completed' : 'Accepted');
   }
 });

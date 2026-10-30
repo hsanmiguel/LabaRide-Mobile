@@ -59,6 +59,7 @@ export default function RootLayout() {
     const invalidate = () => {
       queryClient.invalidateQueries({ queryKey: ["user-orders"] });
       queryClient.invalidateQueries({ queryKey: ["shop-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["shop-analytics"] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["delivery"] });
     };

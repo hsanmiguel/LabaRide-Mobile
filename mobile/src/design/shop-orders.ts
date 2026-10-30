@@ -47,6 +47,8 @@ export function shopOrderProgress(order: Order) {
 }
 
 export function shopOrderTiming(order: Order) {
+  if (shopOrderStatus(order) === "Completed" && order.completedAt) return { label: "Completed", value: order.completedAt };
+  if (shopOrderStatus(order) === "Cancelled" && order.cancelledAt) return { label: "Cancelled", value: order.cancelledAt };
   if (orderIsPast(order)) return { label: order.updatedAt ? "Last updated" : "Placed", value: order.updatedAt || order.createdAt };
   if (order.requestedPickupAt && ["Pending", "Accepted"].includes(shopOrderStatus(order)) && !order.receivedAt)
     return { label: "Requested pickup", value: order.confirmedPickupAt || order.requestedPickupAt };

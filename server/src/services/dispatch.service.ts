@@ -70,6 +70,8 @@ export async function changeState(tx: Prisma.TransactionClient, order: Awaited<R
     ...(to === 'LaundryReceived' && !order.receivedAt ? { receivedAt: new Date() } : {}),
     ...(to === 'Washing' && !order.processingStartedAt ? { processingStartedAt: new Date() } : {}),
     ...(['ReadyForDelivery', 'ReadyForCollection'].includes(to) && !order.readyAt ? { readyAt: new Date() } : {}),
+    ...(to === 'Completed' && !order.completedAt ? { completedAt: new Date() } : {}),
+    ...(to === 'Cancelled' && !order.cancelledAt ? { cancelledAt: new Date() } : {}),
   } });
   await recordEvent(tx, order, actorId, action, to, detail, riderId);
 }

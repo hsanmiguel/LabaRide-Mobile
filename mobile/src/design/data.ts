@@ -91,6 +91,8 @@ export interface Order extends AddressData {
   estimateUpdatedAt?: string | null;
   estimateReason?: string | null;
   readyAt?: string | null;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
   updatedAt?: string;
   scheduledDate: string | null;
   scheduledTime: string | null;

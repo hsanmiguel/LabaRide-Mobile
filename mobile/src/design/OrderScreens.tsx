@@ -1,17 +1,21 @@
-import { useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { ORDERS_PER_PAGE, PageControls } from "./Pagination";
+import { useEffect, useCallback, useRef, useState, type ReactNode } from "react";
+import { Modal, Pressable, ScrollView, View } from "react-native";
 import {
-  CalendarDays,
+  Clock,
   CheckCircle2,
-  History,
+  ChevronDown,
+  ChevronRight,
   Minus,
   Plus,
   Pencil,
   Truck,
 } from "lucide-react-native";
-import { router } from "expo-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { router, useFocusEffect } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuthStore } from "../store/authStore";
+import { DeliveryOrderDesign } from './DeliveryScreens';
 import {
   Asset,
   Button,
@@ -26,33 +30,40 @@ import {
   TabsRow,
   Txt,
   money,
-  palette,
+  servicePriceLabel,
+  usePalette,
   styles,
 } from "./ui";
 import {
   address,
   api,
+  confirmAction,
   fail,
-  go,
-  replaceFlow,
+  useFlowNavigation,
   unavailable,
   useOrders,
   useProfile,
   type Order,
+  type Shop,
+  type Profile,
 } from "./data";
+import { addressError, addressPayload } from "./address";
+import { DeliveryDetails, FormError } from "./AddressFields";
+import { message } from "./data";
 import { clothingNames, householdNames, useLaundryDraft } from "./store";
+import { orderPricing } from "./order-pricing";
+import { validateDeliveryTime } from "./delivery-slots";
+import { TurnaroundDetails, orderUpdateText } from "./TurnaroundDetails";
+import { DeliverySchedule } from "./DeliverySchedule";
 import { QueryState } from "./UserScreens";
+import { serviceAreaError, serviceAreaLabel } from "./service-area";
+import { shopAvailability } from "./shop-hours";
+import { useShopAvailability } from "./useShopAvailability";
+import { ShopPhoto } from "./ShopPhoto";
 
 export function draftTotals() {
   const d = useLaundryDraft.getState();
-  const kilos = Number(d.kilos) || 1;
-  const range = d.shop?.kiloPrices?.find(
-    (r) => kilos >= Number(r.minKilo) && kilos <= Number(r.maxKilo),
-  );
-  const subtotal = kilos * Number(range?.pricePerKilo || d.service?.price || 0);
-  // Match the fixed delivery charge in Flutter's ordershopsystem.dart.
-  const deliveryFee = d.deliveryType === "Deliver" ? 30 : 0;
-  return { subtotal, deliveryFee, discount: 0, total: subtotal + deliveryFee };
+  return orderPricing(d.kilos, d.service, d.shop, d.deliveryType, d.serviceIds);
 }
 export function Totals({ order }: { order?: Order }) {
   useLaundryDraft();
@@ -61,7 +72,7 @@ export function Totals({ order }: { order?: Order }) {
     <View>
       <PriceRow
         label="Subtotal"
-        value={money(order?.subtotal ?? totals.subtotal)}
+        value={order ? money(order.subtotal) : totals.subtotal === null ? "Enter laundry weight" : money(totals.subtotal)}
       />
       <PriceRow
         label="Delivery Fee"
@@ -74,13 +85,18 @@ export function Totals({ order }: { order?: Order }) {
       <View style={styles.divider} />
       <PriceRow
         label="Total"
-        value={money(order?.totalAmount ?? totals.total)}
+        value={order ? money(order.totalAmount) : totals.total === null ? "Enter laundry weight" : money(totals.total)}
         total
       />
     </View>
   );
 }
-export function LaundryCountDesign() {
+export function EmbeddedOrderPanel({ children, footer }: { children: ReactNode; footer?: ReactNode; title?: string; background?: string }) {
+  return <View style={{ gap: 16 }}>{children}{footer}</View>;
+}
+
+export function LaundryCountDesign({ embedded = false, onDone }: { embedded?: boolean; onDone?: () => void } = {}) {
+  const palette = usePalette();
   const draft = useLaundryDraft();
   const clothing = draft.shop?.clothingTypes?.length
     ? draft.shop.clothingTypes.map((i) => i.typeName || "Clothing")
@@ -88,14 +104,15 @@ export function LaundryCountDesign() {
   const household = draft.shop?.householdItems?.length
     ? draft.shop.householdItems.map((i) => i.itemName || "Household item")
     : householdNames;
+  const Container = embedded ? EmbeddedOrderPanel : Screen;
   return (
-    <Screen
+    <Container
       title="Laundries"
       footer={
         <Button
           title="Confirm"
           color={palette.navy}
-          onPress={() => router.back()}
+          onPress={() => onDone ? onDone() : router.back()}
         />
       }
     >
@@ -111,10 +128,13 @@ export function LaundryCountDesign() {
                 key={name}
                 style={[styles.between, { paddingVertical: 10 }]}
               >
-                <Txt style={{ color: palette.navy }}>{name}</Txt>
+                <Txt style={{ color: palette.navy, flex: 1 }}>{name}</Txt>
                 <View style={styles.row}>
                   <Pressable
+                    accessibilityRole="button"
                     accessibilityLabel={`Remove ${name}`}
+                    disabled={!draft.counts[name]}
+                    style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: palette.surface }}
                     onPress={() =>
                       draft.set({
                         counts: {
@@ -136,7 +156,9 @@ export function LaundryCountDesign() {
                     {draft.counts[name] || 0}
                   </Txt>
                   <Pressable
+                    accessibilityRole="button"
                     accessibilityLabel={`Add ${name}`}
+                    style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: palette.surface }}
                     onPress={() =>
                       draft.set({
                         counts: {
@@ -154,146 +176,119 @@ export function LaundryCountDesign() {
           </View>
         ))}
       </View>
-    </Screen>
+    </Container>
   );
 }
 export function OrderSummaryDesign() {
-  const draft = useLaundryDraft();
-  const user = useAuthStore((state) => state.user);
-  const totals = draftTotals();
-  if (!draft.service)
-    return (
-      <Screen title="Order Summary">
-        <Empty
-          title="Your basket is empty"
-          action="Explore shops"
-          onPress={() => router.replace("/(user)/home")}
-        />
-      </Screen>
-    );
-  return (
-    <Screen
-      title="Order Summary"
-      background={palette.surface}
-      footer={
-        <Button
-          title="Proceed to checkout"
-          color={palette.navy}
-          onPress={() =>
-            user
-              ? go("checkout")
-              : Alert.alert(
-                  "Login Required",
-                  "Please log in to place your order.",
-                  [
-                    { text: "Cancel" },
-                    {
-                      text: "Log In",
-                      onPress: () => router.push("/(auth)/login"),
-                    },
-                  ],
-                )
-          }
-        />
-      }
-    >
-      <View style={styles.stack}>
-        <Card>
-          <View style={styles.between}>
-            <View style={styles.row}>
-              <Asset name="basket.png" tint={palette.navy} />
-              <Txt style={styles.heading}>Order Summary</Txt>
-            </View>
-            <Txt style={{ fontWeight: "600", color: palette.navy }}>
-              {money(totals.subtotal)}
-            </Txt>
-          </View>
-        </Card>
-        <Card>
-          <View style={styles.between}>
-            <View style={styles.row}>
-              <Asset name="washingmachine.png" tint={palette.navy} />
-              <Txt style={styles.heading}>Services</Txt>
-            </View>
-            <Pressable
-              accessibilityLabel="Edit laundries"
-              onPress={() => go("laundries")}
-            >
-              <Pencil size={20} color={palette.navy} />
-            </Pressable>
-          </View>
-          <Txt style={{ color: palette.navy, fontWeight: "500" }}>
-            {draft.service.serviceName}
-          </Txt>
-          {Object.entries(draft.counts)
-            .filter(([, count]) => count > 0)
-            .map(([name, count]) => (
-              <PriceRow key={name} label={name} value={String(count)} />
-            ))}
-          {!Object.values(draft.counts).some((count) => count > 0) && (
-            <MenuRow
-              title="Add laundry items"
-              onPress={() => go("laundries")}
-            />
-          )}
-        </Card>
-        <Card>
-          <Txt style={styles.heading}>Note to Laundry Shop</Txt>
-          <Field
-            placeholder="Add your note here"
-            multiline
-            value={draft.notes}
-            onChangeText={(notes) => draft.set({ notes })}
-          />
-        </Card>
-        <Totals />
-      </View>
-    </Screen>
-  );
+  return <CheckoutDesign />;
 }
 export function CheckoutDesign() {
+  const palette = usePalette();
+  const { replaceFlow, go } = useFlowNavigation();
   const draft = useLaundryDraft();
+  const user = useAuthStore(state => state.user);
+  const availability = useShopAvailability(draft.shop);
   const profile = useProfile();
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const countdownTimers = useRef<{ timeout: ReturnType<typeof setTimeout>; interval: ReturnType<typeof setInterval> } | null>(null);
+  const cancelCountdown = useCallback(() => {
+    if (countdownTimers.current) {
+      clearTimeout(countdownTimers.current.timeout);
+      clearInterval(countdownTimers.current.interval);
+      countdownTimers.current = null;
+    }
+    setCountdown(null);
+  }, []);
+  useFocusEffect(useCallback(() => cancelCountdown, [cancelCountdown]));
+  const [dialog, setDialog] = useState<"items" | "address" | "schedule" | null>(null);
+  const [transportOpen, setTransportOpen] = useState(false);
   const cache = useQueryClient();
-  const deliveryAddress = draft.address || profile.data;
+  const customerAddress = draft.address || profile.data;
+  const deliveryAddress = draft.deliveryType === "Pickup" ? draft.shop : customerAddress;
+  const areaError = draft.shop ?
+    (draft.deliveryType === "Deliver" ? serviceAreaError(draft.shop, customerAddress, "delivery") : null)
+    || (draft.collectionMethod === "ShopPickup" ? serviceAreaError(draft.shop, customerAddress, "pickup") : null) : null;
+  const transportOptions: { label: string; description: string; collectionMethod: "Dropoff" | "ShopPickup"; deliveryType: "Deliver" | "Pickup" }[] = [
+    { label: "Pickup & delivery", description: "The shop picks up your dirty laundry and delivers it back clean.", collectionMethod: "ShopPickup", deliveryType: "Deliver" },
+    { label: "Pickup only", description: "The shop picks up your dirty laundry. You collect it at the shop when clean.", collectionMethod: "ShopPickup", deliveryType: "Pickup" },
+    { label: "Delivery only", description: "You drop off your dirty laundry. The shop delivers it back clean.", collectionMethod: "Dropoff", deliveryType: "Deliver" },
+    { label: "I'll handle both trips", description: "You drop off your dirty laundry and collect it at the shop when clean.", collectionMethod: "Dropoff", deliveryType: "Pickup" },
+  ];
+  const selectedTransport = transportOptions.find(option => option.collectionMethod === (draft.collectionMethod || "Dropoff") && option.deliveryType === draft.deliveryType);
   const totals = draftTotals();
-  async function submit() {
+  const savedAddresses = useQuery({
+    queryKey: ["saved-addresses", user?.id], enabled: !!user,
+    queryFn: async () => {
+      const raw = await AsyncStorage.getItem(`labaride-addresses:${user!.id}`);
+      return raw ? JSON.parse(raw) as Partial<Profile>[] : [];
+    },
+  });
+  function chooseAddress() {
+    setDialog("address");
+  }
+  function selectAddress(value: Partial<Profile> | null) {
+    draft.set({ address: value });
+    setError(null);
+    setDialog(null);
+  }
+  function manageAddresses() {
+    setDialog(null);
+    go("addresses", { checkout: "true" });
+  }
+  const addressOptions = [
+    ...(profile.data ? [{ label: "Primary address", value: profile.data, primary: true }] : []),
+    ...(savedAddresses.data || []).map((value, index) => ({ label: "Saved address " + (index + 1), value, primary: false })),
+  ];
+  async function submit(confirmed = false) {
     if (!draft.shop || !draft.service) return;
-    if (!(Number(draft.kilos) > 0))
-      return Alert.alert("Laundry Weight", "Please enter valid weight");
-    if (!draft.schedule || new Date(draft.schedule).getTime() <= Date.now())
-      return Alert.alert(
-        "Delivery Schedule",
-        "Please select a future delivery schedule",
-      );
-    if (
-      draft.deliveryType === "Deliver" &&
-      (!deliveryAddress?.street ||
-        !deliveryAddress.barangay ||
-        !deliveryAddress.zone)
-    )
-      return Alert.alert(
-        "Delivery Address",
-        "Please complete your delivery address.",
-      );
+    if (!user) { router.push("/(auth)/login"); return; }
+    const currentAvailability = shopAvailability(draft.shop);
+    if (!currentAvailability.isOpen) { setError(currentAvailability.message); return; }
+    if (submitting.current || busy || countdownTimers.current) return;
+    if (dialog) { setError("Finish editing your order details before placing the order."); return; }
+    const locationError = addressError(deliveryAddress)
+      || (draft.collectionMethod === "ShopPickup" ? addressError(customerAddress) : null);
+    const scheduleError = draft.collectionMethod !== "ShopPickup" ? null : !draft.requestedPickupAt
+      ? "Choose your requested laundry pickup date and time."
+      : validateDeliveryTime(draft.requestedPickupAt, { ...draft.shop, preparationMinutes: 0 }, Date.now())?.replace(/delivery/gi, "pickup") || null;
+    const validation = totals.kilos === null ? "Enter a weight above 0 kg with up to two decimal places." :
+      totals.pricingError ? totals.pricingError :
+      scheduleError ? scheduleError :
+        locationError && draft.deliveryType === "Pickup" && addressError(deliveryAddress) ? "The shop address is incomplete. Ask the shop owner to update Shop Details before booking pickup." : locationError || areaError;
+    if (validation) { setError(validation); return; }
+    if (totals.kilos === null || totals.subtotal === null || totals.total === null) return;
+    setError(null);
+    if (!confirmed) {
+      const deadline = Date.now() + 5000;
+      setCountdown(5);
+      const interval = setInterval(() => setCountdown(Math.max(0, Math.ceil((deadline - Date.now()) / 1000))), 1000);
+      const timeout = setTimeout(() => {
+        cancelCountdown();
+        void submit(true);
+      }, 5000);
+      countdownTimers.current = { timeout, interval };
+      return;
+    }
+    submitting.current = true;
     setBusy(true);
     try {
       const order = await api.post<Order>("/transactions", {
         shopId: draft.shop.id,
         serviceName: draft.service.serviceName,
-        kiloAmount: Number(draft.kilos),
+        serviceIds: draft.serviceIds,
+        kiloAmount: totals.kilos,
         subtotal: totals.subtotal,
         deliveryFee: totals.deliveryFee,
         voucherDiscount: 0,
         totalAmount: totals.total,
         deliveryType: draft.deliveryType,
-        zone: deliveryAddress?.zone || "",
-        street: deliveryAddress?.street || "",
-        barangay: deliveryAddress?.barangay || "",
-        building: deliveryAddress?.building || "",
-        scheduledDate: draft.schedule,
-        scheduledTime: draft.schedule,
+        collectionMethod: draft.collectionMethod || "Dropoff",
+        ...(draft.collectionMethod === "ShopPickup" ? { collectionAddress: addressPayload(customerAddress!) } : {}),
+        ...addressPayload(deliveryAddress!),
+        ...(draft.collectionMethod === "ShopPickup" ? { requestedPickupAt: draft.requestedPickupAt } : {}),
         paymentMethod: draft.paymentMethod,
         notes: draft.notes,
         items: Object.entries(draft.counts)
@@ -301,278 +296,291 @@ export function CheckoutDesign() {
           .map(([itemName, quantity]) => ({ itemName, quantity })),
       });
       await cache.invalidateQueries({ queryKey: ["user-orders"] });
+      draft.clearOrder();
       replaceFlow("order-complete", { id: String(order.id) });
     } catch (error) {
-      fail(error);
+      if ((error as { error?: { code?: string } })?.error?.code === "PRICE_CHANGED" && draft.shop) {
+        try {
+          const refreshedShop = await api.get<Shop>(`/shops/${draft.shop.id}`);
+          const selected = draft.serviceIds.map((id) => refreshedShop.services?.find((service) => service.id === id));
+          if (selected.length && selected.every((service) => !!service)) {
+            draft.set({
+              shop: refreshedShop,
+              service: {
+                ...selected[0]!,
+                serviceName: selected.map((service) => service!.serviceName).join(", "),
+                price: selected.reduce((sum, service) => sum + Number(service!.price), 0),
+              },
+            });
+            setError("Shop prices changed. Review the updated total before placing your order.");
+          } else {
+            setError("A selected service is no longer available. Return to the shop and choose a service again.");
+          }
+        } catch (refreshError) {
+          setError(message(refreshError));
+        }
+      } else {
+        setError(message(error));
+      }
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
   if (!draft.service)
     return (
-      <Screen title="Checkout">
+      <Screen title="Order Summary">
         <Empty title="Your basket is empty" />
       </Screen>
     );
   return (
     <Screen
-      title="Checkout"
+      title="Order Summary"
       background={palette.surface}
       footer={
-        <View style={styles.between}>
-          <View>
-            <Txt style={styles.muted}>Total (incl. vat)</Txt>
-            <Txt style={styles.heading}>{money(totals.total)}</Txt>
+        <View style={{ width: "100%", maxWidth: 760, alignSelf: "center" }}>
+          <FormError error={error} />
+          <View style={styles.between}>
+            <View>
+              <Txt style={styles.muted}>Total</Txt>
+              <Txt style={styles.heading}>{totals.total === null ? "Enter weight" : money(totals.total)}</Txt>
+            </View>
+            <Button
+              title={user ? availability.isOpen ? "Place Order" : "Shop closed" : "Log In to Place Order"}
+              color={palette.navy}
+              onPress={() => submit()}
+              busy={busy}
+              disabled={!!dialog || countdown !== null || (!!user && !availability.isOpen)}
+            />
           </View>
-          <Button
-            title="Place Order"
-            color={palette.navy}
-            onPress={submit}
-            busy={busy}
-          />
         </View>
       }
     >
-      <View style={styles.stack}>
+      <View style={[styles.stack, { width: "100%", maxWidth: 760, alignSelf: "center" }]}>
+        <QueryState loading={profile.isLoading} error={profile.error} retry={() => profile.refetch()} />
+        {!availability.isOpen && <View accessibilityRole="alert"><FormError error={availability.message} /></View>}
         <Card>
-          <MenuRow
-            title={
-              draft.deliveryType === "Pickup"
-                ? "Pickup from shop"
-                : "Delivery Address"
-            }
-            detail={
-              draft.deliveryType === "Pickup"
-                ? address(draft.shop)
-                : address(deliveryAddress) || "Choose your delivery address"
-            }
-            asset="locationblue.png"
-            onPress={() => go("add-location", { checkout: "true" })}
-          />
+          <Section title="Shop & Selected Services" />
+          <Txt style={styles.heading}>{draft.shop?.shopName}</Txt>
+          <Txt style={styles.muted}>{address(draft.shop)}</Txt>
+          <PriceRow label="Customer" value={profile.data?.name || user?.name || "Log in to place your order"} />
+          {!!user && <View style={{ gap: 4, marginBottom: 8 }}>
+            <MenuRow title="Customer address" detail={address(customerAddress) || "No address saved. Add one in Profile."}
+              asset="locationblue.png" onPress={chooseAddress} />
+            {!!addressError(customerAddress) && <FormError error="Complete your address in Profile before checkout." />}
+            {(draft.deliveryType === "Deliver" || draft.collectionMethod === "ShopPickup") && customerAddress && <DeliveryDetails value={customerAddress} />}
+          </View>}
+          <PriceRow label="Contact Number" value={profile.data?.phone || "Not provided"} />
+          {!!user?.email && <PriceRow label="Email" value={user.email} />}
+          {(draft.shop?.services?.filter(item => draft.serviceIds.includes(item.id)) || []).map(item => (
+            <View key={item.id} style={{ gap: 4, paddingVertical: 8 }}>
+              <Txt style={{ color: palette.navy, fontWeight: "600" }}>{item.serviceName}</Txt>
+              <Txt style={styles.muted}>{servicePriceLabel(item)}</Txt>
+            </View>
+          ))}
+          {!draft.serviceIds.length && <Txt style={{ color: palette.navy }}>{draft.service.serviceName}: {servicePriceLabel(draft.service)}</Txt>}
+        </Card>
+        <Card>
+          <Section title="Pickup & Delivery Options" />
+          <Txt style={styles.muted}>Choose how your laundry gets to the shop and back to you.</Txt>
+          <Pressable accessibilityRole="button" accessibilityLabel="Laundry transport"
+            accessibilityState={{ expanded: transportOpen }} accessibilityValue={{ text: selectedTransport?.label }}
+            onPress={() => setTransportOpen(open => !open)}
+            style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, minHeight: 64,
+              borderRadius: 12, borderWidth: 1, borderColor: transportOpen ? palette.primary : palette.line,
+              backgroundColor: pressed ? palette.soft : "white" })}>
+            <View style={styles.grow}>
+              <Txt style={{ fontWeight: "600", color: palette.primary }}>{selectedTransport?.label || "Choose a transport option"}</Txt>
+              {!!selectedTransport && <Txt style={{ fontSize: 12, lineHeight: 18, color: palette.muted, marginTop: 4 }}>{selectedTransport.description}</Txt>}
+            </View>
+            <ChevronDown size={20} color={palette.primary} style={{ transform: [{ rotate: transportOpen ? "180deg" : "0deg" }] }} />
+          </Pressable>
+          {transportOpen && <View accessibilityRole="radiogroup" accessibilityLabel="Laundry transport options"
+            style={{ borderWidth: 1, borderColor: palette.line, borderRadius: 12, overflow: "hidden" }}>
+            {transportOptions.filter(option => option.collectionMethod === "Dropoff" || draft.shop?.pickupEnabled).map(option => {
+              const selected = (draft.collectionMethod || "Dropoff") === option.collectionMethod && draft.deliveryType === option.deliveryType;
+              return <Pressable key={option.label} accessibilityRole="radio" accessibilityLabel={option.label}
+                accessibilityHint={option.description} accessibilityState={{ checked: selected }}
+                onPress={() => { draft.set({ collectionMethod: option.collectionMethod, deliveryType: option.deliveryType }); setTransportOpen(false); setError(null); }}
+                style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, minHeight: 76,
+                  backgroundColor: selected || pressed ? palette.soft : "white" })}>
+                <View pointerEvents="none" style={{ width: 20, height: 20, borderRadius: 10, borderWidth: selected ? 6 : 1,
+                  borderColor: selected ? palette.primary : palette.muted, backgroundColor: "white" }} />
+                <View style={styles.grow}>
+                  <Txt style={{ fontWeight: "600", color: selected ? palette.primary : palette.ink }}>{option.label}</Txt>
+                  <Txt style={{ fontSize: 12, lineHeight: 18, color: palette.muted, marginTop: 4 }}>{option.description}</Txt>
+                </View>
+              </Pressable>;
+            })}
+          </View>}
+          {!draft.shop?.pickupEnabled && <Txt style={styles.muted}>This shop does not offer pickup from your address.</Txt>}
+          {draft.collectionMethod === "ShopPickup" && draft.shop && (draft.shop.pickupMaxKm != null || Number(draft.shop.pickupMinKm) > 0) &&
+            <Txt style={styles.muted}>Shop pickup range: {serviceAreaLabel(draft.shop, "pickup")}</Txt>}
+          {draft.deliveryType === "Deliver" && draft.shop && (draft.shop.deliveryMaxKm != null || Number(draft.shop.deliveryMinKm) > 0) &&
+            <Txt style={styles.muted}>Delivery range: {serviceAreaLabel(draft.shop, "delivery")}</Txt>}
+          {(draft.deliveryType === "Deliver" || draft.collectionMethod === "ShopPickup") && <>
+            {areaError && <View accessibilityRole="alert" accessibilityLiveRegion="polite"
+              style={{ padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "#FECDD3", backgroundColor: "#FFF1F2", gap: 10 }}>
+              <Txt style={{ color: palette.danger, fontWeight: "600" }}>Address needs attention</Txt>
+              <Txt style={{ color: palette.danger }}>{areaError.startsWith("Pin your") ? "Update your saved address with a map pin in Profile so we can check the shop's service area." : areaError}</Txt>
+              {areaError.startsWith("Pin your") && <Button title="Manage addresses" color={palette.danger} outline onPress={manageAddresses} />}
+            </View>}
+          </>}
         </Card>
         <Card>
           <Section title="Laundry Weight" />
           <Field
             placeholder="Enter weight in kilos"
             keyboardType="decimal-pad"
+            suffix="kg"
             value={draft.kilos}
             onChangeText={(kilos) => draft.set({ kilos })}
           />
+          {!!draft.kilos && <FormError error={totals.kilos === null ? "Enter a weight above 0 kg with up to two decimal places." : totals.pricingError} />}
+          {totals.kilos !== null && totals.rate !== null && (
+            <Txt style={styles.muted}>Shop rate: {money(totals.rate)} per kg</Txt>
+          )}
+          {totals.packageLoads.map((item, index) => (
+            <Txt key={index} style={styles.muted}>
+              {item.serviceName}: {money(item.price)} per load of up to {item.packageKilos} kg
+              {item.loads !== null && !totals.pricingError ? ` · ${item.loads} ${item.loads === 1 ? "load" : "loads"}` : ""}
+            </Txt>
+          ))}
         </Card>
         <Card>
-          <View style={styles.between}>
-            <Txt style={styles.heading}>Order Summary</Txt>
-            <Pressable onPress={() => go("laundries")}>
-              <Pencil size={20} color={palette.navy} />
-            </Pressable>
+          <View style={[styles.between, { flexWrap: "wrap" }]}>
+            <Txt style={styles.heading}>Laundry Items</Txt>
+            <Button title="Add Types of Clothes" compact outline color={palette.navy}
+              icon={<Pencil size={14} color={palette.navy} />} onPress={() => setDialog("items")} />
           </View>
-          <Txt style={{ color: palette.navy }}>{draft.service.serviceName}</Txt>
           {Object.entries(draft.counts)
             .filter(([, n]) => n > 0)
             .map(([name, n]) => (
               <PriceRow key={name} label={`${name} x${n}`} value="" />
             ))}
+          {!Object.values(draft.counts).some(count => count > 0) && <Txt style={styles.muted}>No clothing quantities added yet.</Txt>}
+        </Card>
+        <Card>
+          <Section title="Turnaround & Updates" />
+          <Txt style={{ fontWeight: "600" }}>Your laundry’s completion time will be confirmed by the shop.</Txt>
+          <Txt style={styles.muted}>After receiving your laundry, the shop will estimate when it will be ready based on its queue. You’ll receive updates when processing starts and when it’s ready.</Txt>
+          {draft.collectionMethod === "ShopPickup" ? <>
+            <MenuRow title="Requested laundry pickup" detail={draft.requestedPickupAt
+              ? new Date(draft.requestedPickupAt).toLocaleString("en-PH", { timeZone: "Asia/Manila" }) + " (Philippine time)"
+              : "Choose a pickup date and time"} asset="Time.png" onPress={() => setDialog("schedule")} />
+            <Txt style={styles.muted}>The shop must confirm pickup availability.</Txt>
+          </> : <>
+            <Txt style={{ fontWeight: "600" }}>Customer drop-off</Txt>
+            <Txt style={styles.muted}>Operating hours: {draft.shop?.openingTime} – {draft.shop?.closingTime} (Philippine time). Bring your laundry to the shop during these hours.</Txt>
+          </>}
+          <Txt style={styles.muted}>{draft.deliveryType === "Deliver"
+            ? "Return delivery will be arranged once your laundry is ready."
+            : "We’ll notify you when your laundry is ready to collect."}</Txt>
+        </Card>
+        <Card>
+          <Section title="Note to Laundry Shop" />
+          <Field label="Order Notes (optional)" placeholder="Special instructions for your laundry" multiline
+            value={draft.notes} onChangeText={notes => draft.set({ notes })} />
+        </Card>
+        <Card>
+          <Section title="Payment Method" />
+          <PaymentDropdown />
+          <Section title="Fees & Total" />
           <Totals />
         </Card>
-        <MenuRow
-          title="Payment Method"
-          detail={draft.paymentMethod}
-          asset="bluepeso.png"
-          onPress={() => go("payment-method")}
-        />
-        <MenuRow
-          title="Delivery Schedule"
-          detail={
-            draft.schedule
-              ? new Date(draft.schedule).toLocaleString()
-              : "Select Delivery Schedule"
-          }
-          asset="Time.png"
-          onPress={() => go("delivery-schedule")}
-        />
-        <MenuRow
-          title="Voucher"
-          detail="Your Vouchers"
-          asset="bluegift.png"
-          onPress={() => go("vouchers")}
-        />
       </View>
+      <Modal visible={!!dialog} transparent animationType="none" onRequestClose={() => setDialog(null)}>
+        {dialog && <View style={{ flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
+          {dialog === "schedule" ? <ScheduleDesign embedded inDialog pickup onDone={() => setDialog(null)} onClose={() => setDialog(null)} /> : <Card style={{ width: "100%", maxWidth: 540, maxHeight: "90%", padding: 24 }}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16 }}>
+              <View style={[styles.between, { flexWrap: "wrap" }]}>
+                <Txt style={styles.heading}>{dialog === "items" ? "Laundry Items" : "Choose your address"}</Txt>
+                <Button title="Close" compact outline color={palette.navy} onPress={() => setDialog(null)} />
+              </View>
+              {dialog === "items" ? <LaundryCountDesign embedded onDone={() => setDialog(null)} /> : <View>
+                <Txt style={styles.muted}>Choose an address you saved in your profile. Add or edit addresses in Profile before placing your order.</Txt>
+                <QueryState loading={savedAddresses.isLoading} error={savedAddresses.error} retry={() => savedAddresses.refetch()} />
+                <View accessibilityRole="radiogroup" accessibilityLabel="Saved addresses" style={{ gap: 10, marginVertical: 14 }}>
+                  {addressOptions.map((option, index) => {
+                    const invalid = addressError(option.value);
+                    const selected = option.primary ? !draft.address : !!draft.address &&
+                      JSON.stringify(addressPayload(draft.address)) === JSON.stringify(addressPayload(option.value));
+                    return <Pressable key={index} accessibilityRole="radio" accessibilityLabel={option.label}
+                      accessibilityState={{ checked: selected, disabled: !!invalid }} disabled={!!invalid}
+                      onPress={() => selectAddress(option.primary ? null : option.value)}
+                      style={({ pressed }) => ({ padding: 14, borderRadius: 12, borderWidth: 1,
+                        borderColor: selected ? palette.primary : palette.line, backgroundColor: selected || pressed ? palette.soft : "white", gap: 6, opacity: invalid ? 0.6 : 1 })}>
+                      <View style={styles.between}>
+                        <Txt style={{ fontWeight: "600", color: palette.primary }}>{option.label}{option.value.address_type ? " - " + option.value.address_type : ""}</Txt>
+                        {selected && <CheckCircle2 size={18} color={palette.primary} />}
+                      </View>
+                      <Txt style={styles.muted}>{address(option.value) || "Address not configured"}</Txt>
+                      {!!invalid && <Txt style={styles.muted}>Incomplete address. Update it in Profile.</Txt>}
+                    </Pressable>;
+                  })}
+                </View>
+                {!addressOptions.length && <Txt style={styles.muted}>No addresses saved yet. Add your address in Profile before checkout.</Txt>}
+                {!!user && <Button title="Manage addresses in Profile" compact outline onPress={manageAddresses} />}
+              </View>}
+            </ScrollView>
+          </Card>}
+        </View>}
+      </Modal>
+      <Modal visible={countdown !== null} transparent animationType="fade" onRequestClose={cancelCountdown}>
+        <View style={{ flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
+          <Card style={{ width: "100%", maxWidth: 440, padding: 28, gap: 20 }}>
+            <View style={{ alignItems: "center", gap: 12 }}>
+              <Clock size={32} color={palette.primary} />
+              <Txt accessibilityRole="header" style={styles.heading}>Placing your order soon</Txt>
+              <Txt accessibilityLiveRegion="polite" style={{ fontSize: 40, fontWeight: "700", color: palette.primary }}>{countdown}</Txt>
+              <Txt style={[styles.muted, { textAlign: "center" }]}>Your order will be sent automatically when the countdown ends. You can still modify your details now.</Txt>
+            </View>
+            <Button title="Modify order" outline color={palette.navy} icon={<Pencil size={18} color={palette.navy} />} onPress={cancelCountdown} />
+          </Card>
+        </View>
+      </Modal>
     </Screen>
   );
 }
-export function ScheduleDesign() {
+export function ScheduleDesign({ embedded = false, inDialog = false, pickup = false, onDone, onClose }: {
+  embedded?: boolean; inDialog?: boolean; pickup?: boolean; onDone?: () => void; onClose?: () => void;
+} = {}) {
+  return <DeliverySchedule pickup={pickup} embedded={embedded || inDialog} onDone={onDone} onClose={onClose} />;
+}
+function PaymentDropdown() {
+  const palette = usePalette();
   const draft = useLaundryDraft();
-  const initial = draft.schedule
-    ? new Date(draft.schedule)
-    : new Date(Date.now() + 86400000);
-  const [month, setMonth] = useState(
-    new Date(initial.getFullYear(), initial.getMonth(), 1),
-  );
-  const [selected, setSelected] = useState(initial.getDate());
-  const [hour, setHour] = useState(String(initial.getHours() % 12 || 12));
-  const [minute, setMinute] = useState("00");
-  const [period, setPeriod] = useState(initial.getHours() >= 12 ? "PM" : "AM");
-  const dayCount = new Date(
-    month.getFullYear(),
-    month.getMonth() + 1,
-    0,
-  ).getDate();
-  const offset = month.getDay();
-  function confirm() {
-    const h = Number(hour);
-    const m = Number(minute);
-    if (
-      !Number.isInteger(h) ||
-      h < 1 ||
-      h > 12 ||
-      !Number.isInteger(m) ||
-      m < 0 ||
-      m > 59
-    )
-      return Alert.alert("Delivery Schedule", "Enter a valid time.");
-    const date = new Date(
-      month.getFullYear(),
-      month.getMonth(),
-      selected,
-      (h % 12) + (period === "PM" ? 12 : 0),
-      m,
-    );
-    if (date.getTime() <= Date.now() || date.getHours() < 4)
-      return Alert.alert(
-        "Delivery Schedule",
-        "Choose a future time between 4 AM and 11 PM.",
-      );
-    draft.set({ schedule: date.toISOString() });
-    router.back();
-  }
-  return (
-    <Screen
-      title="Select Delivery Schedule"
-      footer={
-        <Button
-          title="Confirm Schedule"
-          color={palette.navy}
-          onPress={confirm}
-        />
-      }
-    >
-      <View style={styles.stack}>
-        <CalendarDays size={40} color={palette.navy} />
-        <View style={styles.row}>
-          <View style={styles.grow}>
-            <Field
-              label="Hour"
-              value={hour}
-              onChangeText={setHour}
-              keyboardType="number-pad"
-              maxLength={2}
-              style={{ fontSize: 30, textAlign: "center" }}
-            />
-          </View>
-          <Txt style={{ fontSize: 30 }}>:</Txt>
-          <View style={styles.grow}>
-            <Field
-              label="Minute"
-              value={minute}
-              onChangeText={setMinute}
-              keyboardType="number-pad"
-              maxLength={2}
-              style={{ fontSize: 30, textAlign: "center" }}
-            />
-          </View>
-        </View>
-        <TabsRow
-          items={["AM", "PM"]}
-          value={period}
-          onChange={setPeriod}
-          color={palette.navy}
-        />
-        <Card>
-          <View style={styles.between}>
-            <Pressable
-              accessibilityLabel="Previous month"
-              onPress={() => {
-                setMonth(
-                  new Date(month.getFullYear(), month.getMonth() - 1, 1),
-                );
-                setSelected(1);
-              }}
-            >
-              <Txt style={styles.heading}>‹</Txt>
-            </Pressable>
-            <Txt style={styles.heading}>
-              {month.toLocaleDateString(undefined, {
-                month: "long",
-                year: "numeric",
-              })}
-            </Txt>
-            <Pressable
-              accessibilityLabel="Next month"
-              onPress={() => {
-                setMonth(
-                  new Date(month.getFullYear(), month.getMonth() + 1, 1),
-                );
-                setSelected(1);
-              }}
-            >
-              <Txt style={styles.heading}>›</Txt>
-            </Pressable>
-          </View>
-          <View style={{ flexDirection: "row" }}>
-            {["S", "M", "T", "W", "T", "F", "S"].map((day, i) => (
-              <Txt
-                key={i}
-                style={{
-                  width: `${100 / 7}%`,
-                  textAlign: "center",
-                  color: palette.muted,
-                }}
-              >
-                {day}
-              </Txt>
-            ))}
-          </View>
-          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-            {Array.from({ length: offset + dayCount }, (_, i) => (
-              <Pressable
-                key={i}
-                disabled={i < offset}
-                onPress={() => setSelected(i - offset + 1)}
-                style={{
-                  width: `${100 / 7}%`,
-                  height: 44,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor:
-                    selected === i - offset + 1 ? palette.navy : "white",
-                  borderRadius: 22,
-                }}
-              >
-                <Txt
-                  style={{
-                    color: selected === i - offset + 1 ? "white" : palette.navy,
-                  }}
-                >
-                  {i >= offset ? i - offset + 1 : ""}
-                </Txt>
-              </Pressable>
-            ))}
-          </View>
-        </Card>
-        <Txt style={styles.muted}>
-          Delivery Date:{" "}
-          {new Date(
-            month.getFullYear(),
-            month.getMonth(),
-            selected,
-          ).toLocaleDateString()}
-        </Txt>
+  const [open, setOpen] = useState(false);
+  return <View style={{ gap: 10 }}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Payment method"
+      accessibilityState={{ expanded: open }} accessibilityValue={{ text: "Cash on Delivery" }}
+      onPress={() => setOpen(value => !value)}
+      style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, minHeight: 54,
+        borderRadius: 12, borderWidth: 1, borderColor: open ? palette.primary : palette.line,
+        backgroundColor: pressed ? palette.soft : "white" })}>
+      <Txt style={{ flex: 1, color: palette.primary, fontWeight: "600" }}>Cash on Delivery</Txt>
+      <ChevronDown size={20} color={palette.primary} style={{ transform: [{ rotate: open ? "180deg" : "0deg" }] }} />
+    </Pressable>
+    {open && <View accessibilityRole="radiogroup" accessibilityLabel="Payment options" style={{ gap: 10 }}>
+    <Choice label="Cash on Delivery" selected={draft.paymentMethod === "Cash on Delivery"}
+      onPress={() => { draft.set({ paymentMethod: "Cash on Delivery" }); setOpen(false); }} />
+    {["Bank Transfer", "GCash"].map(label => <Pressable key={label} disabled
+      accessibilityRole="radio" accessibilityLabel={`${label}, coming soon`}
+      accessibilityState={{ disabled: true, checked: false }}
+      style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 14,
+        borderRadius: 12, borderWidth: 1, borderColor: palette.line, backgroundColor: "#F5F6F8" }}>
+      <View style={{ width: 18, height: 18, borderRadius: 9, borderWidth: 1, borderColor: palette.muted }} />
+      <Txt style={{ flex: 1, color: palette.muted }}>{label}</Txt>
+      <View style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: "#E8EBF0" }}>
+        <Txt style={{ fontSize: 11, color: palette.muted, fontWeight: "600" }}>Coming soon</Txt>
       </View>
-    </Screen>
-  );
+    </Pressable>)}
+    </View>}
+    <Txt style={styles.muted}>Bank transfer and GCash payments are coming soon. Please use Cash on Delivery for now.</Txt>
+  </View>;
 }
 export function PaymentDesign() {
-  const draft = useLaundryDraft();
+  const palette = usePalette();
   return (
     <Screen
       title="Payment Method"
@@ -585,103 +593,22 @@ export function PaymentDesign() {
       }
     >
       <Card>
-        <Choice
-          label="Cash on Delivery"
-          selected={draft.paymentMethod === "Cash on Delivery"}
-          onPress={() => draft.set({ paymentMethod: "Cash on Delivery" })}
-        />
+        <PaymentDropdown />
       </Card>
     </Screen>
   );
 }
-export function VouchersDesign() {
-  return (
-    <Screen title="Your Vouchers" dark background="#003366">
-      <View style={{ gap: 20, paddingHorizontal: 16 }}>
-        {[
-          {
-            title: "− ₱150",
-            date: "April 4 – 7, 2025",
-            gift: "bluegift.png" as const,
-          },
-          {
-            title: "50% OFF",
-            date: "April 4 – 10, 2025",
-            gift: "pinkgift.png" as const,
-          },
-          {
-            title: "35% Shipping",
-            date: "April 4, 2025",
-            gift: "yellowgift.png" as const,
-          },
-        ].map((voucher) => (
-          <Pressable
-            key={voucher.title}
-            onPress={() =>
-              Alert.alert("Voucher expired", "This voucher is no longer valid.")
-            }
-          >
-            <View
-              style={{
-                height: 120,
-                borderRadius: 20,
-                backgroundColor: "white",
-                padding: 20,
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <View style={{ gap: 12 }}>
-                <View style={[styles.row, { gap: 8 }]}>
-                  <Asset name="Time.png" size={20} />
-                  <Txt style={{ fontSize: 12, color: palette.muted }}>
-                    {voucher.date}
-                  </Txt>
-                </View>
-                <Txt style={{ fontSize: 24, fontWeight: "700" }}>
-                  {voucher.title}
-                </Txt>
-                <Txt style={{ color: palette.muted, fontSize: 11 }}>
-                  Expired
-                </Txt>
-              </View>
-              <Asset name={voucher.gift} size={50} />
-              <View
-                style={{
-                  position: "absolute",
-                  left: -10,
-                  top: 50,
-                  width: 20,
-                  height: 20,
-                  borderRadius: 10,
-                  backgroundColor: "#003366",
-                }}
-              />
-              <View
-                style={{
-                  position: "absolute",
-                  right: -10,
-                  top: 50,
-                  width: 20,
-                  height: 20,
-                  borderRadius: 10,
-                  backgroundColor: "#003366",
-                }}
-              />
-            </View>
-          </Pressable>
-        ))}
-      </View>
-    </Screen>
-  );
-}
+export function VouchersDesign() { return <Screen title="Your vouchers"><Empty title="No vouchers available" message="There are no supported voucher offers to display." /></Screen>; }
 export function StatusBadge({ status }: { status: Order["status"] }) {
+  const palette = usePalette();
   const colors = {
-    Pending: "#FFA000",
-    Processing: "#1976D2",
-    Completed: "#388E3C",
-    Cancelled: "#D32F2F",
+    Pending: palette.warning,
+    Accepted: palette.primary,
+    Queued: palette.warning,
+    Ready: palette.successInk,
+    Processing: palette.primary,
+    Completed: palette.successInk,
+    Cancelled: palette.danger,
   };
   return (
     <View
@@ -705,6 +632,8 @@ export function OrderCard({
   order: Order;
   shopMode?: boolean;
 }) {
+  const palette = usePalette();
+  const { go } = useFlowNavigation();
   return (
     <Card>
       <Txt style={{ color: palette.muted, fontSize: 12 }}>
@@ -713,6 +642,7 @@ export function OrderCard({
       <View style={styles.between}>
         <Txt style={{ fontWeight: "600" }}>Order ID: #{order.id}</Txt>
         <StatusBadge status={order.status} />
+        {order.workflowStatus && <Txt style={{ fontSize: 12 }}>{order.workflowStatus.replace(/([a-z])([A-Z])/g, '$1 $2')}</Txt>}
       </View>
       <Txt style={styles.muted}>
         {shopMode ? order.userName : order.shop?.shopName || "Laundry Shop"}
@@ -720,7 +650,7 @@ export function OrderCard({
       <Txt style={styles.muted}>Service: {order.serviceName}</Txt>
       <View style={styles.between}>
         <View>
-          <Txt style={{ color: palette.muted, fontSize: 12 }}>Amount Paid</Txt>
+          <Txt style={{ color: palette.muted, fontSize: 12 }}>Order total</Txt>
           <Txt style={{ fontWeight: "600", marginTop: 4 }}>
             {money(order.totalAmount)}
           </Txt>
@@ -740,9 +670,9 @@ export function OrderCard({
           onPress={() =>
             shopMode
               ? router.push({
-                  pathname: "/(shop)/orders/[id]",
-                  params: { id: String(order.id) },
-                })
+                pathname: "/shop/customers/orders/[id]",
+                params: { id: String(order.id) },
+              })
               : go("transaction-details", { id: String(order.id) })
           }
         />
@@ -750,80 +680,189 @@ export function OrderCard({
     </Card>
   );
 }
-export function ActivitiesDesign({
+
+type OrderSection = "Active" | "Past";
+type OrderFilter = "All" | Order["status"];
+
+const activeOrderStatuses: Order["status"][] = ["Pending", "Accepted", "Queued", "Processing", "Ready"];
+const pastOrderStatuses: Order["status"][] = ["Completed", "Cancelled"];
+
+function customerOrderStatus(order: Order): Order["status"] {
+  const workflow = order.workflowStatus;
+  if (!workflow) return order.status;
+  if (workflow === "Completed" || workflow === "Cancelled") return workflow;
+  if (workflow === "BookingPending") return "Pending";
+  if (["AtPartner", "LaundryReceived"].includes(workflow)) return "Queued";
+  if (["Washing", "Drying", "Folding"].includes(workflow)) return "Processing";
+  if (["ReadyForCollection", "ReadyForDelivery"].includes(workflow)) return "Ready";
+  return "Accepted";
+}
+
+function isPastOrder(order: Order) {
+  return pastOrderStatuses.includes(customerOrderStatus(order));
+}
+
+function orderDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function CustomerOrderCard({ order }: { order: Order }) {
+  const palette = usePalette();
+  const { go } = useFlowNavigation();
+  const shopName = order.shop?.shopName || "Laundry Shop";
+  const displayStatus = customerOrderStatus(order);
+  const details = () => go("transaction-details", { id: String(order.id) });
+  return (
+    <Card style={{ padding: 0, gap: 0, overflow: "hidden", borderRadius: 18 }}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`View order ${order.id} from ${shopName}`}
+        onPress={details}
+        style={({ pressed }) => ({ opacity: pressed ? 0.82 : 1 })}
+      >
+        <View style={{ padding: 16, flexDirection: "row", alignItems: "flex-start", gap: 14 }}>
+          <ShopPhoto
+            name={shopName}
+            photoUrl={order.shop?.photoUrl}
+            style={{ width: 92, height: 92, aspectRatio: 1, borderRadius: 14, flexShrink: 0 }}
+          />
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <Txt numberOfLines={2} style={{ fontSize: 16, lineHeight: 21, fontWeight: "700", color: palette.ink }}>
+              {shopName}
+            </Txt>
+            <Txt numberOfLines={1} style={{ color: palette.muted, fontSize: 13 }}>
+              {order.serviceName} · {Number(order.kiloAmount).toFixed(1)} kg
+            </Txt>
+            <Txt style={{ color: palette.muted, fontSize: 11, lineHeight: 16, marginTop: 3 }}>ORDER TOTAL</Txt>
+            <Txt style={{ color: palette.primary, fontSize: 24, lineHeight: 30, fontWeight: "700" }}>
+              {money(order.totalAmount)}
+            </Txt>
+            {Number(order.deliveryFee) > 0 && (
+              <Txt style={{ color: palette.muted, fontSize: 11, lineHeight: 15 }}>
+                Includes {money(order.deliveryFee)} delivery
+              </Txt>
+            )}
+          </View>
+        </View>
+        <View style={{ minHeight: 68, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: palette.line, backgroundColor: "#FCFDFE", flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Txt style={{ fontWeight: "700", fontSize: 13 }}>View order details</Txt>
+            <Txt style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>
+              Order #{order.id} · {orderDate(order.createdAt)}
+            </Txt>
+          </View>
+          <StatusBadge status={displayStatus} />
+          <ChevronRight size={19} color={palette.primary} />
+        </View>
+      </Pressable>
+    </Card>
+  );
+}
+
+function OrderSectionTabs({ value, onChange, activeCount, pastCount }: {
+  value: OrderSection;
+  onChange: (value: OrderSection) => void;
+  activeCount: number;
+  pastCount: number;
+}) {
+  const palette = usePalette();
+  return (
+    <View accessibilityRole="tablist" style={{ flexDirection: "row", borderBottomWidth: 1, borderBottomColor: palette.line }}>
+      {(["Active", "Past"] as const).map((item) => {
+        const selected = value === item;
+        const count = item === "Active" ? activeCount : pastCount;
+        return (
+          <Pressable
+            key={item}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            onPress={() => onChange(item)}
+            style={{ flex: 1, minHeight: 52, alignItems: "center", justifyContent: "center", borderBottomWidth: 3, borderBottomColor: selected ? palette.primary : "transparent" }}
+          >
+            <Txt style={{ color: selected ? palette.primary : palette.muted, fontWeight: "700", fontSize: 14 }}>
+              {item} Orders{count ? ` (${count})` : ""}
+            </Txt>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function StatusFilters({ items, value, onChange }: { items: Order["status"][]; value: OrderFilter; onChange: (value: OrderFilter) => void }) {
+  const palette = usePalette();
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+      {(["All", ...items] as OrderFilter[]).map((item) => {
+        const selected = value === item;
+        return (
+          <Pressable key={item} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => onChange(item)}
+            style={{ minHeight: 40, justifyContent: "center", paddingHorizontal: 15, borderRadius: 20, borderWidth: 1, borderColor: selected ? palette.primary : palette.line, backgroundColor: selected ? palette.primary : "white" }}>
+            <Txt style={{ color: selected ? "white" : palette.muted, fontWeight: "600", fontSize: 12 }}>{item}</Txt>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+export function OrdersDesign({
   history = false,
   past = false,
 }: {
   history?: boolean;
   past?: boolean;
 }) {
+  const palette = usePalette();
   const orders = useOrders();
   const user = useAuthStore((state) => state.user);
-  const [tab, setTab] = useState(past ? "Past Order" : "Active Order");
-  const filtered = (orders.data || []).filter(
-    (order) =>
-      !history ||
-      (tab === "Past Order"
-        ? ["Completed", "Cancelled"].includes(order.status)
-        : ["Pending", "Processing"].includes(order.status)),
-  );
+  const [section, setSection] = useState<OrderSection>(past ? "Past" : "Active");
+  const [status, setStatus] = useState<OrderFilter>("All");
+  const [requestedPage, setPage] = useState(0);
+  const allOrders = orders.data || [];
+  const activeCount = allOrders.filter((order) => !isPastOrder(order)).length;
+  const pastCount = allOrders.length - activeCount;
+  const sectionStatuses = section === "Active" ? activeOrderStatuses : pastOrderStatuses;
+  const filtered = allOrders.filter((order) =>
+    (section === "Past" ? isPastOrder(order) : !isPastOrder(order)) &&
+    (status === "All" || customerOrderStatus(order) === status));
+  useEffect(() => { setPage(0); setStatus("All"); }, [section]);
+  const page = Math.min(requestedPage, Math.max(0, Math.ceil(filtered.length / ORDERS_PER_PAGE) - 1));
+  useEffect(() => { setPage(page); }, [page]);
   return (
     <Screen
-      title={history ? "History" : "Activity"}
-      dark={!history}
-      background={history ? palette.surface : "#1E54AB"}
+      title="Orders"
+      background={palette.surface}
       back={history}
-      right={
-        !history && (
-          <Pressable
-            onPress={() => go("history")}
-            style={{ backgroundColor: "white", padding: 10, borderRadius: 12 }}
-          >
-            <View style={[styles.row, { gap: 6 }]}>
-              <History size={16} color="#4D3E8C" />
-              <Txt style={{ fontSize: 12, color: "#4D3E8C" }}>History</Txt>
-            </View>
-          </Pressable>
-        )
-      }
     >
-      <View style={styles.stack}>
+      <View style={{ width: "100%", maxWidth: 760, alignSelf: "center", gap: 16 }}>
         {!user ? (
           <Card>
             <Empty
               title="Login Required"
-              message="Please login to view your activities"
+              message="Please login to view your orders"
               action="Login"
               onPress={() => router.push("/(auth)/login")}
             />
           </Card>
         ) : (
           <>
-            {history ? (
-              <TabsRow
-                items={["Active Order", "Past Order"]}
-                value={tab}
-                onChange={setTab}
-              />
-            ) : (
-              <Section title="Recent" light />
-            )}
+            <OrderSectionTabs value={section} onChange={setSection} activeCount={activeCount} pastCount={pastCount} />
+            <StatusFilters items={sectionStatuses} value={status} onChange={(value) => { setStatus(value); setPage(0); }} />
             <QueryState
               loading={orders.isLoading}
               error={orders.error}
               retry={() => orders.refetch()}
             />
-            {filtered.map((order) => (
-              <OrderCard key={order.id} order={order} />
+            {filtered.slice(page * ORDERS_PER_PAGE, (page + 1) * ORDERS_PER_PAGE).map((order) => (
+              <CustomerOrderCard key={order.id} order={order} />
             ))}
+            {!orders.isLoading && !orders.error && filtered.length > 0 && <PageControls page={page} total={filtered.length} onChange={setPage} />}
             {!orders.isLoading && !orders.error && !filtered.length && (
               <Card>
                 <Empty
-                  title={
-                    history
-                      ? `No ${tab === "Past Order" ? "past" : "active"} orders`
-                      : "No recent transactions"
-                  }
+                  title={`No ${status === "All" ? section.toLowerCase() : status.toLowerCase()} orders`}
+                  message={status === "All" ? `Your ${section.toLowerCase()} orders will appear here.` : "Try another status filter."}
                 />
               </Card>
             )}
@@ -833,6 +872,9 @@ export function ActivitiesDesign({
     </Screen>
   );
 }
+
+// Keep the previous export available for older route mappings.
+export const ActivitiesDesign = OrdersDesign;
 export function OrderDetailsDesign({
   id,
   delivered = false,
@@ -842,8 +884,11 @@ export function OrderDetailsDesign({
   delivered?: boolean;
   full?: boolean;
 }) {
+  const palette = usePalette();
+  const { go, inShop } = useFlowNavigation();
   const orders = useOrders();
   const order = orders.data?.find((o) => o.id === id);
+  if (order?.workflowStatus) return <DeliveryOrderDesign id={id} />;
   if (!order)
     return (
       <Screen title="Order Details">
@@ -876,7 +921,7 @@ export function OrderDetailsDesign({
             title="Order Again"
             color={palette.navy}
             onPress={() =>
-              router.push({
+              inShop ? go("shop-menu", { id: String(order.shopId) }) : router.push({
                 pathname: "/(user)/order/[shopId]",
                 params: { shopId: String(order.shopId) },
               })
@@ -902,13 +947,7 @@ export function OrderDetailsDesign({
             <View style={styles.row}>
               <CheckCircle2 size={24} color={palette.blue} />
               <Txt style={styles.muted}>
-                {order.status === "Pending"
-                  ? "Waiting for shop confirmation"
-                  : order.status === "Processing"
-                    ? "Your laundry is in progress"
-                    : order.status === "Completed"
-                      ? "Your laundry is ready"
-                      : "Order cancelled"}
+                {orderUpdateText(order)}
               </Txt>
             </View>
           )}
@@ -916,10 +955,16 @@ export function OrderDetailsDesign({
         <Card>
           <Section title={full ? "Shipping Information" : "Order Details"} />
           <MenuRow
-            title={order.userName}
+            title={order.deliveryType === "Pickup" ? "Pickup location" : order.userName}
             detail={address(order)}
             asset="delivery.png"
           />
+          <DeliveryDetails value={order} />
+          {order.collectionMethod === "ShopPickup" && order.collectionAddress && <>
+            <Section title="Laundry Collection Address" />
+            <Txt style={styles.muted}>{address(order.collectionAddress)}</Txt>
+            <DeliveryDetails value={order.collectionAddress} />
+          </>}
           <MenuRow
             title={order.shop?.shopName || "Laundry Shop"}
             detail={order.shop?.address}
@@ -927,10 +972,7 @@ export function OrderDetailsDesign({
           />
           <PriceRow label="Order ID:" value={`#${order.id}`} />
           <PriceRow label="Payment Method" value={order.paymentMethod} />
-          <PriceRow
-            label="Delivery Schedule"
-            value={new Date(order.scheduledDate).toLocaleDateString()}
-          />
+          <TurnaroundDetails order={order} />
         </Card>
         <Card>
           <View style={styles.row}>
@@ -954,7 +996,7 @@ export function OrderDetailsDesign({
           ) : (
             <Txt style={styles.muted}>No items listed</Txt>
           )}
-          {order.notes && <Txt style={styles.muted}>{order.notes}</Txt>}
+          {!!order.notes && <Txt style={styles.muted}>{order.notes}</Txt>}
         </Card>
         <Card>
           <Totals order={order} />
@@ -972,25 +1014,45 @@ export function OrderDetailsDesign({
   );
 }
 export function CancelOrderDesign({ id }: { id: number }) {
+  const palette = usePalette();
+  const { replaceFlow } = useFlowNavigation();
   const orders = useOrders();
   const order = orders.data?.find((o) => o.id === id);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
   const cache = useQueryClient();
   async function cancel() {
-    if (!order || order.status !== "Pending")
-      return Alert.alert(
-        "Cancel Order",
-        "You can cancel an order before it is accepted",
-      );
-    setBusy(true);
+    if (submitting.current) return;
+    if (!order || order.status !== "Pending") {
+      setError("You can only cancel a pending order before it is accepted.");
+      return;
+    }
+    if (!reason.trim()) {
+      setError("Please select a cancellation reason.");
+      return;
+    }
+    submitting.current = true;
+    setError(null);
     try {
-      await api.put(`/transactions/${id}/cancel`, { reason });
-      await cache.invalidateQueries({ queryKey: ["user-orders"] });
-      replaceFlow("order-cancelled");
-    } catch (error) {
-      fail(error);
+      if (!await confirmAction("Cancel Order", "Are you sure you want to cancel your order?", { confirmLabel: "Cancel Order", destructive: true })) return;
+      setBusy(true);
+      const cancelled = await api.put<Order>(`/transactions/${id}/cancel`, { reason: reason.trim() });
+      for (const key of ["user-orders", "shop-orders"]) {
+        cache.setQueriesData<Order[]>({ queryKey: [key] }, (current) =>
+          current?.map((entry) => entry.id === id ? { ...entry, ...cancelled } : entry));
+      }
+      await Promise.all([
+        cache.invalidateQueries({ queryKey: ["user-orders"] }),
+        cache.invalidateQueries({ queryKey: ["shop-orders"] }),
+      ]);
+      replaceFlow("order-cancelled", { id: String(id) });
+    } catch (failure) {
+      setError(message(failure));
+      void orders.refetch();
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -1001,22 +1063,16 @@ export function CancelOrderDesign({ id }: { id: number }) {
         <Button
           title="Confirm"
           color={palette.navy}
-          disabled={!reason || !order || order.status !== "Pending"}
+          disabled={!reason.trim() || !order || order.status !== "Pending"}
           busy={busy}
-          onPress={() =>
-            Alert.alert(
-              "Cancel Order",
-              "Are you sure you want to cancel your order?",
-              [
-                { text: "No", style: "cancel" },
-                { text: "Yes", style: "destructive", onPress: cancel },
-              ],
-            )
-          }
+          onPress={cancel}
         />
       }
     >
       <View style={styles.stack}>
+        <QueryState loading={orders.isLoading} error={orders.error} retry={() => orders.refetch()} />
+        {!orders.isLoading && !orders.error && !order && <Empty title="Order not found" />}
+        <FormError error={error} />
         <Card>
           <PriceRow label="Order number:" value={`#${id}`} />
           <PriceRow label="Shop name:" value={order?.shop?.shopName || "—"} />
@@ -1035,7 +1091,7 @@ export function CancelOrderDesign({ id }: { id: number }) {
             key={value}
             label={value}
             selected={reason === value}
-            onPress={() => setReason(value)}
+            onPress={() => { setReason(value); setError(null); }}
           />
         ))}
       </View>

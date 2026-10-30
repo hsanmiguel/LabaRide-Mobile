@@ -3,15 +3,33 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum TransactionStatus {
   Pending
+  Accepted
+  Queued
+  Ready
   Processing
   Completed
   Cancelled
+}
+
+enum AddressType {
+  Home
+  Work
+  Hotel
+  Apartment
+}
+
+enum ShopApprovalStatus {
+  Pending
+  Approved
+  Rejected
+  Suspended
 }
 
 model User {
@@ -27,39 +45,119 @@ model User {
   barangay    String?
   building    String?
   isShopOwner Boolean   @default(false) @map("is_shop_owner")
+  isAdmin     Boolean   @default(false) @map("is_admin")
+  isRider     Boolean   @default(false) @map("is_rider")
+  riderProfile RiderProfile?
+  deliveryAssignments DeliveryAssignment[]
+  orderEvents OrderEvent[]
+  weightEvidence OrderWeightEvidence[]
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  shop         Shop?
-  transactions Transaction[]
+  shop                 Shop?
+  reviewedShops        Shop[] @relation("ShopReviewer")
+  photo                UserPhoto?
+  transactions         Transaction[]
+  notifications        Notification[]
+  // Nullable for existing accounts and historical records; new address saves are validated by the API.
+  address_line_1       String?
+  address_line_2       String?
+  city                 String?
+  state_province       String?
+  postal_code          String?
+  country              String?
+  latitude             Decimal?      @db.Decimal(10, 7)
+  longitude            Decimal?      @db.Decimal(10, 7)
+  address_type         AddressType?
+  access_code          String?
+  dropoff_instructions String?
 
   @@map("users")
 }
 
 model Shop {
-  id            Int       @id @default(autoincrement())
-  userId        Int       @unique @map("user_id")
-  shopName      String    @map("shop_name")
-  contactNumber String    @map("contact_number")
-  zone          String
-  street        String
-  barangay      String
+  id            Int      @id @default(autoincrement())
+  userId        Int      @unique @map("user_id")
+  shopName      String   @map("shop_name")
+  contactNumber String   @map("contact_number")
+  zone          String?
+  street        String?
+  barangay      String?
   building      String?
-  openingTime   String    @map("opening_time")
-  closingTime   String    @map("closing_time")
-  latitude      Float?
-  longitude     Float?
+  openingTime   String   @map("opening_time")
+  closingTime   String   @map("closing_time")
+  deliveryMinKm Decimal? @map("delivery_min_km") @db.Decimal(7, 2)
+  deliveryMaxKm Decimal? @map("delivery_max_km") @db.Decimal(7, 2)
+  pickupMinKm   Decimal? @map("pickup_min_km") @db.Decimal(7, 2)
+  pickupMaxKm   Decimal? @map("pickup_max_km") @db.Decimal(7, 2)
+  pickupEnabled Boolean  @default(false) @map("pickup_enabled")
+  acceptingOrders Boolean @default(true) @map("accepting_orders")
   address       String?
-  createdAt     DateTime  @default(now()) @map("created_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  approvalStatus ShopApprovalStatus @default(Pending) @map("approval_status")
+  applicationVersion Int @default(1) @map("application_version")
+  requirementsVersion Int @default(1) @map("requirements_version")
+  documents ShopDocument[]
+  reviewReason   String? @map("review_reason")
+  reviewedAt     DateTime? @map("reviewed_at")
+  reviewedById   Int? @map("reviewed_by_id")
+  reviewedBy     User? @relation("ShopReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  services       ShopService[]
-  kiloPrices     KiloPrice[]
-  transactions   Transaction[]
-  householdItems HouseholdItem[]
-  clothingTypes  ClothingType[]
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  services             ShopService[]
+  kiloPrices           KiloPrice[]
+  transactions         Transaction[]
+  householdItems       HouseholdItem[]
+  clothingTypes        ClothingType[]
+  photo                ShopPhoto?
+  // Nullable for existing accounts and historical records; new address saves are validated by the API.
+  address_line_1       String?
+  address_line_2       String?
+  city                 String?
+  state_province       String?
+  postal_code          String?
+  country              String?
+  latitude             Decimal?        @db.Decimal(10, 7)
+  longitude            Decimal?        @db.Decimal(10, 7)
+  address_type         AddressType?
+  access_code          String?
+  dropoff_instructions String?
 
+  @@index([approvalStatus, createdAt])
   @@map("shops")
+}
+
+model ShopDocument {
+  id Int @id @default(autoincrement())
+  shopId Int @map("shop_id")
+  type String
+  bytes Bytes
+  status String @default("Pending")
+  reviewReason String? @map("review_reason")
+  reviewedById Int? @map("reviewed_by_id")
+  reviewedAt DateTime? @map("reviewed_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  @@unique([shopId, type])
+  @@map("shop_documents")
+}
+
+model ShopPhoto {
+  shopId    Int      @id @map("shop_id")
+  bytes     Bytes
+  updatedAt DateTime @updatedAt @map("updated_at")
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@map("shop_photos")
+}
+
+model UserPhoto {
+  userId    Int      @id @map("user_id")
+  bytes     Bytes
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_photos")
 }
 
 model ShopService {
@@ -67,6 +165,7 @@ model ShopService {
   shopId      Int     @map("shop_id")
   serviceName String  @map("service_name")
   price       Decimal @default(0) @db.Decimal(10, 2)
+  packageKilos Decimal? @map("package_kilos") @db.Decimal(10, 2)
   color       String?
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
@@ -102,22 +201,163 @@ model Transaction {
   voucherDiscount Decimal           @default(0) @map("voucher_discount") @db.Decimal(10, 2)
   totalAmount     Decimal           @map("total_amount") @db.Decimal(10, 2)
   deliveryType    String            @map("delivery_type")
-  zone            String
-  street          String
-  barangay        String
-  building        String
-  scheduledDate   DateTime          @map("scheduled_date") @db.Date
-  scheduledTime   DateTime          @map("scheduled_time") @db.Time()
+  collectionMethod String          @default("Dropoff") @map("collection_method")
+  collectionAddress Json?          @map("collection_address")
+  zone            String?
+  street          String?
+  barangay        String?
+  building        String?
+  requestedPickupAt DateTime? @map("requested_pickup_at") @db.Timestamptz(3)
+  confirmedPickupAt DateTime? @map("confirmed_pickup_at") @db.Timestamptz(3)
+  receivedAt DateTime? @map("received_at") @db.Timestamptz(3)
+  processingStartedAt DateTime? @map("processing_started_at") @db.Timestamptz(3)
+  estimatedReadyAt DateTime? @map("estimated_ready_at") @db.Timestamptz(3)
+  estimateUpdatedAt DateTime? @map("estimate_updated_at") @db.Timestamptz(3)
+  estimateReason String? @map("estimate_reason")
+  readyAt DateTime? @map("ready_at") @db.Timestamptz(3)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  // Legacy schedules remain readable; new bookings use requestedPickupAt and ready estimates.
+  scheduledDate   DateTime?         @map("scheduled_date") @db.Date
+  scheduledTime   DateTime?         @map("scheduled_time") @db.Time()
   paymentMethod   String            @default("Cash on Delivery") @map("payment_method")
   notes           String?
   status          TransactionStatus @default(Pending)
+  workflowStatus  String? @map("workflow_status")
+  workflowVersion Int @default(0) @map("workflow_version")
+  pickupCode      String? @map("pickup_code")
+  collectionCode  String? @map("collection_code")
+  deliveryCode    String? @map("delivery_code")
+  assignments     DeliveryAssignment[]
+  events          OrderEvent[]
+  weightEvidence  OrderWeightEvidence[]
   createdAt       DateTime          @default(now()) @map("created_at")
 
-  user  User  @relation(fields: [userId], references: [id])
-  shop  Shop  @relation(fields: [shopId], references: [id])
-  items TransactionItem[]
+  user                 User              @relation(fields: [userId], references: [id])
+  shop                 Shop              @relation(fields: [shopId], references: [id])
+  items                TransactionItem[]
+  // Nullable for existing accounts and historical records; new address saves are validated by the API.
+  address_line_1       String?
+  address_line_2       String?
+  city                 String?
+  state_province       String?
+  postal_code          String?
+  country              String?
+  latitude             Decimal?          @db.Decimal(10, 7)
+  longitude            Decimal?          @db.Decimal(10, 7)
+  address_type         AddressType?
+  access_code          String?
+  dropoff_instructions String?
 
   @@map("transactions")
+}
+
+model OrderWeightEvidence {
+  id Int @id @default(autoincrement())
+  transactionId Int @map("transaction_id")
+  actorId Int @map("actor_id")
+  kilos Decimal @db.Decimal(10, 2)
+  totalAmount Decimal @map("total_amount") @db.Decimal(10, 2)
+  note String
+  bytes Bytes
+  createdAt DateTime @default(now()) @map("created_at")
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  actor User @relation(fields: [actorId], references: [id])
+  @@index([transactionId, createdAt])
+  @@map("order_weight_evidence")
+}
+
+model Notification {
+  id            Int      @id @default(autoincrement())
+  userId        Int      @map("user_id")
+  transactionId Int      @map("transaction_id")
+  shopMode      Boolean  @default(false) @map("shop_mode")
+  audience      String   @default("customer")
+  title         String
+  message       String
+  createdAt     DateTime @default(now()) @map("created_at")
+  readAt        DateTime? @map("read_at")
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, shopMode, createdAt])
+  @@map("notifications")
+}
+
+model RiderProfile {
+  userId Int @id @map("user_id")
+  active Boolean @default(true)
+  applicationStatus String @default("Approved") @map("application_status")
+  reviewReason String? @map("review_reason")
+  reviewedAt DateTime? @map("reviewed_at")
+  reviewedById Int? @map("reviewed_by_id")
+  licenseNumber String? @map("license_number")
+  licenseExpiry DateTime? @db.Date @map("license_expiry")
+  motorcycleMake String? @map("motorcycle_make")
+  motorcycleModel String? @map("motorcycle_model")
+  motorcycleYear Int? @map("motorcycle_year")
+  plateNumber String? @map("plate_number")
+  registeredOwner Boolean @default(true) @map("registered_owner")
+  requirementsVersion Int @default(0) @map("requirements_version")
+  documents RiderDocument[]
+  online Boolean @default(false)
+  latitude Float?
+  longitude Float?
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("rider_profiles")
+}
+
+model RiderDocument {
+  id Int @id @default(autoincrement())
+  userId Int @map("user_id")
+  type String
+  bytes Bytes
+  status String @default("Pending")
+  reviewReason String? @map("review_reason")
+  reviewedById Int? @map("reviewed_by_id")
+  reviewedAt DateTime? @map("reviewed_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  rider RiderProfile @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  @@unique([userId, type])
+  @@map("rider_documents")
+}
+
+model DeliveryAssignment {
+  id Int @id @default(autoincrement())
+  transactionId Int @map("transaction_id")
+  riderId Int @map("rider_id")
+  stage String
+  resumeStatus String? @map("resume_status")
+  status String @default("Offered")
+  expiresAt DateTime @map("expires_at")
+  liveLatitude Float? @map("live_latitude")
+  liveLongitude Float? @map("live_longitude")
+  liveAccuracy Float? @map("live_accuracy")
+  locationCapturedAt DateTime? @map("location_captured_at")
+  locationReceivedAt DateTime? @map("location_received_at")
+  locationSharing Boolean @default(false) @map("location_sharing")
+  locationSession String? @map("location_session")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  rider User @relation(fields: [riderId], references: [id])
+  @@index([riderId, status])
+  @@index([transactionId, stage, status])
+  @@map("delivery_assignments")
+}
+
+model OrderEvent {
+  id Int @id @default(autoincrement())
+  transactionId Int @map("transaction_id")
+  actorId Int @map("actor_id")
+  action String
+  fromStatus String? @map("from_status")
+  toStatus String @map("to_status")
+  detail String?
+  createdAt DateTime @default(now()) @map("created_at")
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+  actor User @relation(fields: [actorId], references: [id])
+  @@index([transactionId, createdAt])
+  @@map("order_events")
 }
 
 model TransactionItem {

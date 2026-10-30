@@ -1,6 +1,7 @@
 import { ORDERS_PER_PAGE, PageControls } from "./Pagination";
 import { useEffect, useState, useRef } from "react";
-import { Modal, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Bell,
   WashingMachine,
@@ -14,6 +15,8 @@ import {
   Store,
   UserRound,
   Trash2,
+  Check,
+  X,
 } from "lucide-react-native";
 import { router, Redirect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -34,7 +37,6 @@ import {
   Section,
   Txt,
   money,
-  servicePriceLabel,
   usePalette,
   styles,
 } from "./ui";
@@ -72,6 +74,8 @@ import { ShopApplicationStatus } from "./ShopApprovalScreens";
 import { useLogout } from "./useLogout";
 import { DeliveryOrderDesign } from './DeliveryScreens';
 import { DashboardAnalytics } from './DashboardAnalytics';
+import { normalizeServiceColor, serviceCardColors, serviceColorOptions, serviceColorTaken } from './service-colors';
+import WeightRangeSlider from './WeightRangeSlider';
 
 export function RegisterShopDesign() {
   const [values, setValues] = useState<Record<string, string>>({
@@ -789,6 +793,7 @@ export function ShopDetailsFormDesign() {
 }
 export function ServicesDesign() {
   const palette = usePalette();
+  const insets = useSafeAreaInsets();
   const owned = useOwnedShop();
   const detail = useShop(owned.data?.id || 0);
   const shop = detail.data || owned.data;
@@ -814,17 +819,23 @@ export function ServicesDesign() {
           packageKilos: item && "packageKilos" in item && item.packageKilos != null ? String(item.packageKilos) : "",
         }
         : {
-          minKilo: item && "minKilo" in item ? String(item.minKilo) : "",
-          maxKilo: item && "maxKilo" in item ? String(item.maxKilo) : "",
+          minKilo: item && "minKilo" in item ? String(item.minKilo) : "1",
+          maxKilo: item && "maxKilo" in item ? String(item.maxKilo) : "12",
           pricePerKilo:
             item && "pricePerKilo" in item ? String(item.pricePerKilo) : "",
         },
     );
-    setColor(item && "color" in item ? item.color || palette.primary : palette.primary);
+    const currentColor = item && "color" in item ? normalizeServiceColor(item.color) : "";
+    setColor(currentColor || serviceColorOptions.find(option => !serviceColorTaken(shop?.services || [], option.color, item?.id))?.color || "");
+  }
+  function setDecimalValue(key: string, value: string) {
+    if (/^\d*(?:\.\d*)?$/.test(value)) setValues(current => ({ ...current, [key]: value }));
   }
   async function save() {
     if (!shop || busy) return;
     if (editing && dialog === "price") return unavailable("Edit price range");
+    if (dialog === "service" && (!color || serviceColorTaken(shop.services || [], color, editing?.id)))
+      return setError("Choose a color that is not already used by another service.");
     const activeValues = Object.entries(values).filter(([key]) => key !== "packageKilos" || packagePricing);
     if (
       activeValues.some(([, value]) => !value.trim()) ||
@@ -866,6 +877,7 @@ export function ServicesDesign() {
       setDialog(null);
     } catch (failure) {
       setError(message(failure));
+      if (dialog === "service") void cache.invalidateQueries({ queryKey: ["shop"] });
     } finally {
       setBusy(false);
     }
@@ -907,31 +919,52 @@ export function ServicesDesign() {
         <Section title="YOUR SERVICES" />
         {!dialog && <FormError error={error} />}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {shop?.services?.map((service) => (
+          {shop?.services?.map((service) => {
+            const cardColors = serviceCardColors(service.color, palette.primary);
+            return (
             <View
               key={service.id}
+              testID={`service-card-${service.id}`}
               style={{
-                flexBasis: 240,
+                flexBasis: 280,
                 maxWidth: "100%",
                 flexGrow: 1,
                 padding: 18,
                 borderRadius: 12,
-                backgroundColor: "white", borderWidth: 1, borderColor: palette.line,
+                backgroundColor: cardColors.background, borderWidth: 1, borderColor: cardColors.background,
                 gap: 8,
               }}
             >
-              <Txt style={{ fontWeight: "700", color: palette.navy }}>
-                {service.serviceName}
-              </Txt>
-              <Txt>{servicePriceLabel(service)}</Txt>
-              <View style={[styles.row, { marginTop: 8, gap: 8, flexWrap: "wrap" }]}>
-                <Button title="Edit" compact outline color={palette.navy} disabled={busy}
-                  icon={<Pencil size={14} color={palette.navy} />} onPress={() => open("service", service)} />
-                <Button title="Delete" compact outline color={palette.danger} disabled={busy}
-                  icon={<Trash2 size={14} color={palette.danger} />} onPress={() => removeService(service)} />
+              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+                <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
+                  <Txt style={{ fontWeight: "700", fontSize: 20, lineHeight: 28, color: cardColors.foreground }}>
+                    {service.serviceName}
+                  </Txt>
+                  <Txt style={{ color: cardColors.foreground, fontWeight: "700", fontSize: 28, lineHeight: 36 }}>
+                    {money(service.price)}<Txt style={{ color: cardColors.foreground, fontWeight: "700", fontSize: 18 }}> / {service.packageKilos != null ? "load" : "kg"}</Txt>
+                  </Txt>
+                  {service.packageKilos != null && <View style={{ alignSelf: "flex-start", borderRadius: 8, paddingVertical: 4, paddingHorizontal: 9, backgroundColor: cardColors.detailBackground }}>
+                    <Txt style={{ color: cardColors.foreground, fontSize: 12, fontWeight: "500" }}>Up to {Number(service.packageKilos)} kg per load</Txt>
+                  </View>}
+                </View>
+                <View style={{ gap: 8 }}>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Edit" accessibilityHint={"Edit " + service.serviceName}
+                    disabled={busy} accessibilityState={{ disabled: busy }} onPress={() => open("service", service)}
+                    hitSlop={6}
+                    style={({ pressed }) => ({ width: 34, height: 34, borderRadius: 10, backgroundColor: "white", alignItems: "center", justifyContent: "center", opacity: busy ? 0.5 : pressed ? 0.8 : 1 })}>
+                    <Pencil size={16} color={palette.primary} />
+                  </Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Delete" accessibilityHint={"Delete " + service.serviceName}
+                    disabled={busy} accessibilityState={{ disabled: busy }} onPress={() => removeService(service)}
+                    hitSlop={6}
+                    style={({ pressed }) => ({ width: 34, height: 34, borderRadius: 10, backgroundColor: "white", alignItems: "center", justifyContent: "center", opacity: busy ? 0.5 : pressed ? 0.8 : 1 })}>
+                    <Trash2 size={16} color={palette.danger} />
+                  </Pressable>
+                </View>
               </View>
             </View>
-          ))}
+          );
+          })}
         </View>
         {!owned.isLoading && !detail.isLoading && !owned.error && !detail.error && !shop?.services?.length && (
           <Empty
@@ -974,129 +1007,107 @@ export function ServicesDesign() {
           />
         </Card>
       </View>
-      <Modal
-        visible={!!dialog}
-        transparent
-        animationType="none"
-        onRequestClose={() => { if (!busy) setDialog(null); }}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "#00000070",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 24,
-          }}
-        >
-          <Card style={{ width: "100%", maxWidth: 460, maxHeight: "90%", padding: 24 }}>
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12 }}>
-            <Txt style={styles.heading}>
-              {editing ? "Edit" : "Add"}{" "}
-              {dialog === "service" ? "Service" : "Price Range"}
-            </Txt>
-            {dialog === "service" ? (
-              <>
-                <Field
-                  label="Service Name"
-                  value={values.serviceName}
-                  onChangeText={(serviceName) =>
-                    setValues({ ...values, serviceName })
-                  }
-                />
-                <Choice label="Fixed price per load" selected={packagePricing} onPress={() => setPackagePricing(true)} />
-                <Choice label="Price per kilogram" selected={!packagePricing} onPress={() => setPackagePricing(false)} />
-                {packagePricing && <Field
-                  label="Weight per Load (kg)"
-                  placeholder="e.g. 8"
-                  suffix="kg"
-                  value={values.packageKilos}
-                  keyboardType="decimal-pad"
-                  onChangeText={(packageKilos) => setValues({ ...values, packageKilos })}
-                />}
-                <Field
-                  label={packagePricing ? "Price per Load" : "Price per Kilogram"}
-                  suffix={packagePricing ? "PHP / load" : "PHP / kg"}
-                  placeholder={packagePricing ? "e.g. 215" : "e.g. 25"}
-                  value={values.price}
-                  keyboardType="decimal-pad"
-                  onChangeText={(price) => setValues({ ...values, price })}
-                />
-                {packagePricing && <Txt style={styles.muted}>Each load covers up to the weight above. Extra weight is charged as another full load.</Txt>}
-                <Txt>Select Color:</Txt>
-                <View style={[styles.row, { flexWrap: "wrap" }]}>
-                  {[palette.primary, palette.accent, "#886AB8", "#D0C1E8"].map((value) => (
-                    <Pressable accessibilityRole="button"
-                      key={value}
-                      accessibilityLabel={`Service color ${value}`}
-                      accessibilityState={{ selected: color === value }}
-                      onPress={() => setColor(value)}
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 18,
-                        backgroundColor: value,
-                        borderWidth: 3,
-                        borderColor:
-                          color === value ? palette.navy : "transparent",
-                      }}
-                    />
-                  ))}
-                </View>
-              </>
-            ) : (
-              [
-                { key: "minKilo", label: "Minimum Weight (kg)" },
-                { key: "maxKilo", label: "Maximum Weight (kg)" },
-                { key: "pricePerKilo", label: "Price per Kilogram" },
-              ].map((field) => (
-                <Field
-                  key={field.key}
-                  label={field.label}
-                  keyboardType="decimal-pad"
-                  suffix={field.key === "pricePerKilo" ? "PHP / kg" : "kg"}
-                  value={values[field.key]}
-                  onChangeText={(v) => setValues({ ...values, [field.key]: v })}
-                />
-              ))
-            )}
-            <FormError error={error} />
-            <View style={[styles.row, { justifyContent: "flex-end", flexWrap: "wrap" }]}>
-              <Button
-                title="Cancel"
-                compact
-                disabled={busy}
-                outline
-                color={palette.navy}
-                onPress={() => setDialog(null)}
-              />
-              <Button
-                title={editing ? "Save Changes" : dialog === "service" ? "Add Service" : "Add Range"}
-                compact
-                busy={busy}
-                disabled={!!editing && dialog === "price"}
-                color={palette.navy}
-                onPress={save}
-              />
-            </View>
-            {editing && dialog === "price" && <Txt style={styles.muted}>Editing existing weight ranges is not available. You can add a new range.</Txt>}
-            {editing && dialog === "price" && (
-              <Button
-                title="Delete price range unavailable"
-                disabled
-                compact
-                outline
-                color={palette.danger}
-                onPress={() => unavailable("Delete price range")}
-                style={{ alignSelf: "flex-start" }}
-              />
-            )}
-            {editing && dialog === "service" && "serviceName" in editing && <Button
-              title="Delete Service" compact outline color={palette.danger} disabled={busy} style={{ alignSelf: "flex-start" }}
-              onPress={() => removeService(editing)} />}
-            </ScrollView>
-          </Card>
-        </View>
+      <Modal visible={!!dialog} transparent animationType="none" onRequestClose={() => { if (!busy) setDialog(null); }}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+          <View style={{
+            flex: 1, backgroundColor: "#00000070", alignItems: "center", justifyContent: "center",
+            paddingHorizontal: 14, paddingTop: Math.max(insets.top, 16), paddingBottom: Math.max(insets.bottom, 16),
+          }}>
+            <Card testID="service-editor" style={{ width: "100%", maxWidth: 440, maxHeight: "100%", flexShrink: 1, padding: 18, gap: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <Txt accessibilityRole="header" style={styles.heading}>
+                  {editing ? "Edit" : "Add"} {dialog === "service" ? "Service" : "Price Range"}
+                </Txt>
+                <Pressable accessibilityRole="button" accessibilityLabel="Close service editor" disabled={busy}
+                  onPress={() => setDialog(null)}
+                  style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: palette.surface, opacity: busy ? 0.5 : 1 }}>
+                  <X size={20} color={palette.primary} />
+                </Pressable>
+              </View>
+              <ScrollView testID="service-editor-body" style={{ flexShrink: 1, flexGrow: 0, minHeight: 0 }}
+                keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ gap: 12, paddingBottom: 2 }}>
+                {dialog === "service" ? (
+                  <>
+                    <Field compact label="Service Name" value={values.serviceName} editable={!busy} autoCapitalize="words"
+                      onChangeText={(serviceName) => setValues({ ...values, serviceName })} />
+                    <View style={{ gap: 6 }}>
+                      <Txt style={{ fontSize: 12, fontWeight: "500" }}>Pricing type</Txt>
+                      <View accessibilityRole="radiogroup" accessibilityLabel="Service pricing type"
+                        style={{ flexDirection: "row", padding: 3, borderRadius: 12, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line }}>
+                        {[{ label: "Per load", description: "Fixed price per load", selected: packagePricing }, { label: "Per kilogram", description: "Price per kilogram", selected: !packagePricing }].map(option =>
+                          <Pressable key={option.label} accessibilityRole="radio" accessibilityLabel={option.description}
+                            accessibilityState={{ checked: option.selected, disabled: busy }} disabled={busy}
+                            onPress={() => setPackagePricing(option.label === "Per load")}
+                            style={{ flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 9, backgroundColor: option.selected ? palette.primary : "transparent", opacity: busy ? 0.5 : 1 }}>
+                            <Txt style={{ fontSize: 13, fontWeight: "600", color: option.selected ? "white" : palette.muted }}>{option.label}</Txt>
+                          </Pressable>)}
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 12, alignItems: "flex-end" }}>
+                      {packagePricing && <View style={{ flex: 1, minWidth: 0 }}>
+                        <Field compact label="Weight per load" placeholder="e.g. 8" suffix="kg"
+                          value={values.packageKilos} keyboardType="decimal-pad" inputMode="decimal" editable={!busy}
+                          onChangeText={value => setDecimalValue("packageKilos", value)} />
+                      </View>}
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Field compact label={packagePricing ? "Price per load" : "Price per kilogram"} suffix="₱"
+                          placeholder={packagePricing ? "e.g. 215" : "e.g. 25"} value={values.price}
+                          keyboardType="decimal-pad" inputMode="decimal" editable={!busy}
+                          onChangeText={value => setDecimalValue("price", value)} />
+                      </View>
+                    </View>
+                    {packagePricing && <Txt style={{ color: palette.muted, fontSize: 12, lineHeight: 18 }}>
+                      {Number(values.packageKilos) > 0 ? "Each load covers up to " + values.packageKilos + " kg. " : ""}
+                      Extra weight counts as another load.
+                    </Txt>}
+                    <View style={{ gap: 4 }}>
+                      <Txt style={{ fontSize: 12, fontWeight: "500" }}>Service color</Txt>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                        {[...serviceColorOptions, ...(!color || serviceColorOptions.some(option => option.color === color) ? [] : [{ color, name: "Current color" }])].map(option => {
+                          const value = option.color;
+                          const taken = serviceColorTaken(shop?.services || [], value, editing?.id);
+                          return <Pressable key={value} accessibilityRole="button" accessibilityLabel={"Service color " + value}
+                            accessibilityHint={option.name + (taken ? ": already used by another service" : "")}
+                            accessibilityState={{ selected: color === value, disabled: busy || taken }} disabled={busy || taken} onPress={() => setColor(value)}
+                            style={{ width: 40, height: 40, padding: 4, borderRadius: 13, borderWidth: 2, borderColor: color === value ? palette.primary : "transparent", opacity: busy || taken ? 0.45 : 1 }}>
+                            <View style={{ flex: 1, borderRadius: 9, backgroundColor: value, alignItems: "center", justifyContent: "center" }}>
+                              {taken ? <X size={15} strokeWidth={2.5} color={serviceCardColors(value, palette.primary).foreground} /> : color === value && <Check size={18} strokeWidth={3} color={serviceCardColors(value, palette.primary).foreground} />}
+                            </View>
+                          </Pressable>;
+                        })}
+                      </View>
+                      <Txt style={{ color: palette.muted, fontSize: 11, lineHeight: 16 }}>{color ? "Crossed-out colors are already in use." : "All colors are in use. Free a color by changing or deleting an existing service."}</Txt>
+                    </View>
+                    {editing && "serviceName" in editing && <Button title="Delete Service" compact outline color={palette.danger}
+                      disabled={busy} style={{ alignSelf: "flex-start" }} onPress={() => removeService(editing)} />}
+                  </>
+                ) : (
+                  <>
+                    {!editing ? <WeightRangeSlider minimum={Number(values.minKilo || 1)} maximum={Number(values.maxKilo || 12)} disabled={busy}
+                      onChange={(minimum, maximum) => setValues(current => ({ ...current, minKilo: String(minimum), maxKilo: String(maximum) }))} /> : <View style={{ flexDirection: "row", gap: 12 }}>
+                      {[{ key: "minKilo", label: "Minimum Weight (kg)" }, { key: "maxKilo", label: "Maximum Weight (kg)" }].map(field =>
+                        <View key={field.key} style={{ flex: 1, minWidth: 0 }}>
+                          <Field compact label={field.label} keyboardType="decimal-pad" inputMode="decimal" suffix="kg" editable={false}
+                            value={values[field.key]} onChangeText={value => setDecimalValue(field.key, value)} />
+                        </View>)}
+                    </View>}
+                    <Field compact label="Price per Kilogram" keyboardType="decimal-pad" inputMode="decimal" suffix="₱" editable={!busy}
+                      value={values.pricePerKilo} onChangeText={value => setDecimalValue("pricePerKilo", value)} />
+                    {editing && <Txt style={{ color: palette.muted, fontSize: 12 }}>Editing existing weight ranges is not available. You can add a new range.</Txt>}
+                  </>
+                )}
+                <FormError error={error} />
+              </ScrollView>
+              <View testID="service-editor-actions" style={{ flexDirection: "row", gap: 10, borderTopWidth: 1, borderTopColor: palette.line, paddingTop: 12 }}>
+                <Button title="Cancel" compact disabled={busy} outline color={palette.navy}
+                  onPress={() => setDialog(null)} style={{ flex: 1 }} />
+                <Button title={editing ? "Save Changes" : dialog === "service" ? "Add Service" : "Add Range"} compact busy={busy}
+                  disabled={!!editing && dialog === "price" || dialog === "service" && (!color || serviceColorTaken(shop?.services || [], color, editing?.id))} color={palette.navy} onPress={save} style={{ flex: 1 }} />
+              </View>
+            </Card>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </Screen>
   );

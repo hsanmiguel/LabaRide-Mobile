@@ -26,6 +26,9 @@ const logoutTest = process.argv.includes('--logout');
 const scheduleTest = process.argv.includes('--schedule');
 const shopOrdersTest = process.argv.includes('--shop-orders');
 const analyticsTest = process.argv.includes('--analytics');
+const servicesTest = process.argv.includes('--services');
+const serviceWrites = [];
+const priceRangeWrites = [];
 const analyticsRequests = [];
 const { analyticsRange, analyticsSeries } = require('../../server/dist/utils/shop-analytics');
 const nativeDialogs = [], dialogWrites = [], workflowWrites = [];
@@ -37,6 +40,10 @@ const user = { id: 7, name: 'Test Customer With A Long Name', email: 'ui-test@ex
 const shops = [{ ...user, id: 101, userId: 7, approvalStatus: approvalTest || applicationTest ? 'Pending' : 'Approved', applicationVersion: 1, createdAt: new Date().toISOString(), pickupEnabled: true, shopName: 'Test Laundry & Fabric Care With A Long Shop Name', openingTime: '08:00', closingTime: '18:00', contactNumber: '09123456789', services: [{ id: 1, serviceName: 'Full Service', price: 215, packageKilos: 8 }, { id: 2, serviceName: 'Wash Only', price: 25 }], kiloPrices: [], clothingTypes: [], householdItems: [] },
   { ...user, id: 102, userId: 8, approvalStatus: 'Approved', applicationVersion: 1, createdAt: new Date().toISOString(), shopName: 'Test Neighborhood Laundry', latitude: 13.63, services: [] }];
 const reviews = [];
+if (servicesTest) {
+  shops[0].services[0].color = '#321078';
+  shops[0].services[1].color = '#D0C1E8';
+}
 let notificationRecords = [], failNotificationDelete = false;
 const notificationDeletes = [];
 const shopDocumentFixture = [];
@@ -134,7 +141,7 @@ async function visit(route, width, expected, screenshot) {
   console.log('PASS', width, route, mode);
 }
 async function clickText(text) {
-  const clicked = await evaluate(`(()=>{const candidates=Array.from(document.querySelectorAll('[role="button"],[role="tab"],a')).filter(e=>e.innerText.trim()===${JSON.stringify(text)}||e.getAttribute("aria-label")===${JSON.stringify(text)});const e=candidates.find(e=>e.closest('[aria-modal="true"],[role="dialog"]'))||candidates[0];if(e){e.click();return true}return false})()`);
+  const clicked = await evaluate(`(()=>{const candidates=Array.from(document.querySelectorAll('[role="button"],[role="tab"],[role="radio"],a')).filter(e=>e.innerText.trim()===${JSON.stringify(text)}||e.getAttribute("aria-label")===${JSON.stringify(text)});const e=candidates.find(e=>e.closest('[aria-modal="true"],[role="dialog"]'))||candidates[0];if(e){e.click();return true}return false})()`);
   assert.ok(clicked,'Missing interactive control: '+text);
   await pause(150);
 }
@@ -188,6 +195,8 @@ async function clickText(text) {
           || riderApplicationTest && request.method === 'PUT' && /^\/api\/delivery\/applications\/\d+\/documents\/[^/]+\/review$/.test(endpoint)
           || riderApplicationTest && request.method === 'POST' && endpoint === '/api/delivery/application/submit'
           || dialogTest && request.method === 'DELETE' && endpoint === '/api/shops/101/services/1'
+          || servicesTest && ['POST','PUT'].includes(request.method) && /^\/api\/shops\/101\/services(?:\/\d+)?$/.test(endpoint)
+          || servicesTest && request.method === 'POST' && endpoint === '/api/shops/101/kilo-prices'
           || approvalTest && request.method === 'PUT' && ['/api/admin/shops/101/review','/api/shops/101/application'].includes(endpoint)
           || applicationTest && request.method === 'POST' && endpoint === '/api/auth/verify-token'
           || approvalTest && request.method === 'POST' && endpoint === '/api/auth/login', 'UI smoke tests must not mutate real records');
@@ -322,6 +331,15 @@ async function clickText(text) {
           const type = endpoint.split('/').at(-2), input = JSON.parse(request.postData);
           const document = requirementFixture.documents.find(doc => doc.type === type);
           assert.ok(document); document.status = input.status; document.updatedAt = new Date().toISOString();
+        }
+        if (servicesTest && request.method === 'POST' && endpoint === '/api/shops/101/kilo-prices') {
+          const body = JSON.parse(request.postData); priceRangeWrites.push(body); shops[0].kiloPrices.push({ id: 1, ...body });
+        }
+        if (servicesTest && ['POST','PUT'].includes(request.method) && /^\/api\/shops\/101\/services(?:\/\d+)?$/.test(endpoint) && mode !== 'error') {
+          const body = JSON.parse(request.postData);
+          serviceWrites.push({ method: request.method, body });
+          if (request.method === 'POST') shops[0].services.push({ id: 3, ...body });
+          else Object.assign(shops[0].services.find(service => service.id === Number(endpoint.split('/').at(-1))), body);
         }
         if (dialogTest && request.method === 'DELETE') {
           dialogWrites.push(endpoint);
@@ -917,12 +935,86 @@ async function clickText(text) {
     console.log('PASS logout blur at four sizes; customer/shop/admin current-page cancellation, focus, Escape, backdrop, storage failure, retry and success-only redirect');
     return;
   }
+  if (servicesTest) {
+    const editor = '!!document.querySelector("[data-testid=service-editor]")';
+    const closed = '!document.querySelector("[data-testid=service-editor]")';
+    async function checkFit(noScroll = true) {
+      const geometry = await evaluate(`(()=>{const card=document.querySelector('[data-testid=service-editor]'),body=document.querySelector('[data-testid=service-editor-body]'),footer=document.querySelector('[data-testid=service-editor-actions]');const c=card.getBoundingClientRect(),f=footer.getBoundingClientRect();return {top:c.top,bottom:c.bottom,right:c.right,footerBottom:f.bottom,scroll:body.scrollHeight-body.clientHeight};})()`);
+      assert.ok(geometry.top >= 0 && geometry.bottom <= (await evaluate('innerHeight'))+1,'Dialog fits viewport: '+JSON.stringify(geometry));
+      assert.ok(geometry.footerBottom <= geometry.bottom,'Footer remains inside dialog');
+      assert.ok(geometry.right <= (await evaluate('innerWidth')),'Dialog fits width');
+      if (noScroll) assert.ok(geometry.scroll <= 1,'No vertical scrolling with the keyboard closed: '+JSON.stringify(geometry));
+    }
+    for (const [width,height] of [[320,640],[390,844],[768,1000],[1440,1000]]) {
+      await visit('/shop/services',width,'Full Service');
+      await command('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false});
+      await clickText('Add Service'); await waitFor(editor); await checkFit();
+      if (width===390) { const shot=await command('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(artifacts,'service-editor-compact-phone.png'),Buffer.from(shot.data,'base64')); }
+      await clickText('Price per kilogram');
+      assert.equal(await evaluate(`!!document.querySelector('input[aria-label="Weight per load"]')`),false);
+      await checkFit(); await clickText('Fixed price per load'); await checkFit();
+      await clickText('Close service editor'); await waitFor(closed);
+    }
+    await visit('/shop/services',390,'Full Service','service-color-cards');
+    assert.equal(await evaluate('getComputedStyle(document.querySelector("[data-testid=service-card-1]")).backgroundColor'),'rgb(50, 16, 120)');
+    assert.equal(await evaluate('getComputedStyle(document.querySelector("[data-testid=service-card-2]")).backgroundColor'),'rgb(208, 193, 232)');
+    await clickText('Add Service'); await waitFor(editor);
+    async function input(label,value) {
+      await evaluate(`(()=>{const e=document.querySelector('input[aria-label="'+${JSON.stringify(label)}+'"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    }
+    await input('Service Name','Compact Test'); await input('Weight per load','8'); await input('Price per load','255');
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Service color #D0C1E8"]').getAttribute('aria-disabled')`),'true');
+    assert.equal(await evaluate(`document.querySelector('[aria-label="Service color #321078"]').getAttribute('aria-disabled')`),'true');
+    for(const color of ['#7EA8BE','#28536B','#5C374C','#052F5F','#AA5042']) assert.ok(await evaluate(`!!document.querySelector('[aria-label="Service color ${color}"]')`));
+    await clickText('Service color #7EA8BE');
+    await evaluate(`document.querySelector('[data-testid=service-editor-actions] [aria-label="Add Service"]').click()`);
+    await waitFor(closed); await waitFor('!!document.querySelector("[data-testid=service-card-3]")');
+    assert.deepEqual(serviceWrites[0].body,{serviceName:'Compact Test',price:255,packageKilos:8,color:'#7EA8BE'});
+    assert.equal(await evaluate('getComputedStyle(document.querySelector("[data-testid=service-card-3]")).backgroundColor'),'rgb(126, 168, 190)');
+    await evaluate('document.querySelector("[data-testid=service-card-3] [aria-label=Edit]").click()');
+    await waitFor(editor); await checkFit();
+    assert.equal(await evaluate(`document.querySelector('input[aria-label="Service Name"]').value`),'Compact Test');
+    assert.notEqual(await evaluate(`document.querySelector('[aria-label="Service color #7EA8BE"]').getAttribute('aria-disabled')`),'true','Own color stays available while editing');
+    await clickText('Price per kilogram'); await input('Price per kilogram','35'); await clickText('Service color #5C374C');
+    await clickText('Save Changes'); await waitFor(closed);
+    assert.equal(serviceWrites.at(-1).body.packageKilos,null);
+    assert.equal(serviceWrites.at(-1).body.color,'#5C374C');
+    await clickText('Add Price Range'); await waitFor(editor);
+    assert.equal(await evaluate('document.querySelectorAll("[data-testid=service-editor] input[type=range]").length'),2);
+    async function arrow(label,key,times) {
+      await evaluate(`document.querySelector('input[aria-label="'+${JSON.stringify(label)}+'"]').focus()`);
+      for(let i=0;i<times;i++) {
+        await command('Input.dispatchKeyEvent',{type:'keyDown',key,code:key,windowsVirtualKeyCode:key==='ArrowRight'?39:37});
+        await command('Input.dispatchKeyEvent',{type:'keyUp',key,code:key,windowsVirtualKeyCode:key==='ArrowRight'?39:37});
+      }
+    }
+    await arrow('Minimum weight','ArrowRight',3); await arrow('Maximum weight','ArrowLeft',3);
+    assert.equal(await evaluate(`document.querySelector('input[aria-label="Minimum weight"]').value`),'4');
+    assert.equal(await evaluate(`document.querySelector('input[aria-label="Maximum weight"]').value`),'9');
+    const rangeShot=await command('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(artifacts,'price-range-slider-phone.png'),Buffer.from(rangeShot.data,'base64'));
+    for (const label of ['Price per Kilogram']) {
+      await input(label,'letters');
+      assert.equal(await evaluate(`document.querySelector('input[aria-label="'+${JSON.stringify(label)}+'"]').value`),'');
+      await input(label,'25.50');
+      await input(label,'25.50abc');
+      assert.equal(await evaluate(`document.querySelector('input[aria-label="'+${JSON.stringify(label)}+'"]').value`),'25.50');
+    }
+    await clickText('Add Range'); await waitFor(closed);
+    assert.deepEqual(priceRangeWrites[0],{minKilo:4,maxKilo:9,pricePerKilo:25.5});
+    await clickText('Add Service'); await waitFor(editor);
+    await command('Emulation.setDeviceMetricsOverride',{width:390,height:360,deviceScaleFactor:1,mobile:false});
+    await pause(100); await checkFit(false);
+    await clickText('Cancel'); await waitFor(closed);
+    assert.deepEqual(errors,[]);
+    console.log('PASS compact service editor, non-scrolling standard layouts, short-screen footer, pricing switch and persisted card colors');
+    return;
+  }
   if (dialogTest) {
     const dialogVisible = '!!document.querySelector("[data-testid=app-dialog]")';
     const dialogClosed = '!document.querySelector("[data-testid=app-dialog]")';
     async function openDelete() {
-      await waitFor('Array.from(document.querySelectorAll("[role=button]")).some(e=>e.innerText.trim()==="Delete"&&e.getAttribute("aria-disabled")!=="true")');
-      await evaluate(`(()=>{const e=Array.from(document.querySelectorAll('[role="button"]')).find(e=>e.innerText.trim()==='Delete');e.focus();e.click();})()`);
+      await waitFor('Array.from(document.querySelectorAll("[role=button]")).some(e=>e.getAttribute("aria-label")==="Delete"&&e.getAttribute("aria-disabled")!=="true")');
+      await evaluate(`(()=>{const e=Array.from(document.querySelectorAll('[role="button"]')).find(e=>e.getAttribute('aria-label')==='Delete');e.focus();e.click();})()`);
       await waitFor(dialogVisible);
       await waitFor('document.activeElement?.getAttribute("aria-label")==="Cancel"');
       assert.ok((await evaluate('document.querySelector("[data-testid=app-dialog]").innerText')).includes('Full Service'));

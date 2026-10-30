@@ -10,6 +10,7 @@ import { userProfileSelect } from '../utils/user-profile';
 import { shopPhotoSelection, withShopPhoto } from '../utils/shop-photo';
 import { distanceSettingsError } from '../utils/service-area';
 import { shopChangesRequireReview } from '../utils/shop-review';
+import { withUniqueServiceColor } from '../utils/service-color';
 
 export class ShopController {
   
@@ -165,9 +166,9 @@ export class ShopController {
       const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { userId: true } });
       if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
       if (shop.userId !== req.user!.userId) return sendError(res, 'Only the shop owner can set service prices', 'FORBIDDEN', 403);
-      const service = await prisma.shopService.create({
-        data: { ...validatedData, shopId }
-      });
+      const service = await withUniqueServiceColor(shopId, validatedData.color, undefined, (tx, color) => tx.shopService.create({
+        data: { ...validatedData, color, shopId }
+      }));
 
       return sendSuccess(res, service, 'Service added successfully', 201);
     } catch (error) {
@@ -183,9 +184,9 @@ export class ShopController {
       const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { userId: true } });
       if (!shop) return sendError(res, 'Shop not found', 'NOT_FOUND', 404);
       if (shop.userId !== req.user!.userId) return sendError(res, 'Only the shop owner can set service prices', 'FORBIDDEN', 403);
-      const updated = await prisma.shopService.updateMany({
+      const updated = await withUniqueServiceColor(shopId, validatedData.color, serviceId, tx => tx.shopService.updateMany({
         where: { id: serviceId, shopId }, data: validatedData,
-      });
+      }));
       if (!updated.count) return sendError(res, 'Service not found', 'NOT_FOUND', 404);
       return sendSuccess(res, await prisma.shopService.findUnique({ where: { id: serviceId } }), 'Service updated successfully');
     } catch (error) { next(error); }

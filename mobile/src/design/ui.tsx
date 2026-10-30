@@ -73,18 +73,18 @@ export function IconButton({ label, onPress, children }: { label: string; onPres
     style={({ pressed }) => ({ width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center",
       backgroundColor: pressed ? palette.soft : "white", borderWidth: 1, borderColor: palette.line })}>{children}</Pressable>;
 }
-export function Field({ label, password = false, suffix, style, appearance = "outlined", ...props }: TextInputProps & { label?: string; password?: boolean; suffix?: string; appearance?: "outlined" | "soft" }) {
+export function Field({ label, password = false, suffix, style, appearance = "outlined", compact = false, ...props }: TextInputProps & { label?: string; password?: boolean; suffix?: string; appearance?: "outlined" | "soft"; compact?: boolean }) {
   const palette = usePalette();
   const [visible, setVisible] = useState(false);
   const [focused, setFocused] = useState(false);
-  return <View style={{ gap: 8, marginBottom: 16 }}>
-    {!!label && <Txt style={{ fontWeight: "500" }}>{label}</Txt>}
+  return <View style={{ gap: compact ? 4 : 8, marginBottom: compact ? 0 : 16 }}>
+    {!!label && <Txt style={{ fontWeight: "500", ...(compact ? { fontSize: 12, lineHeight: 18 } : {}) }}>{label}</Txt>}
     <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: appearance === "soft" ? "#FAFAFA" : "white", borderRadius: 12, borderWidth: 1, borderColor: focused ? palette.primary : appearance === "soft" ? "#F1F1F1" : "#8A94A6" }}>
       <TextInput accessibilityLabel={label || props.placeholder} {...props} secureTextEntry={password && !visible}
         onFocus={event => { setFocused(true); props.onFocus?.(event); }} onBlur={event => { setFocused(false); props.onBlur?.(event); }}
-        placeholderTextColor={palette.muted} style={[{ flex: 1, minWidth: 0, minHeight: 48, paddingHorizontal: 16, paddingVertical: 12,
+        placeholderTextColor={palette.muted} style={[{ flex: 1, minWidth: 0, minHeight: compact ? 44 : 48, paddingHorizontal: compact ? 10 : 16, paddingVertical: compact ? 10 : 12,
           fontFamily: "Inter", fontSize: 16, color: palette.ink }, style]} />
-      {!!suffix && <Txt style={{ color: palette.muted, paddingRight: 16 }}>{suffix}</Txt>}
+      {!!suffix && <Txt style={{ color: palette.muted, paddingRight: compact ? 10 : 16, ...(compact ? { fontSize: 11 } : {}) }}>{suffix}</Txt>}
       {password && <Pressable accessibilityRole="button" accessibilityLabel={visible ? "Hide password" : "Show password"} onPress={() => setVisible(!visible)} style={{ padding: 14 }}>
         {visible ? <Eye size={20} color={palette.muted} /> : <EyeOff size={20} color={palette.muted} />}
       </Pressable>}

@@ -45,7 +45,7 @@ beforeEach(() => {
     updateMany: async ({ where, data }) => { let count = 0; for (const row of shops.values()) if (matches(row, where)) { for (const [key, value] of Object.entries(data)) row[key] = value?.increment ? row[key] + value.increment : value; count++; } return { count }; },
   };
   database.shopPhoto = { findFirst: async () => null };
-  database.shopService = { create: async ({ data }) => ({ id: 2, ...data }) };
+  database.shopService = { findMany: async () => [], create: async ({ data }) => ({ id: 2, ...data }) };
   // These lifecycle cases assume completed verification; document upload/review
   // and approval denial are exercised separately in shop-requirements.test.cjs.
   database.shopDocument = { findMany: async () => ['DTIRegistration', 'TinProof', 'MayorsPermit'].map(type => ({ type, status: 'Verified' })), updateMany: async () => ({ count: 3 }) };

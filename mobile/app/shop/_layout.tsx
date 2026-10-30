@@ -9,6 +9,9 @@ import { useAuthStore } from "../../src/store/authStore";
 import { useOwnedShop } from "../../src/design/data";
 import { socketService } from "../../src/services/socket.service";
 export default function ShopTabs() {
+  return <InterfaceTheme role="shop"><ShopTabsContent /></InterfaceTheme>;
+}
+function ShopTabsContent() {
   const palette = usePalette();
   const { width } = useWindowDimensions();
   const desktop = width >= 1024;
@@ -22,7 +25,7 @@ export default function ShopTabs() {
   if (owned.isLoading || owned.isError) return <Screen><QueryState loading={owned.isLoading} error={owned.error} retry={() => owned.refetch()} /></Screen>;
   if (owned.data?.approvalStatus !== "Approved") return <Redirect href={{ pathname: "/(flows)/[flow]", params: { flow: "register-shop" } }} />;
   return (
-    <InterfaceTheme role="shop"><Tabs
+    <Tabs
       initialRouteName="home"
       screenOptions={{
         headerShown: false,
@@ -77,11 +80,7 @@ export default function ShopTabs() {
       <Tabs.Screen
         name="customers"
         options={{
-          title: "Customers",
-          href: "/shop/customers",
-          tabBarIcon: ({ color }) => (
-            <Asset name="OrderScreenIcon/Customers.png" tint={color} />
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -96,6 +95,6 @@ export default function ShopTabs() {
       />
       <Tabs.Screen name="settings" options={{ href: null }} />
       <Tabs.Screen name="orders/[id]" options={{ href: null }} />
-    </Tabs></InterfaceTheme>
+    </Tabs>
   );
 }

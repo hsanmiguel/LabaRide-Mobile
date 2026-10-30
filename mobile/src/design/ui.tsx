@@ -49,9 +49,9 @@ export function Brand({ white = false, compact = false }: { white?: boolean; com
     {!compact && <Txt style={{ fontSize: 26, fontWeight: "700", color: white ? "white" : brandBlue }}>LabaRide</Txt>}
   </View>;
 }
-export function Button({ title, onPress, busy, disabled, color, outline = false, round = false, compact = false, icon, style }: {
+export function Button({ title, onPress, busy, disabled, color, textColor, outline = false, round = false, compact = false, icon, style }: {
   title: string; onPress: () => void; busy?: boolean; disabled?: boolean; color?: string;
-  outline?: boolean; round?: boolean; compact?: boolean; icon?: React.ReactNode; style?: StyleProp<ViewStyle>;
+  textColor?: string; outline?: boolean; round?: boolean; compact?: boolean; icon?: React.ReactNode; style?: StyleProp<ViewStyle>;
 }) {
   const palette = usePalette();
   const accent = color || palette.primary;
@@ -63,7 +63,7 @@ export function Button({ title, onPress, busy, disabled, color, outline = false,
       flexDirection: "row", gap: 8, justifyContent: "center", alignItems: "center", flexShrink: 1,
     }, style]}>
     {busy ? <ActivityIndicator accessibilityLabel={`${title}, please wait`} color={outline ? accent : "white"} /> : <>
-      {icon}<Txt style={{ color: outline ? accent : "white", fontWeight: "600", fontSize: 14, textAlign: "center" }}>{title}</Txt>
+      {icon}<Txt style={{ color: textColor || (outline ? accent : "white"), fontWeight: "600", fontSize: 14, textAlign: "center" }}>{title}</Txt>
     </>}
   </Pressable>;
 }
@@ -106,7 +106,7 @@ export function Header({ title, dark = false, back = true, right, branded = fals
     </View>
   </View>;
 }
-export function Screen({ title, children, footer, dark = false, background, back = true, scroll = true, padded = true, right, brandedHeader = false }: {
+export function Screen({ title, children, footer, dark, background, back = true, scroll = true, padded = true, right, brandedHeader = false }: {
   title?: string; children: React.ReactNode; footer?: React.ReactNode; dark?: boolean; background?: string;
   back?: boolean; scroll?: boolean; padded?: boolean; right?: React.ReactNode;
   brandedHeader?: boolean;
@@ -114,13 +114,14 @@ export function Screen({ title, children, footer, dark = false, background, back
   const palette = usePalette();
   const { width } = useWindowDimensions();
   const segments = useSegments() as string[];
+  const darkHeader = dark ?? (segments[0] === "shop" && !!title);
   const inTab = segments[0] === "admin" || segments[0] === "rider" || segments[0] === "shop" || (segments[0] === "(user)" && !segments.some(s => ["order", "orders", "shops"].includes(s)));
   useWebAccessibility(palette.primary);
   const content = { width: "100%" as const, maxWidth: 1200, alignSelf: "center" as const, padding: padded ? width >= 768 ? 32 : 20 : 0, paddingBottom: padded ? 32 : 0, flexGrow: 1 };
-  return <SafeAreaView style={{ flex: 1, backgroundColor: dark ? palette.primary : background || palette.surface }} edges={inTab ? ["top", "left", "right"] : ["top", "left", "right", "bottom"]}>
-    <StatusBar style={dark ? "light" : "dark"} />
+  return <SafeAreaView style={{ flex: 1, backgroundColor: darkHeader ? palette.primary : background || palette.surface }} edges={inTab ? ["top", "left", "right"] : ["top", "left", "right", "bottom"]}>
+    <StatusBar style={darkHeader ? "light" : "dark"} />
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: background || palette.surface }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      {!!title && <Header title={title} dark={dark} back={back} right={right} branded={brandedHeader} />}
+      {!!title && <Header title={title} dark={darkHeader} back={back} right={right} branded={brandedHeader} />}
       {scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={content} showsVerticalScrollIndicator={false}>{children}</ScrollView> : <View style={[content, { flex: 1 }]}>{children}</View>}
       {footer && <View style={{ backgroundColor: "white", borderTopWidth: 1, borderTopColor: palette.line }}><View style={{ width: "100%", maxWidth: 1200, alignSelf: "center", padding: 20 }}>{footer}</View></View>}
     </KeyboardAvoidingView>

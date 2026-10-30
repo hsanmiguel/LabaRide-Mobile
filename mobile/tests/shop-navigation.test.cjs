@@ -89,7 +89,7 @@ for (const tab of tabs) {
   });
 }
 
-test("all five pages belong to the same shop navigator", () => {
+test("the four visible tab stacks and legacy Customers stack share the shop navigator", () => {
   const shopLayout = routes.children.find((route) => route.route === "shop");
   assert.ok(shopLayout);
   assert.equal(shopLayout.contextKey, "./shop/_layout.tsx");
@@ -142,13 +142,13 @@ test("profile settings, notifications, filtered customers, and order actions ref
   }
 });
 
-test("order details belong to the Customers stack rather than an extra hidden tab", () => {
+test("legacy Customers order URLs still resolve so the page can redirect to Orders", () => {
   const state = getStateFromPath("/shop/customers/orders/42", config);
   assert.deepEqual(focusedRoutes(state), ["shop", "customers", "orders/[id]"]);
   assert.equal(getPathFromState(state, config), "/shop/customers/orders/42");
 });
 
-test("legacy shop flows redirect to pages inside the same five-tab shell", () => {
+test("legacy shop flows resolve inside the shop shell", () => {
   for (const [screen, tab] of Object.entries(legacyShopFlows)) {
     const target = flowTarget(screen, { id: "42" }, ["shop", tab]);
     const state = getStateFromPath(target.pathname.replace("[flow]", screen), config);

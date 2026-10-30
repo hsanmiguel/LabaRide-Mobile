@@ -24,6 +24,7 @@ const applicationTest = process.argv.includes('--application');
 const dialogTest = process.argv.includes('--dialogs');
 const logoutTest = process.argv.includes('--logout');
 const scheduleTest = process.argv.includes('--schedule');
+const shopOrdersTest = process.argv.includes('--shop-orders');
 const nativeDialogs = [], dialogWrites = [], workflowWrites = [];
 let failServiceDelete = false;
 let photoBytes, hasPhoto = false, brokenPhoto = false;
@@ -46,6 +47,10 @@ const orders = ['Pending', 'Processing', 'Completed', 'Cancelled'].map((status,i
   serviceName: 'Full Service', kiloAmount: 8, subtotal: 215, deliveryFee: 30, voucherDiscount: 0, totalAmount: 245,
   deliveryType: 'Deliver', scheduledDate: '2026-10-15', scheduledTime: '10:00 AM', paymentMethod: 'Cash on Delivery', status,
   createdAt: new Date().toISOString(), shop: shops[0], ...Object.fromEntries(Object.entries(user).filter(([key]) => ['address_line_1','city','state_province','country','postal_code','address_type'].includes(key))) }));
+if (shopOrdersTest) {
+  for (const [index, stage] of ['PickupEnRoute', 'AtPartner', 'LaundryReceived', 'Washing', 'ReadyForDelivery', 'OutForDelivery'].entries())
+    orders.push({ ...orders[0], id: 50 + index, workflowStatus: stage, createdAt: `2026-10-${20 + index}T01:00:00Z`, collectionMethod: 'ShopPickup' });
+}
 const dispatchOrders = orders.slice(0, 2).map((order,index) => ({ ...order, workflowStatus: index ? 'ReadyForDelivery' : 'PickupQueued', workflowVersion: 3, assignments: [], events: [] }));
 const dispatchWrites = [];
 let handoffFixture;
@@ -993,7 +998,7 @@ async function clickText(text) {
     assert.equal(reviews.length,1,'Cancelled approval does not submit');
     await clickText('Approve Shop'); await clickText('Approve Shop'); await waitFor('document.body.innerText.includes("No matching applications")');
     user.isAdmin=false;
-    await visit('/shop/home',390,'Recent transactions');
+    await visit('/shop/home',390,'Recent orders');
     user.isAdmin=true;
     await visit('/admin',390,'Shop management'); await clickText('Approved'); await clickText('Suspend Shop');
     await evaluate(`(()=>{const e=document.querySelector('textarea');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'Verification requires review.');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
@@ -1043,14 +1048,38 @@ async function clickText(text) {
     console.log('PASS photo picker, upload, display, filters, errors, confirmation, removal and image fallback');
     return;
   }
+  if (shopOrdersTest) {
+    await visit('/shop/transactions',390,'Your laundry orders');
+    const ids = () => evaluate('Array.from(document.querySelectorAll("[data-testid^=shop-order-]")).map(e=>e.getAttribute("data-testid"))');
+    assert.equal((await ids()).length,5,'Orders are paginated');
+    await clickText('Next'); await waitFor('document.body.innerText.includes("Page 2 of 2")');
+    assert.equal((await ids()).length,3);
+    await clickText('Filter Ready'); await waitFor('!!document.querySelector("[data-testid=shop-order-55]")');
+    assert.equal((await ids()).length,2,'Ready includes orders out for delivery');
+    assert.ok((await evaluate('document.body.innerText')).includes('Out for delivery'));
+    await clickText('Past Orders'); await waitFor('!!document.querySelector("[data-testid=shop-order-44]")');
+    assert.equal((await ids()).length,2,'Switching section resets the status filter');
+    await clickText('Show pending orders'); await waitFor('!!document.querySelector("[data-testid=shop-order-42]")');
+    assert.equal((await ids()).length,1);
+    await visit('/shop/customers/shop-customers?status=Completed',390,'Your laundry orders');
+    await waitFor('location.pathname==="/shop/transactions"&&!!document.querySelector("[data-testid=shop-order-44]")');
+    assert.equal((await ids()).length,1,'Legacy status shortcut preserves its filter');
+    await visit('/shop/transactions',390,'Your laundry orders');
+    await clickText('Newest first'); await waitFor('document.body.innerText.includes("Oldest first")');
+    assert.equal((await ids())[0],'shop-order-50','Oldest sort is chronological');
+    for (const width of [320,390,768,1440]) await visit('/shop/transactions',width,'Your laundry orders',width===390?'shop-orders-phone':width===1440?'shop-orders-desktop':undefined);
+    assert.deepEqual(errors,[]);
+    console.log('PASS merged Orders workflow status, pagination, sort, legacy filters and responsive layouts');
+    return;
+  }
   for (const width of [320,390,768,1440]) {
     await visit('/home',width,'Test Laundry',width===390?'customer-phone':width===1440?'customer-desktop':undefined);
-    await visit('/shop/home',width,'Recent transactions',width===390?'shop-phone':width===1440?'shop-desktop':undefined);
+    await visit('/shop/home',width,'Recent orders',width===390?'shop-phone':width===1440?'shop-desktop':undefined);
     await visit('/shop/transactions',width,'Test Customer');
   }
   for (const width of [390,1440]) for (const [route,expected] of [
     ['/activities','View order details'],['/profile','Personal details'],['/shops/101','Browse services'],['/shops','All laundry shops'],
-    ['/shop/services','Full Service'],['/shop/customers','New Orders'],['/shop/profile','Account Information'],['/shop/profile/security','Current Password'],
+    ['/shop/services','Full Service'],['/shop/customers','Your laundry orders'],['/shop/profile','Account Information'],['/shop/profile/security','Current Password'],
     ['/shop/customers/orders/42','Customer Details'],['/order/101','Review Order'],['/search','Search History']]) await visit(route,width,expected);
   await visit('/activities',390,'Active Orders (2)');
   await clickText('Past Orders (2)'); await waitFor('document.body.innerText.includes("Order #44")');
@@ -1058,9 +1087,25 @@ async function clickText(text) {
   await clickText('Active Orders (2)'); await clickText('Processing');
   await waitFor('document.body.innerText.includes("Order #43")&&!document.body.innerText.includes("Order #42")');
   await visit('/shop/transactions',390,'Test Customer');
-  await clickText('Pending'); await pause(100);
+  await clickText('Filter Pending'); await pause(100);
   assert.ok(!(await evaluate('document.body.innerText')).includes('#43'), 'Pending filter excludes processing orders');
-  await clickText('All');
+  await clickText('Filter All');
+  await clickText('Past Orders'); await waitFor('!!document.querySelector("[data-testid=shop-order-44]")');
+  assert.equal(await evaluate('!!document.querySelector("[data-testid=shop-order-42]")'),false,'Past excludes pending');
+  await clickText('Filter Cancelled'); await waitFor('!!document.querySelector("[data-testid=shop-order-45]")');
+  assert.equal(await evaluate('!!document.querySelector("[data-testid=shop-order-44]")'),false,'Cancelled excludes completed');
+  await clickText('Show in progress orders'); await waitFor('!!document.querySelector("[data-testid=shop-order-43]")');
+  assert.equal(await evaluate('!!document.querySelector("[data-testid=shop-order-42]")'),false,'In progress excludes pending');
+  await clickText('Show ready orders'); await waitFor('document.body.innerText.includes("No matching orders")');
+  await clickText('Clear filters'); await waitFor('!!document.querySelector("[data-testid=shop-order-42]")');
+  await evaluate(`(()=>{const e=document.querySelector('input[aria-label="Search customer, order ID or service"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'#42');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await waitFor('!!document.querySelector("[data-testid=shop-order-42]")&&!document.querySelector("[data-testid=shop-order-43]")');
+  await clickText('View order 42, Test Customer With A Long Name');
+  await waitFor('location.pathname==="/shop/transactions/shop-transaction"&&document.body.innerText.includes("Customer Details")');
+  await visit('/shop/transactions?status=Completed',390,'Your laundry orders');
+  await waitFor('!!document.querySelector("[data-testid=shop-order-44]")');
+  assert.equal(await evaluate('!!document.querySelector("[data-testid=shop-order-42]")'),false,'URL status selects Past');
+  for (const width of [320,390,768,1440]) await visit('/shop/transactions',width,'Your laundry orders',width===390?'shop-orders-phone':width===1440?'shop-orders-desktop':undefined);
   await visit('/shop/services',390,'Full Service'); await clickText('Add Service'); await waitFor('document.body.innerText.includes("Service Name")');
   await clickText('Cancel');
   await visit('/order/101',390,'Review Order');
@@ -1068,7 +1113,7 @@ async function clickText(text) {
   await visit('/search',390,'Search History');
   await evaluate(`(()=>{const e=document.querySelector('input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'no-such-shop');e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await waitFor('document.body.innerText.includes("No laundry shops matched")');
-  mode='empty'; await visit('/home',390,'No shops available yet'); await visit('/activities',390,'No active orders'); await visit('/shop/transactions',390,'No transactions found');
+  mode='empty'; await visit('/home',390,'No shops available yet'); await visit('/activities',390,'No active orders'); await visit('/shop/transactions',390,'No active orders');
   mode='error'; await visit('/home',390,'Unable to load'); await visit('/shop/home',390,'Unable to load');
   mode='loading'; await command('Page.navigate',{ url:'http://127.0.0.1:4178/home' });
   await waitFor('!!document.querySelector("[role=progressbar]")'); console.log('PASS loading indicator');

@@ -12,16 +12,16 @@ const shopFlowPaths = {
 export const legacyShopFlows: Record<string, ShopTab> = {
   "shop-notifications": "home",
   "shop-location": "home",
-  "shop-customers": "customers",
+  "shop-customers": "transactions",
   "shop-transaction": "transactions",
   "shop-details": "profile",
   "account-information": "profile",
   security: "profile",
-  "decline-order": "customers",
-  "decline-closed": "customers",
-  "decline-busy": "customers",
-  "decline-services": "customers",
-  "order-declined": "customers",
+  "decline-order": "transactions",
+  "decline-closed": "transactions",
+  "decline-busy": "transactions",
+  "decline-services": "transactions",
+  "order-declined": "transactions",
 };
 
 export function flowTarget(

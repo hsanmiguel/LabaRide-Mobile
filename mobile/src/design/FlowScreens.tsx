@@ -186,7 +186,7 @@ export default function DesignFlow() {
         title="Order Cancelled"
         purple
         action="Continue"
-        onPress={() => router.replace("/shop/customers")}
+        onPress={() => router.replace("/shop/transactions")}
       />
     );
   return (

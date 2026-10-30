@@ -15,7 +15,6 @@ import {
   Plus,
   Store,
   UserRound,
-  XCircle,
   Trash2,
 } from "lucide-react-native";
 import { router, Redirect } from "expo-router";
@@ -34,9 +33,7 @@ import {
   MenuRow,
   PriceRow,
   Screen,
-  SearchBox,
   Section,
-  TabsRow,
   Txt,
   money,
   servicePriceLabel,
@@ -60,7 +57,8 @@ import {
 } from "./data";
 import { TurnaroundDetails } from "./TurnaroundDetails";
 import { deliveryDay } from "./delivery-slots";
-import { OrderCard, StatusBadge, Totals } from "./OrderScreens";
+import { StatusBadge, Totals } from "./OrderScreens";
+import { shopOrderStatus } from "./shop-orders";
 import { QueryState } from "./UserScreens";
 import { distanceFields, distanceSettingsError } from "./service-area";
 import LaundryMap from "./LaundryMap";
@@ -76,15 +74,6 @@ import { ShopApplicationStatus } from "./ShopApprovalScreens";
 import { useLogout } from "./useLogout";
 import { DeliveryOrderDesign } from './DeliveryScreens';
 
-const statusLabels: Record<Order["status"], string> = {
-  Pending: "New Orders",
-  Accepted: "Awaiting Laundry",
-  Queued: "Received / Queued",
-  Ready: "Ready Orders",
-  Processing: "Ongoing Orders",
-  Completed: "Completed Orders",
-  Cancelled: "Cancelled Orders",
-};
 export function RegisterShopDesign() {
   const [values, setValues] = useState<Record<string, string>>({
     shopName: "", contactNumber: "", openingTime: "", closingTime: "", ...addressValues(null, "Work"),
@@ -193,7 +182,7 @@ export function TransactionsTable(props: Parameters<typeof TransactionRows>[0]) 
   useEffect(() => { setPage(page); }, [page]);
   return <View>
     <TransactionRows {...props} orders={props.orders.slice(page * ORDERS_PER_PAGE, (page + 1) * ORDERS_PER_PAGE)} />
-    <PageControls page={page} total={props.orders.length} onChange={setPage} />
+    {!props.dashboard && <PageControls page={page} total={props.orders.length} onChange={setPage} />}
   </View>;
 }
 
@@ -344,9 +333,9 @@ export function ShopHomeDesign() {
   const list = orders.data || [];
   const metrics = [
     { label: "Orders today", count: list.filter(order => new Date(order.createdAt).toDateString() === today).length, Icon: ClipboardList },
-    { label: "Pending", count: list.filter(order => order.status === "Pending").length, Icon: Clock },
-    { label: "Processing", count: list.filter(order => order.status === "Processing").length, Icon: WashingMachine },
-    { label: "Completed", count: list.filter(order => order.status === "Completed").length, Icon: CheckCircle2 },
+    { label: "Pending", count: list.filter(order => shopOrderStatus(order) === "Pending").length, Icon: Clock },
+    { label: "Processing", count: list.filter(order => shopOrderStatus(order) === "Processing").length, Icon: WashingMachine },
+    { label: "Completed", count: list.filter(order => shopOrderStatus(order) === "Completed").length, Icon: CheckCircle2 },
   ];
   return <Screen title="Dashboard" back={false} right={<IconButton label="Notifications" onPress={() => go("shop-notifications")}><Bell size={22} color={palette.primary} /></IconButton>}>
     <View style={styles.stack}>
@@ -357,7 +346,7 @@ export function ShopHomeDesign() {
           <Card key={label} style={{ flexGrow: 1, flexBasis: width >= 768 ? "22%" : "44%", padding: 16 }}><View style={[styles.row, { gap: 8 }]}><Txt style={{ flex: 1, color: palette.muted, fontSize: 12 }}>{label}</Txt><Icon size={20} color={palette.primary} /></View>
             <Txt style={{ fontSize: 32, fontWeight: "700", color: palette.primary }}>{count}</Txt></Card>)}
         </View>
-        <Card><Section title="Recent transactions" action="View orders" onPress={() => router.push("/shop/transactions")} /><TransactionsTable dashboard orders={list} /></Card>
+        <Card><Section title="Recent orders" action="View all" onPress={() => router.push("/shop/transactions")} /><TransactionsTable dashboard orders={list.slice(0, 4).map(order => ({ ...order, status: shopOrderStatus(order) }))} /></Card>
       </>}
       {owned.data && <Card style={{ padding: 0, overflow: "hidden" }}><View style={{ paddingHorizontal: 20 }}><Section title="Shop location" action="View map" onPress={() => go("shop-location")} /></View>
         <View style={{ height: 240 }}><LaundryMap latitude={owned.data.latitude} longitude={owned.data.longitude} shops={[owned.data]} onSelect={() => go("shop-location")} /></View></Card>}
@@ -365,196 +354,11 @@ export function ShopHomeDesign() {
     </View>
   </Screen>;
 }
-export function ShopTransactionsDesign() {
-  const palette = usePalette();
-  const { go } = useFlowNavigation();
-  const orders = useOrders(true);
-  const [tab, setTab] = useState("All");
-  const [query, setQuery] = useState("");
-  const [selection, setSelection] = useState<number[]>([]);
-  const filters: Record<string, string> = {
-    All: "",
-    Pending: "Pending",
-    Accepted: "Accepted",
-    Queued: "Queued",
-    Ready: "Ready",
-    Cancelled: "Cancelled",
-    "In Progress": "Processing",
-    Completed: "Completed",
-  };
-  const filtered = (orders.data || []).filter(
-    (o) => (!filters[tab] || o.status === filters[tab]) && (String(o.id) + " " + o.userName + " " + o.serviceName).toLowerCase().includes(query.toLowerCase()),
-  );
-  return (
-    <Screen
-      title="Orders & transactions"
-      dark
-      back={false}
-      background={palette.surface}
-      footer={
-        selection.length ? (
-          <View style={styles.row}>
-            <Button
-              title="Back"
-              outline
-              color={palette.navy}
-              onPress={() => setSelection([])}
-            />
-            <Button
-              title="View Transaction"
-              color={palette.navy}
-              disabled={selection.length !== 1}
-              onPress={() =>
-                go("shop-transaction", { id: String(selection[0]) })
-              }
-              style={styles.grow}
-            />
-          </View>
-        ) : undefined
-      }
-    >
-      <View style={styles.stack}>
-        <SearchBox value={query} onChangeText={setQuery} placeholder="Search orders, customers or services" />
-        <TabsRow
-          items={Object.keys(filters)}
-          value={tab}
-          onChange={setTab}
-          color={palette.primary}
-        />
-        <Card style={{ borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
-          <QueryState
-            loading={orders.isLoading}
-            error={orders.error}
-            retry={() => orders.refetch()}
-          />
-          {!orders.isLoading && !orders.error && <TransactionsTable
-            key={JSON.stringify([tab, query])}
-            orders={filtered}
-            selectable
-            selection={selection}
-            onSelect={(id) =>
-              setSelection(
-                selection.includes(id)
-                  ? selection.filter((i) => i !== id)
-                  : [...selection, id],
-              )
-            }
-          />}
-        </Card>
-      </View>
-    </Screen>
-  );
-}
+export { ShopOrdersDesign as ShopTransactionsDesign } from "./ShopOrders";
+
+// Preserve old Customers URLs and status shortcuts while using one Orders page.
 export function CustomersDesign({ filter }: { filter?: Order["status"] }) {
-  const palette = usePalette();
-  const { go } = useFlowNavigation();
-  const orders = useOrders(true);
-  const [query, setQuery] = useState("");
-  const [requestedPage, setPage] = useState(0);
-  useEffect(() => { setPage(0); }, [query, filter]);
-  const statuses: Order["status"][] = [
-    "Pending",
-    "Accepted",
-    "Queued",
-    "Ready",
-    "Cancelled",
-    "Processing",
-    "Completed",
-  ];
-  const filtered = (orders.data || []).filter(
-    (order) =>
-      (!filter || order.status === filter) &&
-      `${order.id} ${order.userName} ${order.serviceName}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
-  const recentOrders = [...(orders.data || [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 4);
-  const page = Math.min(requestedPage, Math.max(0, Math.ceil(filtered.length / ORDERS_PER_PAGE) - 1));
-  useEffect(() => { setPage(page); }, [page]);
-  return (
-    <Screen title="Customer Orders" back={!!filter} background={palette.surface} dark>
-      <View style={styles.stack}>
-        {filter ? (
-          <>
-            <Section title={statusLabels[filter]} light={false} />
-            <SearchBox
-              placeholder="Search..."
-              value={query}
-              onChangeText={setQuery}
-            />
-          </>
-        ) : null}
-        <QueryState
-          loading={orders.isLoading}
-          error={orders.error}
-          retry={() => orders.refetch()}
-        />
-        {filter ? (
-          <>
-            {filtered.slice(page * ORDERS_PER_PAGE, (page + 1) * ORDERS_PER_PAGE).map((order) => <OrderCard key={order.id} order={order} shopMode />)}
-            {!orders.isLoading && !orders.error && <PageControls page={page} total={filtered.length} onChange={setPage} />}
-          </>
-        ) : (
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
-            {statuses.map((status) => {
-              const list = (orders.data || []).filter((order) => order.status === status);
-              const Icon = status === "Pending" ? ClipboardList : status === "Cancelled" ? XCircle : status === "Processing" ? WashingMachine : CheckCircle2;
-              const tone = status === "Cancelled" ? palette.danger : status === "Completed" ? palette.success : palette.primary;
-              const subtitle = list.length ? "View customer orders" : "No orders yet";
-              return (
-                <Pressable key={status} accessibilityRole="button" accessibilityLabel={`${statusLabels[status]}, ${list.length} orders`}
-                  onPress={() => go("shop-customers", { status })} style={{ flexBasis: "45%", flexGrow: 1, minWidth: 140 }}>
-                  <Card style={{ minHeight: 156, padding: 16, borderRadius: 18, justifyContent: "space-between", gap: 14 }}>
-                    <View style={styles.between}>
-                      <View style={{ width: 38, height: 38, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: status === "Cancelled" ? "#FFF0F0" : status === "Completed" ? "#EAF8F1" : palette.soft }}>
-                        <Icon size={20} color={tone} strokeWidth={2} />
-                      </View>
-                      <ChevronRight size={18} color={palette.muted} />
-                    </View>
-                    <View style={{ gap: 2 }}>
-                      <Txt style={{ fontSize: 26, lineHeight: 32, color: tone, fontWeight: "700" }}>{list.length}</Txt>
-                      <Txt style={{ fontSize: 15, fontWeight: "600" }}>{statusLabels[status]}</Txt>
-                    </View>
-                    <Txt style={{ color: palette.muted, fontSize: 12, lineHeight: 16 }}>{subtitle}</Txt>
-                  </Card>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
-        {!filter && !orders.isLoading && !orders.error && (
-          <View style={{ gap: 12, marginTop: 8 }}>
-            <Section title="Recent orders" light={false} />
-            {recentOrders.length ? recentOrders.map((order) => (
-              <Pressable key={order.id} accessibilityRole="button" accessibilityLabel={`Order ${order.id}, ${order.userName}, ${order.status}`}
-                onPress={() => go("shop-transaction", { id: String(order.id) })}>
-                <Card style={{ padding: 14, borderRadius: 16, gap: 10 }}>
-                  <View style={styles.between}>
-                    <View style={{ flex: 1, gap: 2 }}>
-                      <Txt numberOfLines={1} style={{ fontWeight: "600" }}>{order.userName}</Txt>
-                      <Txt numberOfLines={1} style={{ color: palette.muted, fontSize: 12 }}>{order.serviceName} · Order #{order.id}</Txt>
-                    </View>
-                    <StatusBadge status={order.status} />
-                  </View>
-                  <View style={styles.between}>
-                    <Txt style={{ color: palette.muted, fontSize: 12 }}>{new Date(order.createdAt).toLocaleDateString()}</Txt>
-                    <View style={styles.row}><Txt style={{ fontWeight: "600", color: palette.primary }}>{money(order.totalAmount)}</Txt><ChevronRight size={16} color={palette.muted} /></View>
-                  </View>
-                </Card>
-              </Pressable>
-            )) : (
-              <Card style={{ padding: 18 }}><Txt style={{ color: palette.muted, textAlign: "center" }}>New customer orders will appear here.</Txt></Card>
-            )}
-          </View>
-        )}
-        {filter && !orders.isLoading && !orders.error && !filtered.length && (
-          <Card>
-            <Empty title={`No ${statusLabels[filter].toLowerCase()} yet.`} />
-          </Card>
-        )}
-      </View>
-    </Screen>
-  );
+  return <Redirect href={{ pathname: "/shop/transactions", params: filter ? { status: filter } : {} }} />;
 }
 export function ShopOrderDetailsDesign({
   id,
@@ -611,12 +415,13 @@ export function ShopOrderDetailsDesign({
   return (
     <Screen
       title={`#${order.id}`}
-      dark={!transaction}
+      dark
       background={palette.surface}
       right={
         order.status === "Pending" && (
-          <Pressable accessibilityRole="button" onPress={() => go("decline-order", { id: String(id) })}>
-            <Txt style={{ color: "#FF8888" }}>Decline</Txt>
+          <Pressable accessibilityRole="button" onPress={() => go("decline-order", { id: String(id) })}
+            style={({ pressed }) => ({ minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderRadius: 10, backgroundColor: pressed ? "#FFFFFF24" : "#FFFFFF14" })}>
+            <Txt style={{ color: "#FFD6D6", fontWeight: "700" }}>Decline</Txt>
           </Pressable>
         )
       }
@@ -877,16 +682,13 @@ export function ShopProfileDesign() {
   const owned = useOwnedShop();
   const shop = owned.data;
   return (
-    <Screen background={palette.surface} padded={false}>
+    <Screen title="Shop Profile" back={false} background={palette.surface} padded={false}>
       <View style={{ height: 300, position: "relative", backgroundColor: "#17151B" }}>
         <ShopPhoto name={shop?.shopName || "Your Shop"} photoUrl={shop?.photoUrl}
           style={{ height: 300, aspectRatio: undefined, borderRadius: 0, backgroundColor: "#28242D" }} />
         <LinearGradient pointerEvents="none" colors={["#00000000", "#00000008", "#000000C9"]}
           locations={[0, 0.48, 1]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
           style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }} />
-        <View style={{ position: "absolute", top: 8, left: 20, right: 20, alignItems: "center" }}>
-          <Txt accessibilityRole="header" style={{ color: "white", fontSize: 16, fontWeight: "600" }}>Shop Profile</Txt>
-        </View>
         <View style={{ position: "absolute", left: 20, right: 20, bottom: 34, gap: 7 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 9 }}>
             <Txt numberOfLines={1} style={{ color: "white", fontSize: 20, fontWeight: "700", flex: 1 }}>
@@ -1099,8 +901,8 @@ export function ServicesDesign() {
       title="Services"
       back={false}
       right={
-        <Button title="Add Service" compact color={palette.navy} disabled={busy}
-          icon={<Plus size={18} color="white" />} onPress={() => open("service")} />
+        <Button title="Add Service" compact color="white" textColor={palette.primary} disabled={busy}
+          icon={<Plus size={18} color={palette.primary} />} onPress={() => open("service")} />
       }
     >
       <View style={[styles.stack, { width: "100%", maxWidth: 1100, alignSelf: "center" }]}>

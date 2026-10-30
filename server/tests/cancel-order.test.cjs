@@ -39,11 +39,21 @@ test('pending cancellation saves a trimmed reason and notifies customer and shop
   const result = await invoke();
   assert.equal(result.res.code, 200);
   assert.equal(result.row.status, 'Cancelled');
+  assert.ok(result.row.cancelledAt instanceof Date);
   assert.equal(result.res.body.data.notes, 'I changed my mind');
   assert.deepEqual(result.events.map(event => event.room), ['user_1', 'shop_5']);
   assert.ok(result.events.every(event => event.payload.notes === 'I changed my mind'));
   assert.deepEqual(result.notifications.map(item => [item.userId, item.shopMode]), [[1, false], [2, true]]);
   assert.ok(result.notifications.every(item => item.message.includes('I changed my mind')));
+});
+
+test('legacy completion records an explicit close date and repeated updates preserve it', async () => {
+  const result = await invoke({ method: 'updateStatus', status: 'Ready', userId: 2, body: { status: 'Completed' } });
+  assert.equal(result.error, undefined);
+  assert.ok(result.row.completedAt instanceof Date);
+  const completedAt = new Date('2020-01-01T00:00:00Z');
+  const repeat = await invoke({ method: 'updateStatus', status: 'Completed', userId: 2, body: { status: 'Completed' }, rowFields: { completedAt } });
+  assert.equal(repeat.row.completedAt, completedAt);
 });
 
 test('other customers and missing orders cannot cancel', async () => {

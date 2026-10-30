@@ -3,10 +3,8 @@ import { useEffect, useState, useRef } from "react";
 import { Modal, Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import {
   Bell,
-  ClipboardList,
   WashingMachine,
   Clock,
-  CheckCircle2,
   CheckSquare,
   Square,
   ChevronRight,
@@ -73,6 +71,7 @@ import { ShopPhoto } from "./ShopPhoto";
 import { ShopApplicationStatus } from "./ShopApprovalScreens";
 import { useLogout } from "./useLogout";
 import { DeliveryOrderDesign } from './DeliveryScreens';
+import { DashboardAnalytics } from './DashboardAnalytics';
 
 export function RegisterShopDesign() {
   const [values, setValues] = useState<Record<string, string>>({
@@ -325,27 +324,16 @@ function TransactionRows({
 }
 export function ShopHomeDesign() {
   const palette = usePalette();
-  const { width } = useWindowDimensions();
   const { go } = useFlowNavigation();
   const owned = useOwnedShop();
   const orders = useOrders(true);
-  const today = new Date().toDateString();
   const list = orders.data || [];
-  const metrics = [
-    { label: "Orders today", count: list.filter(order => new Date(order.createdAt).toDateString() === today).length, Icon: ClipboardList },
-    { label: "Pending", count: list.filter(order => shopOrderStatus(order) === "Pending").length, Icon: Clock },
-    { label: "Processing", count: list.filter(order => shopOrderStatus(order) === "Processing").length, Icon: WashingMachine },
-    { label: "Completed", count: list.filter(order => shopOrderStatus(order) === "Completed").length, Icon: CheckCircle2 },
-  ];
   return <Screen title="Dashboard" back={false} right={<IconButton label="Notifications" onPress={() => go("shop-notifications")}><Bell size={22} color={palette.primary} /></IconButton>}>
     <View style={styles.stack}>
-      <View><Txt style={styles.title}>{owned.data?.shopName || "Your shop overview"}</Txt><Txt style={styles.muted}>Keep track of your laundry business in one place.</Txt></View>
+      <View><Txt style={styles.title}>{owned.data?.shopName || "Your shop overview"}</Txt><Txt style={styles.muted}>Your shop’s performance at a glance.</Txt></View>
       <QueryState loading={owned.isLoading || orders.isLoading} error={owned.error || orders.error} retry={() => { owned.refetch(); orders.refetch(); }} />
+      {owned.data && <DashboardAnalytics shopId={owned.data.id} />}
       {!owned.isLoading && !orders.isLoading && !owned.error && !orders.error && owned.data && <>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 16 }}>{metrics.map(({ label, count, Icon }) =>
-          <Card key={label} style={{ flexGrow: 1, flexBasis: width >= 768 ? "22%" : "44%", padding: 16 }}><View style={[styles.row, { gap: 8 }]}><Txt style={{ flex: 1, color: palette.muted, fontSize: 12 }}>{label}</Txt><Icon size={20} color={palette.primary} /></View>
-            <Txt style={{ fontSize: 32, fontWeight: "700", color: palette.primary }}>{count}</Txt></Card>)}
-        </View>
         <Card><Section title="Recent orders" action="View all" onPress={() => router.push("/shop/transactions")} /><TransactionsTable dashboard orders={list.slice(0, 4).map(order => ({ ...order, status: shopOrderStatus(order) }))} /></Card>
       </>}
       {owned.data && <Card style={{ padding: 0, overflow: "hidden" }}><View style={{ paddingHorizontal: 20 }}><Section title="Shop location" action="View map" onPress={() => go("shop-location")} /></View>
@@ -390,6 +378,7 @@ export function ShopOrderDetailsDesign({
         ...(status === "Accepted" ? { acceptanceExplanation: acceptanceExplanation.trim() } : {}),
       });
       await cache.invalidateQueries({ queryKey: ["shop-orders"] });
+      await cache.invalidateQueries({ queryKey: ["shop-analytics"] });
       await cache.invalidateQueries({ queryKey: ["user-orders"] });
       await cache.invalidateQueries({ queryKey: ["notifications"] });
     } catch (error) {
@@ -564,6 +553,7 @@ export function DeclineOrderDesign({
         notes: reason + (services.length ? `: ${services.join(", ")}` : ""),
       });
       await cache.invalidateQueries({ queryKey: ["shop-orders"] });
+      await cache.invalidateQueries({ queryKey: ["shop-analytics"] });
       replaceFlow("order-declined");
     } catch (error) {
       fail(error);

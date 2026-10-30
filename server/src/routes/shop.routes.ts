@@ -4,6 +4,7 @@ import { authenticateToken, requireApprovedShop } from '../middleware/auth.middl
 import { ShopPhotoController } from '../controllers/shop-photo.controller';
 import { ShopDocumentController as D } from '../controllers/shop-document.controller';
 import { requireAdmin } from '../middleware/auth.middleware';
+import { ShopAnalyticsController } from '../controllers/shop-analytics.controller';
 
 const router = Router();
 
@@ -14,6 +15,7 @@ router.get('/:shopId/photo', ShopPhotoController.get);
 
 // Authenticated routes
 router.use(authenticateToken);
+router.get('/:shopId/analytics', ShopAnalyticsController.get);
 router.post('/', ShopController.registerShop);
 router.get('/:shopId/documents', D.list);
 router.get('/:shopId/documents/:type', D.image);

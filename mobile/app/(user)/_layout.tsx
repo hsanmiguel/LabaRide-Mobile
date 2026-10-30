@@ -45,7 +45,7 @@ export default function UserTabs() {
       <Tabs.Screen
         name="activities"
         options={{
-          title: "Activities",
+          title: "Orders",
           tabBarIcon: ({ color }) => (
             <Asset name="activities.png" tint={color} size={26} />
           ),

@@ -11,6 +11,7 @@ import type { ShopHours } from '../utils/shop-hours';
 import { serviceAreaError, type ServiceArea } from '../utils/service-area';
 import { shopAvailability } from '../utils/shop-hours';
 import { confirmationCode, recordEvent } from '../services/dispatch.service';
+import { shopPhotoSelection, withShopPhoto } from '../utils/shop-photo';
 
 export class TransactionController {
   
@@ -122,10 +123,10 @@ export class TransactionController {
       const transactions = await prisma.transaction.findMany({
         where: { userId },
         orderBy: { createdAt: 'desc' },
-        include: { items: true, shop: { select: { shopName: true, address: true, contactNumber: true } } }
+        include: { items: true, shop: { select: { id: true, shopName: true, address: true, contactNumber: true, photo: shopPhotoSelection } } }
       });
 
-      return sendSuccess(res, transactions.map(({ collectionCode, ...order }) => order), 'User transactions retrieved');
+      return sendSuccess(res, transactions.map(({ collectionCode, shop, ...order }) => ({ ...order, shop: withShopPhoto(shop) })), 'User transactions retrieved');
     } catch (error) {
       next(error);
     }

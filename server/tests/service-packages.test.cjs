@@ -15,7 +15,10 @@ async function invoke({ method = 'addService', userId = 1, shopOwner = 1, servic
   let row = { id: 9, shopId: serviceShopId, serviceName: 'Wash', price: 25, packageKilos: null };
   let writes = 0, error;
   database.shop = { findUnique: async () => missingShop ? null : { userId: shopOwner } };
+  database.$transaction = callback => callback(database);
+  database.$queryRaw = async () => [];
   database.shopService = {
+    findMany: async () => [row],
     create: async ({ data }) => { writes++; row = { id: 9, ...data }; return row; },
     updateMany: async ({ where, data }) => {
       if (row.id !== where.id || row.shopId !== where.shopId) return { count: 0 };

@@ -216,6 +216,7 @@ model Transaction {
   washingMinutes Int? @map("washing_minutes")
   dryingMinutes Int? @map("drying_minutes")
   dryingStartedAt DateTime? @map("drying_started_at") @db.Timestamptz(3)
+  washingStartedAt DateTime? @map("washing_started_at") @db.Timestamptz(3)
   processingTimingCapturedAt DateTime? @map("processing_timing_captured_at") @db.Timestamptz(3)
   estimatedReadyAt DateTime? @map("estimated_ready_at") @db.Timestamptz(3)
   estimateUpdatedAt DateTime? @map("estimate_updated_at") @db.Timestamptz(3)

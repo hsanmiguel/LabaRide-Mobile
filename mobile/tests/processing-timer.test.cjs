@@ -40,19 +40,30 @@ test('drying uses its own actual start and folding stops both countdowns', () =>
   assert.deepEqual(processingTimers({ ...drying, workflowStatus: 'Folding' }, start + 100 * 60000).phases.map(p => p.state), ['done', 'done']);
 });
 
-test('original Processing orders show an explicitly estimated sequence with both durations', () => {
-  assert.equal(processingTimers(order, start).estimatedSequence, true);
-  const atForty = processingTimers(order, start + 40 * 60000).phases;
+test('original processing status and old processing timestamps never start either timer', () => {
+  for (const now of [start, start + 80 * 60000, start + 24 * 3600000]) {
+    const phases = processingTimers(order, now).phases;
+    assert.deepEqual(phases.map(p=>p.state), ['waiting','waiting']);
+    assert.equal(timerPhaseText(phases[0]), '30:00 · Not started');
+  }
+});
+
+test('original wash and dry phases run only from their independent manual starts', () => {
+  const washing = { ...order, washingStartedAt: new Date(start).toISOString() };
+  const atForty = processingTimers(washing, start + 40 * 60000).phases;
   assert.equal(atForty[0].state, 'elapsed');
-  assert.equal(atForty[1].state, 'running');
-  assert.equal(atForty[1].seconds, 35 * 60);
-  assert.equal(processingTimers(order, start + 80 * 60000).phases[1].state, 'elapsed');
+  assert.equal(atForty[1].state, 'waiting');
+  const drying = { ...washing, dryingStartedAt: new Date(start + 50 * 60000).toISOString() };
+  const afterDryStart = processingTimers(drying, start + 55 * 60000).phases;
+  assert.equal(afterDryStart[0].state, 'done');
+  assert.equal(afterDryStart[1].seconds, 40 * 60);
+  assert.equal(afterDryStart[1].state, 'running');
 });
 
 test('missing durations and timestamps remain unknown, and closed or queued orders have no active timers', () => {
   assert.equal(processingTimers({ ...order, workflowStatus: 'Drying' }, start).phases[1].state, 'unavailable');
   assert.equal(processingTimers({ ...order, washingMinutes: null }, start).phases[0].seconds, null);
-  assert.equal(processingTimers({ ...order, processingStartedAt: 'invalid' }, start).phases[0].state, 'unavailable');
+  assert.equal(processingTimers({ ...order, workflowStatus: 'Washing', processingStartedAt: 'invalid' }, start).phases[0].state, 'unavailable');
   for (const status of ['Pending', 'Accepted', 'Queued', 'Ready', 'Completed', 'Cancelled']) assert.equal(processingTimers({ ...order, status }, start), null);
   assert.equal(processingTimers({ ...order, workflowStatus: 'Completed' }, start), null);
   assert.equal(timerClock(45 * 60), '45:00');

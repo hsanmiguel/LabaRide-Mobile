@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../config/database';
 import { sendSuccess, sendError } from '../utils/response';
-import { createTransactionSchema, updateStatusSchema, cancelTransactionSchema } from '../validators/transaction.validator';
+import { createTransactionSchema, updateStatusSchema, cancelTransactionSchema, startProcessingTimerSchema } from '../validators/transaction.validator';
+import { startProcessingTimer } from '../services/processing-timer.service';
 import { AuthRequest } from '../middleware/auth.middleware';
 import type { Server } from 'socket.io';
 import { Prisma } from '@prisma/client';
@@ -15,6 +16,20 @@ import { shopPhotoSelection, withShopPhoto } from '../utils/shop-photo';
 import { processingEventSelection, serviceProcessingTimes, serviceTimingSelection, withProcessingTiming } from '../utils/processing-timing';
 
 export class TransactionController {
+  static async startTimer(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { params: { id }, body: { phase } } = startProcessingTimerSchema.parse(req);
+      const result = await prisma.$transaction(tx => startProcessingTimer(tx, id, req.user!.userId, phase));
+      if (result.started) {
+        const io = req.app.get('io') as Server | undefined;
+        const payload = { transaction_id: id, status: result.order.status };
+        io?.to(`user_${result.order.userId}`).emit('status_update', payload);
+        io?.to(`shop_${result.order.shopId}`).emit('status_update', payload);
+      }
+      const { pickupCode, deliveryCode, ...order } = result.order;
+      return sendSuccess(res, order, result.started ? 'Timer started' : 'Timer is already running');
+    } catch (error) { next(error); }
+  }
   
   static async createTransaction(req: AuthRequest, res: Response, next: NextFunction) {
     try {

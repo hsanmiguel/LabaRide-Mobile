@@ -29,6 +29,8 @@ test('earlier orders use labelled current settings, recorded events supply actua
   assert.equal(response.dryingStartedAt, events[0].createdAt);
   assert.equal(base.dryingStartedAt, undefined);
   assert.equal(withProcessingTiming(base, services).dryingStartedAt, null);
+  assert.equal(withProcessingTiming(base, services).washingStartedAt, null, 'Original processing start must never become a washing start');
+  assert.equal(withProcessingTiming({ ...base, workflowStatus: 'Washing' }, services).washingStartedAt, base.processingStartedAt);
 });
 
 test('real workflow transitions capture once and drying starts on the shop action, independently of washing overrun', async () => {
@@ -41,6 +43,7 @@ test('real workflow transitions capture once and drying starts on the shop actio
   };
   await changeState(tx, order, 2, 'wash', 'Washing');
   assert.ok(order.processingStartedAt instanceof Date);
+  assert.ok(order.washingStartedAt instanceof Date);
   assert.ok(order.processingTimingCapturedAt instanceof Date);
   assert.equal(order.washingMinutes, 30);
   assert.equal(order.dryingStartedAt, undefined);

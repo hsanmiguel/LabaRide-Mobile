@@ -29,6 +29,8 @@ const liveOperationsTest = process.argv.includes('--live-operations');
 const processingTimerTest = process.argv.includes('--processing-timers');
 const orderStepsTest = process.argv.includes('--order-steps');
 const originalOrderStepsTest = process.argv.includes('--original-order-steps');
+const manualTimersTest = process.argv.includes('--manual-timers');
+const manualTimerWrites = [];
 const analyticsTest = process.argv.includes('--analytics');
 const servicesTest = process.argv.includes('--services');
 const serviceWrites = [];
@@ -81,6 +83,10 @@ if (orderStepsTest) Object.assign(orders[0], {
   status: 'Queued', workflowStatus: 'LaundryReceived', workflowVersion: 0, collectionMethod: 'Dropoff',
   receivedAt: new Date(Date.now()-60000).toISOString(), washingMinutes: 30, dryingMinutes: 45, processingTimingSource: 'snapshot',
   assignments: [], events: [{ id: 1, action: 'receive', toStatus: 'LaundryReceived', createdAt: new Date().toISOString(), actor: { name: 'Laundry partner' } }],
+});
+if (manualTimersTest) Object.assign(orders[0], {
+  status:'Processing', workflowStatus:null, processingStartedAt:'2020-01-01T00:00:00Z', washingStartedAt:null, dryingStartedAt:null,
+  washingMinutes:30, dryingMinutes:45, processingTimingSource:'snapshot',
 });
 const dispatchWrites = [];
 let handoffFixture;
@@ -210,6 +216,7 @@ async function clickText(text) {
           || pullTest && request.method === 'PUT' && (/^\/api\/delivery\/orders\/\d+\/claim$/.test(endpoint) || endpoint === '/api/delivery/availability')
           || bookingTest && request.method === 'PUT' && endpoint === '/api/delivery/orders/42/action'
           || orderStepsTest && request.method === 'PUT' && endpoint === '/api/delivery/orders/42/action'
+          || manualTimersTest && request.method === 'PUT' && endpoint === '/api/transactions/42/timer'
           || trackingTest && request.method === 'PUT' && endpoint === '/api/delivery/location'
           || shopRequirementsTest && request.method === 'PUT' && (/^\/api\/shops\/101\/documents\/[^/]+(?:\/review)?$/.test(endpoint) || endpoint === '/api/admin/shops/101/review')
           || notificationsTest && request.method === 'DELETE' && endpoint.startsWith('/api/notifications/')
@@ -224,6 +231,18 @@ async function clickText(text) {
           || approvalTest && request.method === 'POST' && endpoint === '/api/auth/login', 'UI smoke tests must not mutate real records');
         if (mode === 'loading') await pause(2500);
         if (closing) return;
+        if (manualTimersTest && request.method === 'PUT' && endpoint === '/api/transactions/42/timer') {
+          const body=JSON.parse(request.postData);
+          assert.deepEqual(Object.keys(body),['phase']);
+          assert.ok(user.isShopOwner,'Only the owner can start a timer');
+          assert.ok(['washing','drying'].includes(body.phase));
+          if(body.phase==='drying') assert.ok(orders[0].washingStartedAt);
+          manualTimerWrites.push(body);
+          const field=body.phase==='washing'?'washingStartedAt':'dryingStartedAt';
+          orders[0][field] ||= new Date().toISOString();
+          await command('Fetch.fulfillRequest',{requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'application/json'},{name:'Access-Control-Allow-Origin',value:'*'}],body:Buffer.from(JSON.stringify({success:true,data:orders[0]})).toString('base64')});
+          return;
+        }
         if (orderStepsTest && request.method === 'PUT' && endpoint === '/api/delivery/orders/42/action') {
           const body = JSON.parse(request.postData);
           assert.equal(body.expectedVersion,orders[0].workflowVersion);
@@ -1243,6 +1262,38 @@ async function clickText(text) {
     console.log('PASS dashboard metric toggle, exact values, presets, custom validation, aggregation, workload links, empty and error states');
     return;
   }
+  if (manualTimersTest) {
+    for(const width of [320,390]) await visit('/shop/transactions/shop-transaction?id=42',width,'Start washing',`manual-timers-waiting-${width}`);
+    assert.equal(await evaluate('document.querySelector("[data-testid=order-step-content] [data-testid=processing-timer]").innerText.includes("0:00 · Time elapsed")'),false,'Old processing time starts no timer');
+    assert.equal(await evaluate(`Array.from(document.querySelectorAll('[role=button]')).find(e=>e.innerText.trim()==='Start drying').getAttribute('aria-disabled')`),'true');
+    assert.equal(manualTimerWrites.length,0);
+    await clickText('Start washing');
+    await waitFor(`!Array.from(document.querySelectorAll('[role=button]')).some(e=>e.innerText.trim()==='Start washing')`);
+    assert.deepEqual(manualTimerWrites,[{phase:'washing'}]);
+    assert.equal(orders[0].dryingStartedAt,null);
+    const initial=await evaluate('document.querySelector("[data-testid=order-step-content] [data-testid=processing-timer]").innerText');
+    await waitFor(`document.querySelector('[data-testid=order-step-content] [data-testid=processing-timer]').innerText!==${JSON.stringify(initial)}`,4000);
+    assert.ok(await evaluate('document.querySelector("[data-testid=order-step-content] [data-testid=processing-timer]").innerText.includes("Not started")'));
+    await visit('/shop/transactions/shop-transaction?id=42',390,'Start drying','manual-timers-washing-phone');
+    assert.equal(manualTimerWrites.length,1,'Reopening never restarts washing');
+    orders[0].washingStartedAt=new Date(Date.now()-2*3600000).toISOString();
+    await visit('/shop/transactions/shop-transaction?id=42',390,'0:00 · Time elapsed');
+    assert.equal(orders[0].dryingStartedAt,null,'Washing expiry never starts drying');
+    await clickText('Start drying');
+    await waitFor(`!Array.from(document.querySelectorAll('[role=button]')).some(e=>e.innerText.trim()==='Start drying')`);
+    assert.deepEqual(manualTimerWrites,[{phase:'washing'},{phase:'drying'}]);
+    assert.ok(await evaluate('document.querySelector("[data-testid=order-step-content] [data-testid=processing-timer]").innerText.includes("Finished")'));
+    assert.equal(orders[0].status,'Processing');
+    await visit('/shop/transactions/shop-transaction?id=42',390,'Mark laundry ready','manual-timers-drying-phone');
+    user.isShopOwner=false;
+    await visit('/transaction-details?id=42',390,'Wash & dry timers','manual-timers-customer-phone');
+    assert.ok(await evaluate('document.querySelector("[data-testid=order-step-content] [data-testid=processing-timer]").innerText.includes("remaining")'));
+    assert.equal(await evaluate(`Array.from(document.querySelectorAll('[role=button]')).some(e=>['Start washing','Start drying'].includes(e.innerText.trim()))`),false,'Customer sees read-only timers');
+    assert.equal(manualTimerWrites.length,2);
+    assert.deepEqual(errors,[]);
+    console.log('PASS manual timers: independent owner starts, old timestamps ignored, countdown, reload, no automatic drying, customer read-only and mobile layouts');
+    return;
+  }
   if (originalOrderStepsTest) {
     orders[0].washingMinutes=30; orders[0].dryingMinutes=45;
     for (const [status, step] of [['Pending',1],['Accepted',2],['Queued',2],['Processing',3],['Ready',4],['Completed',5],['Cancelled',1]]) {
@@ -1324,7 +1375,7 @@ async function clickText(text) {
     const washSelector = '[data-testid=live-order-43] [data-testid=processing-timer]';
     const read = () => evaluate(`document.querySelector(${JSON.stringify(washSelector)}).innerText`);
     const first = await read();
-    assert.ok(first.includes('Waiting'));
+    assert.ok(first.includes('Not started'));
     await waitFor(`document.querySelector(${JSON.stringify(washSelector)}).innerText!==${JSON.stringify(first)}`,4000);
     assert.ok((await read()).match(/24:\d{2}/),'Washing counts down from recorded start, not page open');
     const drying = await evaluate('document.querySelector("[data-testid=live-order-42] [data-testid=processing-timer]").innerText');
@@ -1337,9 +1388,9 @@ async function clickText(text) {
     await visit('/activities',390,'Wash & dry timers','processing-timers-customer');
     await clickText(`View order 43 from ${shops[0].shopName}`);
     await waitFor('document.body.innerText.includes("Step 3 of 5")&&!!document.querySelector("[data-testid=processing-timer]")');
-    assert.ok(await evaluate('Array.from(document.querySelectorAll("[data-testid=processing-timer]")).filter(e=>e.getBoundingClientRect().width>0).some(e=>e.innerText.includes("Waiting"))'));
+    assert.ok(await evaluate('Array.from(document.querySelectorAll("[data-testid=processing-timer]")).filter(e=>e.getBoundingClientRect().width>0).some(e=>e.innerText.includes("Not started"))'));
     orders[1].workflowStatus = null;
-    await visit('/activities',390,'Wash & dry estimate');
+    await visit('/activities',390,'Not started');
     // Expiry is an indicator; it must never write an order transition.
     orders[1].workflowStatus = 'Washing';
     orders[1].processingStartedAt = new Date(Date.now() - 60 * 60000).toISOString();

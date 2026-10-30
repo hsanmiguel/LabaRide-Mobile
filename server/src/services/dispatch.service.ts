@@ -73,6 +73,7 @@ export async function changeState(tx: Prisma.TransactionClient, order: Awaited<R
     ...(action === 'confirmBooking' && order.collectionMethod === 'ShopPickup' ? { confirmedPickupAt: order.requestedPickupAt } : {}),
     ...(to === 'LaundryReceived' && !order.receivedAt ? { receivedAt: new Date() } : {}),
     ...(to === 'Washing' && !order.processingStartedAt ? { processingStartedAt: now } : {}),
+    ...(to === 'Washing' && !order.washingStartedAt ? { washingStartedAt: now } : {}),
     ...(timing ? { ...timing, processingTimingCapturedAt: now } : {}),
     ...(to === 'Drying' && !order.dryingStartedAt ? { dryingStartedAt: now } : {}),
     ...(['ReadyForDelivery', 'ReadyForCollection'].includes(to) && !order.readyAt ? { readyAt: new Date() } : {}),

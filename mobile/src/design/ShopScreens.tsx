@@ -55,9 +55,9 @@ import {
   type Profile,
   type Service,
 } from "./data";
-import { TurnaroundDetails } from "./TurnaroundDetails";
+import { OriginalOrderDetails } from "./OriginalOrderDetails";
 import { deliveryDay } from "./delivery-slots";
-import { StatusBadge, Totals } from "./OrderScreens";
+import { StatusBadge } from "./OrderScreens";
 import { shopOrderStatus } from "./shop-orders";
 import { QueryState } from "./UserScreens";
 import { distanceFields, distanceSettingsError } from "./service-area";
@@ -74,6 +74,7 @@ import { ShopApplicationStatus } from "./ShopApprovalScreens";
 import { useLogout } from "./useLogout";
 import { DeliveryOrderDesign } from './DeliveryScreens';
 import { DashboardAnalytics } from './DashboardAnalytics';
+import { LiveOperationsButton } from './LiveOperationsButton';
 import { normalizeServiceColor, serviceCardColors, serviceColorOptions, serviceColorTaken } from './service-colors';
 import WeightRangeSlider from './WeightRangeSlider';
 
@@ -336,6 +337,7 @@ export function ShopHomeDesign() {
     <View style={styles.stack}>
       <View><Txt style={styles.title}>{owned.data?.shopName || "Your shop overview"}</Txt><Txt style={styles.muted}>Your shop’s performance at a glance.</Txt></View>
       <QueryState loading={owned.isLoading || orders.isLoading} error={owned.error || orders.error} retry={() => { owned.refetch(); orders.refetch(); }} />
+      {owned.data && <LiveOperationsButton />}
       {owned.data && <DashboardAnalytics shopId={owned.data.id} />}
       {!owned.isLoading && !orders.isLoading && !owned.error && !orders.error && owned.data && <>
         <Card><Section title="Recent orders" action="View all" onPress={() => router.push("/shop/transactions")} /><TransactionsTable dashboard orders={list.slice(0, 4).map(order => ({ ...order, status: shopOrderStatus(order) }))} /></Card>
@@ -405,132 +407,34 @@ export function ShopOrderDetailsDesign({
       </Screen>
     );
   if (order.workflowStatus) return <DeliveryOrderDesign id={id} partner />;
-  return (
-    <Screen
-      title={`#${order.id}`}
-      dark
-      background={palette.surface}
-      right={
-        order.status === "Pending" && (
-          <Pressable accessibilityRole="button" onPress={() => go("decline-order", { id: String(id) })}
-            style={({ pressed }) => ({ minHeight: 44, justifyContent: "center", paddingHorizontal: 12, borderRadius: 10, backgroundColor: pressed ? "#FFFFFF24" : "#FFFFFF14" })}>
-            <Txt style={{ color: "#FFD6D6", fontWeight: "700" }}>Decline</Txt>
-          </Pressable>
-        )
-      }
-      footer={
-        !["Completed", "Cancelled"].includes(order.status) ? <Button
-          title={({ Pending: "Accept order", Accepted: "Confirm laundry received", Queued: "Start processing", Processing: "Mark laundry ready", Ready: order.deliveryType === "Deliver" ? "Confirm delivered to customer" : "Confirm collected by customer" } as Record<string, string>)[order.status]}
-          busy={busy} disabled={order.status === "Pending" && !acceptanceExplanation.trim()} onPress={async () => {
-            const next = ({ Pending: "Accepted", Accepted: "Queued", Queued: "Processing", Processing: "Ready", Ready: "Completed" } as Record<string, Order["status"]>)[order.status];
-            if (await confirmAction("Update laundry status", ({ Accepted: "Accept this order? Processing will begin only when you select Start processing.", Queued: "Has the laundry arrived at the shop? It will enter your queue.", Processing: "Start processing now? The processing start time will be recorded.", Ready: "Is the laundry finished and ready for return?", Completed: order.deliveryType === "Deliver" ? "Has the customer received the return delivery?" : "Has the customer collected their finished laundry?" } as Record<string, string>)[next], { confirmLabel: "Confirm" })) await update(next);
-          }} /> : undefined
-      }
-    >
-      <Card style={{ borderRadius: 16, padding: 20 }}>
-        {order.status === "Pending" && (
-          <View style={{ marginBottom: 20 }}>
-            <Field
-              label="Acceptance explanation (required)"
-              placeholder="Let the customer know why you can accept and what to expect."
-              value={acceptanceExplanation}
-              onChangeText={setAcceptanceExplanation}
-              multiline
-              maxLength={500}
-              editable={!busy}
-            />
-            <Txt style={styles.muted}>This message will be shared with the customer when you accept.</Txt>
-          </View>
-        )}
-        <View style={styles.between}>
-          <Txt style={{ fontSize: 24, fontWeight: "700", color: palette.navy }}>
-            Order
-          </Txt>
-          <StatusBadge status={order.status} />
-        </View>
-        <Section title="Customer Details" />
-        <PriceRow label="Customer ID" value={String(order.userId)} />
-        <PriceRow label="Customer" value={order.userName} />
-        <PriceRow label="Contact" value={order.userPhone || "—"} />
-        <Section title={order.deliveryType === "Pickup" ? "Pickup Location" : "Delivery Address"} />
-        <Txt style={styles.muted}>{address(order)}</Txt>
-        <DeliveryDetails value={order} />
-        <PriceRow label="Getting laundry to the shop" value={order.collectionMethod === "ShopPickup" ? "Shop collects from customer" : "Customer dropoff"} />
-        {order.collectionMethod === "ShopPickup" && order.collectionAddress && <>
-          <Section title="Laundry Collection Address" />
-          <Txt style={styles.muted}>{address(order.collectionAddress)}</Txt>
-          <DeliveryDetails value={order.collectionAddress} />
-        </>}
-        <Section title="Order Details" />
-        <View
-          style={{ backgroundColor: palette.soft, padding: 16, borderRadius: 12 }}
-        >
-          <Txt style={styles.heading}>{order.serviceName}</Txt>
-          <Txt>
-            {order.kiloAmount} kg · {order.deliveryType}
-          </Txt>
-        </View>
-        <Section title="Types of clothes:" />
-        {order.items?.length ? (
-          order.items.map((item) => (
-            <PriceRow
-              key={item.itemName}
-              label={item.itemName}
-              value={`×${item.quantity}`}
-            />
-          ))
-        ) : (
-          <Txt style={styles.muted}>No items listed</Txt>
-        )}
-        <Section title="Household items:" />
-        <Txt style={styles.muted}>Included in the laundry items above</Txt>
-        <View style={styles.divider} />
-        <Totals order={order} />
-        <Section
-          title={transaction ? "Payment Information" : "Customer Details"}
-        />
-        <PriceRow label="Payment Type" value={order.paymentMethod} />
-        <TurnaroundDetails order={order} />
-        {order.status === "Accepted" && order.requestedPickupAt && !order.confirmedPickupAt && <Button title="Confirm requested laundry pickup" outline busy={busy} onPress={() => update(order.status, { confirmPickup: true })} />}
-        {["Queued", "Processing"].includes(order.status) && <View style={{ gap: 10 }}>
-          <Section title="Estimated ready time" />
-          <Txt style={styles.muted}>Base the estimate on your queue. Processing time starts only when you select Start processing. All times are Philippine time.</Txt>
-          <PickerField label="Ready date" mode="date" value={estimateDate} onChange={setEstimateDate} />
-          <PickerField label="Ready time" mode="time" value={estimateTime} onChange={setEstimateTime} />
-          <Field label="Reason for revised estimate" placeholder="Example: More laundry in the queue" value={estimateReason} onChangeText={setEstimateReason} />
-          <Button title={order.estimatedReadyAt ? "Update ready estimate" : "Send ready estimate"} outline busy={busy} onPress={() => {
-            const time = timeInputValue(estimateTime);
-            const timestamp = time && estimateDate ? Date.parse(estimateDate + "T" + time + ":00+08:00") : NaN;
-            if (!Number.isFinite(timestamp) || timestamp <= Date.now()) { fail(new Error("Choose a future ready date and time.")); return; }
-            void update(order.status, { estimatedReadyAt: new Date(timestamp).toISOString(), estimateReason });
-          }} />
-        </View>}
-        {!!order.notes && (
-          <>
-            <Section
-              title={
-                order.status === "Cancelled" ? "Reason of cancellation" : "Note"
-              }
-            />
-            <Txt style={styles.muted}>{order.notes}</Txt>
-          </>
-        )}
-        {order.status === "Processing" && (
-          <View
-            style={{
-              backgroundColor: palette.success,
-              padding: 16,
-              borderRadius: 16,
-            }}
-          >
-            <Txt style={{ color: "white", fontSize: 16, fontWeight: "600" }}>
-              In Progress
-            </Txt>
-          </View>
-        )}
-      </Card>
-    </Screen>
-  );
+  return <OriginalOrderDetails order={order} partner
+    right={order.status === "Pending" ? <Button title="Decline" compact outline onPress={() => go("decline-order", { id: String(id) })} /> : undefined}
+    bookingFields={<View style={{ gap: 8 }}>
+      <Field label="Acceptance explanation (required)" placeholder="Let the customer know why you can accept and what to expect."
+        value={acceptanceExplanation} onChangeText={setAcceptanceExplanation} multiline maxLength={500} editable={!busy} />
+      <Txt style={styles.muted}>This message will be shared with the customer when you accept.</Txt>
+    </View>}
+    primaryAction={!["Completed", "Cancelled"].includes(order.status) ? <Button
+      title={({ Pending: "Accept order", Accepted: "Confirm laundry received", Queued: "Start processing", Processing: "Mark laundry ready", Ready: order.deliveryType === "Deliver" ? "Confirm delivered to customer" : "Confirm collected by customer" } as Record<string, string>)[order.status]}
+      busy={busy} disabled={order.status === "Pending" && !acceptanceExplanation.trim()} onPress={async () => {
+        const next = ({ Pending: "Accepted", Accepted: "Queued", Queued: "Processing", Processing: "Ready", Ready: "Completed" } as Record<string, Order["status"]>)[order.status];
+        const prompts: Record<string, string> = { Accepted: "Accept this order? Processing will begin only when you select Start processing.", Queued: "Has the laundry arrived at the shop? It will enter your queue.", Processing: "Start processing now? The processing start time will be recorded.", Ready: "Is the laundry finished and ready for return?", Completed: order.deliveryType === "Deliver" ? "Has the customer received the return delivery?" : "Has the customer collected their finished laundry?" };
+        if (await confirmAction("Update laundry status", prompts[next], { confirmLabel: "Confirm" })) await update(next);
+      }} /> : undefined}
+    confirmPickupAction={order.status === "Accepted" && order.requestedPickupAt && !order.confirmedPickupAt ? <Button title="Confirm requested laundry pickup" outline busy={busy} onPress={() => update(order.status, { confirmPickup: true })} /> : undefined}
+    estimateEditor={["Queued", "Processing"].includes(order.status) ? <View style={{ gap: 10 }}>
+      <Txt style={styles.muted}>Base the estimate on your queue. All times are Philippine time.</Txt>
+      <PickerField label="Ready date" mode="date" value={estimateDate} onChange={setEstimateDate} />
+      <PickerField label="Ready time" mode="time" value={estimateTime} onChange={setEstimateTime} />
+      <Field label="Reason for revised estimate" placeholder="Example: More laundry in the queue" value={estimateReason} onChangeText={setEstimateReason} />
+      <Button title={order.estimatedReadyAt ? "Update ready estimate" : "Send ready estimate"} outline busy={busy} onPress={() => {
+        const time = timeInputValue(estimateTime);
+        const timestamp = time && estimateDate ? Date.parse(estimateDate + "T" + time + ":00+08:00") : NaN;
+        if (!Number.isFinite(timestamp) || timestamp <= Date.now()) { fail(new Error("Choose a future ready date and time.")); return; }
+        void update(order.status, { estimatedReadyAt: new Date(timestamp).toISOString(), estimateReason });
+      }} />
+    </View> : undefined}
+  />;
 }
 export function DeclineOrderDesign({
   id,
@@ -817,6 +721,8 @@ export function ServicesDesign() {
           serviceName: item && "serviceName" in item ? item.serviceName : "",
           price: item && "price" in item ? String(item.price) : "",
           packageKilos: item && "packageKilos" in item && item.packageKilos != null ? String(item.packageKilos) : "",
+          washingMinutes: item && "washingMinutes" in item && item.washingMinutes != null ? String(item.washingMinutes) : "",
+          dryingMinutes: item && "dryingMinutes" in item && item.dryingMinutes != null ? String(item.dryingMinutes) : "",
         }
         : {
           minKilo: item && "minKilo" in item ? String(item.minKilo) : "1",
@@ -830,6 +736,9 @@ export function ServicesDesign() {
   }
   function setDecimalValue(key: string, value: string) {
     if (/^\d*(?:\.\d*)?$/.test(value)) setValues(current => ({ ...current, [key]: value }));
+  }
+  function setWholeNumberValue(key: string, value: string) {
+    if (/^\d*$/.test(value)) setValues(current => ({ ...current, [key]: value }));
   }
   async function save() {
     if (!shop || busy) return;
@@ -851,6 +760,9 @@ export function ServicesDesign() {
     if (dialog === "service" && packagePricing &&
       (Number(values.packageKilos) <= 0 || Number(values.packageKilos) > 99999999.99 || Number(Number(values.packageKilos).toFixed(2)) !== Number(values.packageKilos)))
       return setError("Enter a package weight above 0 kg with up to two decimal places, no higher than 99,999,999.99.");
+    if (dialog === "service" && [values.washingMinutes, values.dryingMinutes].some(value =>
+      !Number.isInteger(Number(value)) || Number(value) <= 0 || Number(value) > 10080))
+      return setError("Enter washing and drying times from 1 to 10,080 minutes.");
     if (dialog === "price" && Number(values.maxKilo) <= Number(values.minKilo))
       return setError("Maximum weight must be greater than minimum weight.");
     setBusy(true);
@@ -864,6 +776,8 @@ export function ServicesDesign() {
             serviceName: values.serviceName.trim(),
             price: Number(values.price),
             packageKilos: packagePricing ? Number(values.packageKilos) : null,
+            washingMinutes: Number(values.washingMinutes),
+            dryingMinutes: Number(values.dryingMinutes),
             color,
           }
           : {
@@ -1039,7 +953,7 @@ export function ServicesDesign() {
                           <Pressable key={option.label} accessibilityRole="radio" accessibilityLabel={option.description}
                             accessibilityState={{ checked: option.selected, disabled: busy }} disabled={busy}
                             onPress={() => setPackagePricing(option.label === "Per load")}
-                            style={{ flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 9, backgroundColor: option.selected ? palette.primary : "transparent", opacity: busy ? 0.5 : 1 }}>
+                            style={{ flex: 1, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 9, backgroundColor: option.selected ? palette.primary : "transparent" }}>
                             <Txt style={{ fontSize: 13, fontWeight: "600", color: option.selected ? "white" : palette.muted }}>{option.label}</Txt>
                           </Pressable>)}
                       </View>
@@ -1061,9 +975,21 @@ export function ServicesDesign() {
                       {Number(values.packageKilos) > 0 ? "Each load covers up to " + values.packageKilos + " kg. " : ""}
                       Extra weight counts as another load.
                     </Txt>}
+                    <View style={{ flexDirection: "row", gap: 12 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Field compact label="Standard washing time" placeholder="e.g. 30" suffix="min"
+                          value={values.washingMinutes} keyboardType="number-pad" inputMode="numeric" editable={!busy}
+                          onChangeText={value => setWholeNumberValue("washingMinutes", value)} />
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Field compact label="Standard drying time" placeholder="e.g. 45" suffix="min"
+                          value={values.dryingMinutes} keyboardType="number-pad" inputMode="numeric" editable={!busy}
+                          onChangeText={value => setWholeNumberValue("dryingMinutes", value)} />
+                      </View>
+                    </View>
                     <View style={{ gap: 4 }}>
                       <Txt style={{ fontSize: 12, fontWeight: "500" }}>Service color</Txt>
-                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                         {[...serviceColorOptions, ...(!color || serviceColorOptions.some(option => option.color === color) ? [] : [{ color, name: "Current color" }])].map(option => {
                           const value = option.color;
                           const taken = serviceColorTaken(shop?.services || [], value, editing?.id);

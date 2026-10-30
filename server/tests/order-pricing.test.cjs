@@ -100,13 +100,18 @@ test('package and per-kilogram combinations match the checkout preview', () => {
 });
 
 test('service creation accepts packages and validates weight and price precision', () => {
-  const body = { serviceName: ' Full service ', price: 215, packageKilos: 8 };
+  const body = { serviceName: ' Full service ', price: 215, packageKilos: 8, washingMinutes: 30, dryingMinutes: 45 };
   assert.deepEqual(createServiceSchema.parse({ body }).body, { ...body, serviceName: 'Full service' });
   for (const packageKilos of [0, -1, Infinity, NaN, 0.001, 100000000]) {
     assert.equal(createServiceSchema.safeParse({ body: { ...body, packageKilos } }).success, false);
   }
   for (const price of [-1, Infinity, NaN, 215.001, 100000000]) {
     assert.equal(createServiceSchema.safeParse({ body: { ...body, price } }).success, false);
+  }
+  for (const field of ['washingMinutes', 'dryingMinutes']) {
+    for (const value of [0, -1, 1.5, 10081]) {
+      assert.equal(createServiceSchema.safeParse({ body: { ...body, [field]: value } }).success, false);
+    }
   }
   assert.equal(createServiceSchema.safeParse({ body: { ...body, serviceName: ' ' } }).success, false);
   assert.equal(createServiceSchema.safeParse({ body: { serviceName: 'Wash', price: 25 } }).success, true);

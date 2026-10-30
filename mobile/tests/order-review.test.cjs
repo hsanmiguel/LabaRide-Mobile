@@ -28,7 +28,7 @@ const areaHelpers = load('service-area.ts');
 const hoursHelpers = load('shop-hours.ts');
 const screenSource = fs.readFileSync(path.join(__dirname, '../src/design/OrderScreens.tsx'), 'utf8');
 const ast = ts.createSourceFile('OrderScreens.tsx', screenSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const names = ['EmbeddedOrderPanel', 'LaundryCountDesign', 'OrderSummaryDesign', 'CheckoutDesign'];
+const names = ['OrderSummaryDesign', 'CheckoutDesign'];
 const source = names.map(name => ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name.text === name).getText(ast)).join('\n');
 const compiled = ts.transpileModule(source, { compilerOptions: {
   module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2022,
@@ -139,9 +139,11 @@ test('summary is the checkout form with all booking details and a direct Place O
   }
   assert.ok(elements(app.render(), 'Section').some(item => item.props.title === 'Turnaround & Updates'));
   assert.ok(elements(app.render(), 'Field').some(item => item.props.label === 'Order Notes (optional)'));
+  assert.equal(app.button('Add Types of Clothes'), undefined);
+  assert.equal(elements(app.render(), 'Txt').some(item => item.props.children === 'Laundry Items'), false);
 });
 
-test('address, laundry and schedule editors open in a modal on the review page', () => {
+test('address and schedule editors open in a modal on the review page', () => {
   const app = harness();
   app.menu('Customer address').props.onPress();
   let modal = elements(app.render(), 'Modal')[0];
@@ -150,14 +152,6 @@ test('address, laundry and schedule editors open in a modal on the review page',
   elements(modal, 'Pressable').find(item => item.props.accessibilityLabel === 'Primary address').props.onPress();
   assert.equal(app.draft.address, null);
   assert.equal(app.menu('Customer address').props.detail, addressHelpers.formatAddress(app.profile));
-  assert.equal(elements(app.render(), 'Modal')[0].props.visible, false);
-  app.button('Add Types of Clothes').props.onPress();
-  const items = elements(app.render(), 'LaundryCountDesign')[0];
-  assert.equal(items.props.embedded, true);
-  const editor = app.context.exports.LaundryCountDesign(items.props);
-  elements(editor, 'Pressable').find(item => item.props.accessibilityLabel === 'Add Shirts').props.onPress();
-  assert.equal(app.draft.counts.Shirts, 1);
-  elements(editor.props.footer, 'Button')[0].props.onPress();
   assert.equal(elements(app.render(), 'Modal')[0].props.visible, false);
   app.draft.set({ collectionMethod: 'ShopPickup' });
   app.menu('Requested laundry pickup').props.onPress();
@@ -208,7 +202,7 @@ test('Place Order submits every reviewed detail, creates one order and opens the
   assert.equal(body.scheduledTime, undefined);
   assert.equal(body.notes, 'Fold separately');
   assert.equal(body.paymentMethod, 'Cash on Delivery');
-  assert.equal(JSON.stringify(body.items), JSON.stringify([{ itemName: 'Shirts', quantity: 3 }, { itemName: 'Blankets', quantity: 1 }]));
+  assert.equal(body.items, undefined);
   assert.deepEqual(app.invalidations, ['user-orders']);
   assert.equal(app.draft.cleared, true);
   assert.equal(app.navigation[0][0], 'order-complete');

@@ -14,7 +14,12 @@ import { CustomerRiderTracking } from './CustomerRiderTracking';
 import { RiderLocationSharingControl } from './RiderLocationSharing';
 import { CallContactButton } from './CallContactButton';
 
-import { TurnaroundDetails, type TurnaroundOrder } from './TurnaroundDetails';
+import type { TurnaroundOrder } from './TurnaroundDetails';
+import { ProcessingTimer } from './ProcessingTimer';
+import { OrderStepIndicator } from './OrderStepIndicator';
+import { OrderDisclosure } from './OrderDisclosure';
+import { orderDetailProgress, orderDetailSteps } from './order-detail-steps';
+import { deliveryDay } from './delivery-slots';
 import type { AddressData } from './address';
 import PickerField from './PickerField';
 import { timeInputValue } from './form-values';
@@ -35,11 +40,12 @@ type Job = { id: number; transactionId: number; riderId: number; stage: string; 
 type Rider = { userId: number; active: boolean; online: boolean; applicationStatus?: string; reviewReason?: string; canEnable?: boolean; approvalMissing?: string[]; workload: number; user: { name: string; email: string; phone?: string } };
 type RiderOptions = { stage: 'Pickup' | 'Delivery'; workflowVersion: number; origin: { source: 'customer' | 'shop'; name: string; address: string; coordinatesAvailable: boolean }; riders: { userId: number; name: string; workload: number; distance: number | null }[] };
 type Event = { id: number; action: string; toStatus: string; detail?: string; createdAt: string; actor: { name: string } };
-type DeliveryOrder = TurnaroundOrder & { collectionMethod?: 'Dropoff' | 'ShopPickup'; collectionAddress?: AddressData | null; id: number; workflowStatus: string; workflowVersion: number; weightEvidence?: WeightEvidence[]; handoff?: Handoff; serviceName: string; kiloAmount: string; userName: string; userPhone?: string; scheduledDate: string | null; scheduledTime: string | null; createdAt: string; notes?: string; totalAmount: string; pickupCode?: string; collectionCode?: string; deliveryCode?: string; assignments: Job[]; events: Event[]; shop: { shopName: string }; address_line_1?: string; city?: string };
+type DeliveryOrder = TurnaroundOrder & { collectionMethod?: 'Dropoff' | 'ShopPickup'; collectionAddress?: AddressData | null; id: number; workflowStatus: string; workflowVersion: number; weightEvidence?: WeightEvidence[]; handoff?: Handoff; serviceName: string; kiloAmount: string; userName: string; userPhone?: string; scheduledDate: string | null; scheduledTime: string | null; createdAt: string; completedAt?: string | null; notes?: string; totalAmount: string; pickupCode?: string; collectionCode?: string; deliveryCode?: string; assignments: Job[]; events: Event[]; shop: { shopName: string }; address_line_1?: string; city?: string };
 const label = (value: string) => value.replace(/([a-z])([A-Z])/g, '$1 $2');
 const scheduledAt = (order: { scheduledDate: string | null; scheduledTime: string | null; requestedPickupAt?: string | null }) => order.requestedPickupAt ? new Date(order.requestedPickupAt) : order.scheduledDate && order.scheduledTime ? new Date(order.scheduledDate.slice(0, 10) + 'T' + order.scheduledTime.slice(11, 19) + 'Z') : new Date(NaN);
 const scheduleLabel = (order: { scheduledDate: string | null; scheduledTime: string | null; requestedPickupAt?: string | null }) => !Number.isFinite(scheduledAt(order).getTime()) ? 'Not scheduled' : scheduledAt(order).toLocaleString([], { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const stamp = (value: string) => new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const stepStamp = (value: string) => new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' (PHT)';
 const riderActions: Record<string, { action: string; title: string; code?: boolean }> = {
   PickupAccepted: { action: 'enRoute', title: 'Start pickup trip' },
   PickupEnRoute: { action: 'pickedUp', title: 'Confirm laundry pickup', code: true },
@@ -95,18 +101,28 @@ export function DeliveryOrderDesign({ id, partner = false }: { id: number; partn
   const [note, setNote] = useState('');
 
   const palette = usePalette();
-  const { width } = useWindowDimensions();
   const order = query.data;
   const next = order && (partner ? partnerActions[order.workflowStatus] : !user?.isAdmin && order.workflowStatus === 'Delivered' ? { action: 'confirmReceipt', title: 'Confirm receipt' } : undefined);
   const [estimateDate, setEstimateDate] = useState('');
   const [estimateTime, setEstimateTime] = useState('');
+  const [selectedStep, setSelectedStep] = useState<number | null>(null);
+  const [issueNote, setIssueNote] = useState('');
+  const progress = orderDetailProgress(order?.workflowStatus || 'BookingPending', order?.events);
+  const viewedStep = selectedStep ?? progress.current;
+  const currentView = viewedStep === progress.current;
+  const closed = !!order && ['Completed', 'Cancelled'].includes(order.workflowStatus);
+  useEffect(() => { setSelectedStep(null); }, [id, order?.workflowStatus]);
+  useEffect(() => { setNote(''); setIssueNote(''); command.setError(''); }, [id]);
+  useEffect(() => {
+    setEstimateDate(order?.estimatedReadyAt ? deliveryDay(order.estimatedReadyAt) : '');
+    setEstimateTime(order?.estimatedReadyAt ? new Date(order.estimatedReadyAt).toLocaleTimeString('en-GB', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' }) : '');
+  }, [id, order?.estimatedReadyAt]);
   async function saveWeight(kilos: number, note: string, imageBase64: string) {
     if (!order || !await confirmAction('Save measured weight?', 'The customer will see the scale photo, measured weight and recalculated price. Save this update?')) return false;
     return command.send(`/delivery/orders/${id}/weight`, { kilos, note, imageBase64, expectedVersion: order.workflowVersion });
   }
-  async function action(name: string) {
+  async function action(name: string, explanation = note.trim()) {
     if (!order) return;
-    const explanation = note.trim();
     command.setError('');
     if (name === 'confirmBooking' && !explanation) { command.setError('Enter an acceptance explanation before confirming this booking.'); return; }
     if (['cancel', 'issue', 'resolveIssue'].includes(name) && !explanation) { command.setError('Enter a reason or explanation before continuing.'); return; }
@@ -120,45 +136,100 @@ export function DeliveryOrderDesign({ id, partner = false }: { id: number; partn
       estimatedReadyAt = new Date(timestamp).toISOString();
     }
     if (!await confirmAction('Update order', name === 'releaseHandoff' ? 'Confirm only after the laundry has physically changed hands. Continue?' : name === 'cancel' ? 'Cancel this booking and notify everyone?' : 'Confirm this update and notify everyone involved?')) return;
-    if (await command.send(`/delivery/orders/${id}/action`, { action: name, expectedVersion: order.workflowVersion, note: explanation || undefined, estimatedReadyAt })) setNote('');
+    if (await command.send(`/delivery/orders/${id}/action`, { action: name, expectedVersion: order.workflowVersion, note: explanation || undefined, estimatedReadyAt })) { setNote(''); setIssueNote(''); }
   }
   return <Screen title={`Order #${id}`} brandedHeader={!!user?.isAdmin}>
     <State query={query} />
     {order && <View style={styles.stack}>
-      <Card><View style={styles.between}><View style={styles.row}><Package size={24} color={palette.primary} /><Txt style={styles.heading}>{order.serviceName}</Txt></View><Badge value={order.workflowStatus} /></View>
-        <Txt style={styles.muted}>Pickup → Laundry care → Delivery → Receipt</Txt>
-        <Txt>{order.kiloAmount} kg · {money(order.totalAmount)}</Txt>
-        <TurnaroundDetails order={order} />
+      <Card style={{ padding: 16 }}>
+        <View style={styles.between}><View style={[styles.row, { flexShrink: 1 }]}><Package size={22} color={palette.primary} /><Txt style={styles.heading}>{order.serviceName}</Txt></View><Badge value={order.workflowStatus} /></View>
+        <View style={styles.between}><View><Txt style={{ fontWeight: '600' }}>{order.userName}</Txt><Txt style={{ color: palette.muted, fontSize: 12 }}>{order.kiloAmount} kg · {order.shop.shopName}</Txt></View><Txt style={{ fontSize: 24, fontWeight: '700', color: palette.primary }}>{money(order.totalAmount)}</Txt></View>
       </Card>
-      <View style={{ flexDirection: width >= 1000 ? 'row' : 'column', gap: 20, alignItems: 'flex-start' }}>
-        <View style={{ flex: width >= 1000 ? 1 : undefined, width: width >= 1000 ? undefined : '100%', gap: 20 }}>
-          <Card><Section title={partner ? 'Customer & collection' : 'Your pickup & delivery'} /><Txt>{order.userName}</Txt><Txt>{address(order)}</Txt>{order.collectionMethod === 'ShopPickup' && order.collectionAddress && <><Txt style={styles.muted}>Laundry collection address</Txt><Txt>{address(order.collectionAddress)}</Txt></>}{order.workflowStatus === 'AtPartner' && order.collectionMethod === 'Dropoff' && <Txt style={styles.muted}>Bring the laundry to the shop. Processing starts after the shop confirms receipt.</Txt>}{order.workflowStatus === 'ReadyForCollection' && <Txt style={styles.muted}>Your laundry is ready. Collect it from the shop.</Txt>}{partner && !!order.userPhone && <Txt selectable>{order.userPhone}</Txt>}<Txt style={styles.muted}>{order.shop.shopName}</Txt>{!!order.notes && <Txt>{order.notes}</Txt>}</Card>
-          <WeightEvidenceCard orderId={id} evidence={order.weightEvidence || []} />
-          {!partner && !user?.isAdmin && <CustomerRiderTracking orderId={id} orderStatus={order.workflowStatus} />}
-          {!user?.isAdmin && order.handoff && (partner ? order.handoff.kind === 'collection' : order.handoff.kind !== 'collection') && <HandoffPanel handoff={order.handoff} busy={command.busy} send={name => { void action(name); }} />}
-          {!!(partner ? order.collectionCode : order.pickupCode || order.deliveryCode) && !['Cancelled', 'Completed'].includes(order.workflowStatus) && <Card>
-            <Section title="Handoff confirmation" />
-            <Txt style={styles.muted}>Share a code only with the assigned rider at the physical handoff.</Txt>
-            {partner ? <Txt selectable style={styles.heading}>Clean laundry collection: {order.collectionCode}</Txt> : <><Txt selectable style={styles.heading}>Laundry pickup: {order.pickupCode}</Txt><Txt selectable style={styles.heading}>Delivery receipt: {order.deliveryCode}</Txt></>}
-          </Card>}
-          {!!order.assignments.length && <Card><Section title="Rider assignments" />{order.assignments.map(job => <View key={job.id} style={{ gap: 4 }}><Txt style={{ fontWeight: '600' }}>{job.stage} · {job.rider?.name || 'Assigned rider'}</Txt><Txt style={styles.muted}>{job.status} · {stamp(job.updatedAt)}</Txt></View>)}</Card>}
-          {!['Completed', 'Cancelled'].includes(order.workflowStatus) && <Card>
-            <Section title={partner ? 'Manage laundry' : 'Order actions'} />
-            <Field label={order.workflowStatus === 'BookingPending' && partner ? 'Acceptance explanation or cancellation reason' : 'Notes / issue details'} value={note} onChangeText={value => { setNote(value); command.setError(''); }} placeholder={order.workflowStatus === 'BookingPending' && partner ? 'For example: We can accept this booking.' : 'Add notes or describe the issue.'} editable={!command.busy} multiline maxLength={1000} />
-            {order.workflowStatus === 'BookingPending' && partner && <Txt style={{ fontSize: 12, color: palette.muted }}>An explanation is required to confirm the booking. Cancellation and issue reasons need at least 5 characters.</Txt>}
-            {!!command.error && <Txt accessibilityRole="alert" style={{ color: palette.danger }}>{command.error}</Txt>}
-            {next && <Button title={next.title} busy={command.busy} onPress={() => action(next.action)} />}
-            {partner && ['LaundryReceived', 'Washing', 'Drying', 'Folding'].includes(order.workflowStatus) && <View style={{ gap: 12 }}><Section title="Ready time estimate" /><PickerField label="Ready date" mode="date" value={estimateDate} onChange={setEstimateDate} /><PickerField label="Ready time" mode="time" value={estimateTime} onChange={setEstimateTime} /><Txt style={styles.muted}>For a revised estimate, explain the change in the notes above.</Txt><Button title={order.estimatedReadyAt ? 'Update ready estimate' : 'Send ready estimate'} outline busy={command.busy} onPress={() => action('updateEstimate')} /></View>}
-            {partner && ['LaundryReceived', 'Washing', 'Drying', 'Folding'].includes(order.workflowStatus) && <WeightUpdateForm key={id} kilos={order.kiloAmount} busy={command.busy} save={saveWeight} />}
-            {(partner || user?.isAdmin || order.workflowStatus === 'BookingPending') && <Button title="Cancel booking" outline color={palette.danger} busy={command.busy} onPress={() => action('cancel')} />}
-            {(partner || user?.isAdmin) && <Button title="Report delivery issue" outline busy={command.busy} onPress={() => action('issue')} />}
-            {user?.isAdmin && <Button title="Resolve reported issue" outline busy={command.busy} onPress={() => action('resolveIssue')} />}
-          </Card>}
+      <OrderStepIndicator {...progress} selected={viewedStep} onSelect={setSelectedStep} />
+      {progress.cancelled && <Txt accessibilityRole="alert" style={{ color: palette.danger, fontWeight: '600' }}>Order cancelled. You can review the recorded steps below.</Txt>}
+      {!!command.error && <Txt accessibilityRole="alert" style={{ color: palette.danger }}>{command.error}</Txt>}
+      <Card testID="order-step-content" style={{ padding: 16, gap: 14 }}>
+        <View style={{ gap: 4 }}>
+          <Txt style={{ fontSize: 11, color: palette.muted }}>Step {viewedStep + 1} of 5{currentView && !closed ? ' · Current step' : viewedStep > progress.current ? ' · Not reached' : ''}</Txt>
+          <Txt accessibilityRole="header" style={{ fontSize: 21, fontWeight: '700' }}>{orderDetailSteps[viewedStep].title === 'Received' ? 'Laundry received' : orderDetailSteps[viewedStep].title === 'Return' ? 'Return & handover' : orderDetailSteps[viewedStep].title === 'Complete' ? 'Order complete' : orderDetailSteps[viewedStep].title}</Txt>
+          {!currentView && <Txt style={styles.muted}>{orderDetailSteps[viewedStep].description}</Txt>}
         </View>
-        <Card style={{ flex: width >= 1000 ? 1 : undefined, width: width >= 1000 ? undefined : '100%' }}><Section title="Order timeline" />{order.events.map(event => <View key={event.id} style={{ borderLeftWidth: 2, borderLeftColor: palette.line, paddingLeft: 14, paddingBottom: 14, gap: 4 }}>
-          <Txt style={{ fontWeight: '600' }}>{label(event.toStatus)} · {label(event.action)}</Txt>{!!event.detail && <Txt>{event.detail}</Txt>}<Txt style={{ color: palette.muted, fontSize: 12 }}>{event.actor.name} · {stamp(event.createdAt)}</Txt>
-        </View>)}</Card>
-      </View>
+        {viewedStep > progress.current ? <Txt style={styles.muted}>{progress.cancelled ? 'This step was not reached before cancellation.' : 'This step becomes active when the earlier steps are confirmed.'}</Txt> : <>
+          {viewedStep === 0 && <Txt style={styles.muted}>Booked {stepStamp(order.createdAt)}</Txt>}
+          {viewedStep === 1 && <>
+            <Txt>{order.collectionMethod === 'ShopPickup' ? 'Rider collects the laundry from the customer.' : 'Customer drops off the laundry at the shop.'}</Txt>
+            {!!order.requestedPickupAt && <Txt style={styles.muted}>Requested pickup: {stepStamp(order.confirmedPickupAt || order.requestedPickupAt)}</Txt>}
+            {!!order.receivedAt && <Txt style={styles.muted}>Received: {stepStamp(order.receivedAt)}</Txt>}
+            {order.workflowStatus === 'LaundryReceived' && <Txt style={styles.muted}>Laundry is in the queue. Start washing when it is ready to be processed.</Txt>}
+            {order.workflowStatus === 'AtPartner' && order.collectionMethod === 'Dropoff' && <Txt style={styles.muted}>Confirm receipt after the laundry physically arrives at the shop.</Txt>}
+          </>}
+          {viewedStep === 2 && <>
+            <ProcessingTimer order={order} />
+            {!!order.processingStartedAt && <Txt style={styles.muted}>Processing started: {stepStamp(order.processingStartedAt)}</Txt>}
+          </>}
+          {(viewedStep === 1 || viewedStep === 2) && !!order.estimatedReadyAt && <View style={{ gap: 4 }}>
+            <Txt style={{ fontWeight: '600' }}>Estimated ready: {stepStamp(order.estimatedReadyAt)}</Txt>
+            {!!order.estimateReason && <Txt style={styles.muted}>{order.estimateReason}</Txt>}
+          </View>}
+          {viewedStep === 3 && <>
+            <Txt>{order.deliveryType === 'Deliver' ? 'Return delivery to the customer.' : 'Customer collection at the shop.'}</Txt>
+            {!!order.readyAt && <Txt style={styles.muted}>Laundry ready: {stepStamp(order.readyAt)}</Txt>}
+          </>}
+          {viewedStep === 4 && progress.complete && <>
+            <Txt style={{ fontWeight: '600', color: palette.primary }}>Clean laundry received by the customer.</Txt>
+            {!!order.completedAt && <Txt style={styles.muted}>Completed: {stepStamp(order.completedAt)}</Txt>}
+          </>}
+          {currentView && !closed && <>
+            {partner && order.workflowStatus === 'BookingPending' && <>
+              <Field label="Acceptance explanation" value={note} onChangeText={value => { setNote(value); command.setError(''); }} placeholder="For example: We can accept this booking." editable={!command.busy} multiline maxLength={1000} />
+              <Txt style={{ fontSize: 12, color: palette.muted }}>An explanation is required to confirm the booking.</Txt>
+            </>}
+            {next && <Button title={next.title} busy={command.busy} onPress={() => action(next.action)} />}
+            {(partner || next) && order.workflowStatus !== 'BookingPending' && <OrderDisclosure title="Add a note">
+              <Field label="Notes / issue details" value={note} onChangeText={value => { setNote(value); command.setError(''); }} placeholder="Optional note for the next update" editable={!command.busy} multiline maxLength={1000} />
+            </OrderDisclosure>}
+          </>}
+          {currentView && !closed && !user?.isAdmin && order.handoff && (viewedStep === 1 && order.handoff.kind === 'pickup' || viewedStep === 3 && order.handoff.kind !== 'pickup') && (partner ? order.handoff.kind === 'collection' : order.handoff.kind !== 'collection') && <HandoffPanel handoff={order.handoff} busy={command.busy} send={name => { void action(name); }} />}
+          {currentView && !closed && !user?.isAdmin && (viewedStep === 3 && order.deliveryType === 'Deliver' && (partner ? order.collectionCode : order.deliveryCode) || viewedStep === 1 && !partner && order.pickupCode) && <OrderDisclosure title="Handoff confirmation">
+            <Txt style={styles.muted}>Share a code only with the assigned rider at the physical handoff.</Txt>
+            {partner ? <Txt selectable style={styles.heading}>Clean laundry collection: {order.collectionCode}</Txt> : viewedStep === 1 ? <Txt selectable style={styles.heading}>Laundry pickup: {order.pickupCode}</Txt> : <Txt selectable style={styles.heading}>Delivery receipt: {order.deliveryCode}</Txt>}
+          </OrderDisclosure>}
+        </>}
+        {!currentView && <Button title={closed ? 'View final recorded step' : 'Back to current step'} compact outline onPress={() => setSelectedStep(null)} />}
+      </Card>
+      {partner && ['LaundryReceived', 'Washing', 'Drying', 'Folding'].includes(order.workflowStatus) && <View style={{ gap: 12, display: currentView ? 'flex' : 'none' }}>
+        <OrderDisclosure title="Ready time estimate">
+          <PickerField label="Ready date" mode="date" value={estimateDate} onChange={setEstimateDate} />
+          <PickerField label="Ready time" mode="time" value={estimateTime} onChange={setEstimateTime} />
+          {!!order.estimatedReadyAt && <Field label="Estimate change reason" value={note} onChangeText={setNote} placeholder="Explain the revised ready time" editable={!command.busy} multiline maxLength={1000} />}
+          <Button title={order.estimatedReadyAt ? 'Update ready estimate' : 'Send ready estimate'} outline busy={command.busy} onPress={() => action('updateEstimate')} />
+        </OrderDisclosure>
+        <OrderDisclosure title="Update weight & scale photo"><WeightUpdateForm key={id} kilos={order.kiloAmount} busy={command.busy} save={saveWeight} /></OrderDisclosure>
+      </View>}
+      {currentView && !partner && !user?.isAdmin && (viewedStep === 1 && order.collectionMethod === 'ShopPickup' || viewedStep === 3 && order.deliveryType === 'Deliver') && !closed && <CustomerRiderTracking orderId={id} orderStatus={order.workflowStatus} />}
+      {(viewedStep === 1 || viewedStep === 3) && order.assignments.some(job => job.stage === (viewedStep === 1 ? 'Pickup' : 'Delivery')) && <OrderDisclosure title="Rider assignments">
+        {order.assignments.filter(job => job.stage === (viewedStep === 1 ? 'Pickup' : 'Delivery')).map(job => <View key={job.id} style={{ gap: 4 }}><Txt style={{ fontWeight: '600' }}>{job.rider?.name || 'Assigned rider'}</Txt><Txt style={styles.muted}>{job.status} · {stepStamp(job.updatedAt)}</Txt></View>)}
+      </OrderDisclosure>}
+      <OrderDisclosure title="Order information">
+        <Section title={partner ? 'Customer & collection' : 'Your pickup & delivery'} />
+        <Txt>{order.userName}</Txt><Txt>{address(order)}</Txt>
+        {order.collectionMethod === 'ShopPickup' && order.collectionAddress && <><Txt style={styles.muted}>Laundry collection address</Txt><Txt>{address(order.collectionAddress)}</Txt></>}
+        {partner && !!order.userPhone && <Txt selectable>{order.userPhone}</Txt>}
+        <Txt style={{ fontWeight: '600' }}>{order.shop.shopName}</Txt>
+        {!!order.notes && <Txt>{order.notes}</Txt>}
+      </OrderDisclosure>
+      {!!order.weightEvidence?.length && <OrderDisclosure title="Measured weight & scale photos"><WeightEvidenceCard orderId={id} evidence={order.weightEvidence} /></OrderDisclosure>}
+      <OrderDisclosure title="Order history">
+        {order.events.length ? [...order.events].reverse().map(event => <View key={event.id} style={{ borderLeftWidth: 2, borderLeftColor: palette.line, paddingLeft: 12, paddingBottom: 12, gap: 4 }}>
+          <Txt style={{ fontWeight: '600' }}>{label(event.toStatus)}</Txt>{!!event.detail && <Txt>{event.detail}</Txt>}<Txt style={{ color: palette.muted, fontSize: 12 }}>{event.actor.name} · {stepStamp(event.createdAt)}</Txt>
+        </View>) : <Txt style={styles.muted}>No updates recorded yet.</Txt>}
+      </OrderDisclosure>
+      {!closed && (partner || user?.isAdmin || order.workflowStatus === 'BookingPending') && <OrderDisclosure title="Cancellation & issues">
+        <Field label="Reason or issue details" value={issueNote} onChangeText={value => { setIssueNote(value); command.setError(''); }} placeholder="Explain the cancellation or issue" editable={!command.busy} multiline maxLength={1000} />
+        {(partner || user?.isAdmin || order.workflowStatus === 'BookingPending') && <Button title="Cancel booking" outline color={palette.danger} busy={command.busy} onPress={() => action('cancel', issueNote.trim())} />}
+        {(partner || user?.isAdmin) && <Button title="Report delivery issue" outline busy={command.busy} onPress={() => action('issue', issueNote.trim())} />}
+        {user?.isAdmin && <Button title="Resolve reported issue" outline busy={command.busy} onPress={() => action('resolveIssue', issueNote.trim())} />}
+      </OrderDisclosure>}
     </View>}
   </Screen>;
 }

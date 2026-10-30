@@ -5,6 +5,8 @@ import { Bell, CheckCircle2, ChevronRight, Clock, WashingMachine } from "lucide-
 import { useOrders, type Order } from "./data";
 import { Button, Card, Empty, IconButton, Screen, SearchBox, Txt, money, usePalette } from "./ui";
 import { StatusBadge } from "./OrderScreens";
+import { LiveOperationsButton } from "./LiveOperationsButton";
+import { ProcessingTimer } from "./ProcessingTimer";
 import { QueryState } from "./UserScreens";
 import { ORDERS_PER_PAGE, PageControls } from "./Pagination";
 import { activeStatuses, pastStatuses, matchesOrderFilter, orderIsPast, shopOrderStatus, shopOrderProgress, shopOrderTiming, shopOrderTransport, visibleShopOrders, type OrderSection, type ShopOrderFilter } from "./shop-orders";
@@ -22,6 +24,7 @@ function OrderInfo({ order }: { order: Order }) {
   const palette = usePalette();
   return <View style={{ gap: 3 }}>
     <Txt style={{ color: palette.primary, fontSize: 12, fontWeight: "600" }}>{shopOrderProgress(order)}</Txt>
+    <ProcessingTimer order={order} compact />
     {shopOrderStatus(order) === "Cancelled" && !order.workflowStatus && !!order.notes &&
       <Txt numberOfLines={2} style={{ color: palette.muted, fontSize: 12 }}>Reason: {order.notes}</Txt>}
   </View>;
@@ -107,6 +110,7 @@ export function ShopOrdersDesign() {
     right={<IconButton label="Notifications" onPress={() => router.push({ pathname: "/shop/transactions/[flow]", params: { flow: "shop-notifications" } })}><Bell size={22} color={palette.primary} /></IconButton>}>
     <View style={{ gap: 20 }}>
       <View><Txt style={{ fontSize: 22, fontWeight: "700" }}>Your laundry orders</Txt><Txt style={{ color: palette.muted }}>Manage customer orders, laundry progress and handovers.</Txt></View>
+      <LiveOperationsButton />
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>{summaries.map(({ title, filter: value, Icon }) => {
         const selected = section === "Active" && filter === value;
         return <Pressable key={title} accessibilityRole="button" accessibilityLabel={`Show ${title.toLowerCase()} orders`} accessibilityState={{ selected }}

@@ -11,7 +11,7 @@ require.cache[envPath] = { id: envPath, filename: envPath, loaded: true, exports
 const { ShopController } = require('../dist/controllers/shop.controller');
 
 async function invoke({ method = 'addService', userId = 1, shopOwner = 1, serviceShopId = 5,
-  missingShop = false, serviceId = '9', body = { serviceName: 'Full service', price: 215, packageKilos: 8 } } = {}) {
+  missingShop = false, serviceId = '9', body = { serviceName: 'Full service', price: 215, packageKilos: 8, washingMinutes: 30, dryingMinutes: 45 } } = {}) {
   let row = { id: 9, shopId: serviceShopId, serviceName: 'Wash', price: 25, packageKilos: null };
   let writes = 0, error;
   database.shop = { findUnique: async () => missingShop ? null : { userId: shopOwner } };
@@ -42,6 +42,8 @@ test('shop owner can create a package and convert an existing service between pr
   assert.equal(created.res.code, 201);
   assert.equal(created.res.body.data.packageKilos, 8);
   assert.equal(created.res.body.data.price, 215);
+  assert.equal(created.res.body.data.washingMinutes, 30);
+  assert.equal(created.res.body.data.dryingMinutes, 45);
   const updated = await invoke({ method: 'updateService' });
   assert.equal(updated.res.code, 200);
   assert.equal(updated.row.packageKilos, 8);

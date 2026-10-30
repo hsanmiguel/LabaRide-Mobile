@@ -26,7 +26,7 @@ function elements(element, type) {
 function harness({ confirmed = true, failure, services } = {}) {
   let index = 0;
   const hooks = [], calls = [], invalidations = [], confirmations = [];
-  const service = { id: 9, serviceName: 'Full service', price: '215', packageKilos: '8', color: '#98D8BF' };
+  const service = { id: 9, serviceName: 'Full service', price: '215', packageKilos: '8', washingMinutes: 30, dryingMinutes: 45, color: '#98D8BF' };
   const shop = { id: 5, services: services || [service], kiloPrices: [] };
   const result = { data: shop, isLoading: false, error: null, refetch() {} };
   const request = method => async (url, body) => { calls.push({ method, url, body }); if (failure) throw failure; };
@@ -74,6 +74,8 @@ test('add and edit modals show kg units and editing saves service weight and pri
   assert.equal(app.dialog().props.visible, true);
   assert.equal(app.field('Weight per load').props.value, '8');
   assert.equal(app.field('Weight per load').props.suffix, 'kg');
+  assert.equal(app.field('Standard washing time').props.value, '30');
+  assert.equal(app.field('Standard drying time').props.value, '45');
   app.field('Weight per load').props.onChangeText('10');
   app.field('Price per load').props.onChangeText('250');
   await app.button('Save Changes').props.onPress();
@@ -81,6 +83,8 @@ test('add and edit modals show kg units and editing saves service weight and pri
   assert.equal(app.calls[0].url, '/shops/5/services/9');
   assert.equal(app.calls[0].body.packageKilos, 10);
   assert.equal(app.calls[0].body.price, 250);
+  assert.equal(app.calls[0].body.washingMinutes, 30);
+  assert.equal(app.calls[0].body.dryingMinutes, 45);
   assert.equal(app.dialog().props.visible, false);
   assert.deepEqual(app.invalidations.sort(), ['shop', 'shops']);
 });
@@ -109,9 +113,9 @@ test('cancelling deletion sends no request; API errors remain visible', async ()
 
 test('each package and kilogram service edits and deletes its own record', async () => {
   const services = [
-    { id: 11, serviceName: 'Wash Only', price: '35', packageKilos: null },
-    { id: 12, serviceName: 'Dry Only', price: '85', packageKilos: '5' },
-    { id: 13, serviceName: 'Full Service', price: '215', packageKilos: '8' },
+    { id: 11, serviceName: 'Wash Only', price: '35', packageKilos: null, washingMinutes: 25, dryingMinutes: 40 },
+    { id: 12, serviceName: 'Dry Only', price: '85', packageKilos: '5', washingMinutes: 30, dryingMinutes: 45 },
+    { id: 13, serviceName: 'Full Service', price: '215', packageKilos: '8', washingMinutes: 35, dryingMinutes: 50 },
   ];
   for (const [index, service] of services.entries()) {
     const edit = harness({ services });
@@ -149,6 +153,21 @@ test('price range fields reject text, signs, scientific notation and multiple de
   }
 });
 
+test('standard washing and drying times accept whole minutes only', () => {
+  const app = harness();
+  app.button('Edit').props.onPress();
+  for (const label of ['Standard washing time', 'Standard drying time']) {
+    const field = app.field(label);
+    const original = field.props.value;
+    for (const input of ['letters', '-5', '1.5', '1e3']) {
+      field.props.onChangeText(input);
+      assert.equal(app.field(label).props.value, original);
+    }
+    field.props.onChangeText('60');
+    assert.equal(app.field(label).props.value, '60');
+  }
+});
+
 test('new price ranges start at 1–12 kg and submit the slider selection', async () => {
   const app = harness();
   app.button('Add Price Range').props.onPress();
@@ -182,7 +201,8 @@ test('used colors are unavailable except for the service being edited', () => {
   assert.equal(used.props.disabled, true);
   const selected = elements(app.dialog(), 'Pressable').find(item => item.props.accessibilityState?.selected);
   assert.equal(selected.props.accessibilityLabel, 'Service color #6842D9');
-  assert.equal(serviceColorOptions.length, 9);
+  assert.equal(serviceColorOptions.length, 8);
+  assert.equal(serviceColorOptions.some(option => option.color === '#AA5042'), false);
   const full = harness({ services: serviceColorOptions.map((option, index) => ({ id: index + 1, serviceName: 'Service ' + index, price: 25, color: option.color })) });
   full.render().props.right.props.onPress();
   assert.equal(full.button('Add Service').props.disabled, true);

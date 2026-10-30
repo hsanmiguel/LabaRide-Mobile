@@ -1,8 +1,10 @@
 import { View } from "react-native";
 import type { Order } from "./data";
 import { PriceRow, Section, Txt, styles } from "./ui";
+import { ProcessingTimer } from "./ProcessingTimer";
+import type { ProcessingTimingOrder } from "./processing-timer";
 
-export type TurnaroundOrder = Pick<Order, 'status' | 'deliveryType' | 'requestedPickupAt' | 'confirmedPickupAt' | 'receivedAt' | 'processingStartedAt' | 'estimatedReadyAt' | 'estimateReason' | 'readyAt'>;
+export type TurnaroundOrder = Pick<Order, 'status' | 'deliveryType' | 'requestedPickupAt' | 'confirmedPickupAt' | 'receivedAt' | 'processingStartedAt' | 'estimatedReadyAt' | 'estimateReason' | 'readyAt'> & ProcessingTimingOrder;
 export const turnaroundTime = (value: string) => new Date(value).toLocaleString("en-PH", { timeZone: "Asia/Manila" }) + " (Philippine time)";
 export function orderUpdateText(order: TurnaroundOrder) {
   const labels: Record<Order["status"], string> = {
@@ -16,6 +18,7 @@ export function orderUpdateText(order: TurnaroundOrder) {
 export function TurnaroundDetails({ order }: { order: TurnaroundOrder }) {
   return <View style={{ gap: 10 }}>
     <Section title="Turnaround & Updates" />
+    <ProcessingTimer order={order} />
     <Txt>{orderUpdateText(order)}</Txt>
     {!!order.requestedPickupAt && <PriceRow label="Requested laundry pickup" value={turnaroundTime(order.requestedPickupAt)} />}
     {!!order.requestedPickupAt && <Txt style={styles.muted}>{order.confirmedPickupAt ? "Pickup confirmed by the shop." : "Pickup availability is awaiting shop confirmation."}</Txt>}

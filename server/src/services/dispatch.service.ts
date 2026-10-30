@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { randomInt } from 'crypto';
 import { addressSchema } from '../validators/address.validator';
+import { serviceProcessingTimes, serviceTimingSelection } from '../utils/processing-timing';
 
 // Collection and return addresses can differ. Legacy orders use their saved address.
 export function collectionPoint<T extends { collectionMethod?: string; collectionAddress?: unknown }>(order: T) {
@@ -60,6 +61,9 @@ export async function recordEvent(tx: Prisma.TransactionClient, order: { id: num
 }
 
 export async function changeState(tx: Prisma.TransactionClient, order: Awaited<ReturnType<typeof lockOrder>>, actorId: number, action: string, to: string, detail?: string, riderId?: number) {
+  const now = new Date();
+  const timing = (to === 'Washing' || to === 'Drying') && !order.processingTimingCapturedAt
+    ? serviceProcessingTimes(order.serviceName, await tx.shopService.findMany({ where: { shopId: order.shopId }, select: serviceTimingSelection })) : undefined;
   await tx.transaction.update({ where: { id: order.id }, data: {
     workflowStatus: to, workflowVersion: { increment: 1 },
     status: to === 'Completed' ? 'Completed' : to === 'Cancelled' ? 'Cancelled' : to === 'BookingPending' ? 'Pending'
@@ -68,7 +72,9 @@ export async function changeState(tx: Prisma.TransactionClient, order: Awaited<R
       : ['ReadyForDelivery', 'ReadyForCollection', 'DeliveryAssigned', 'DeliveryAccepted', 'CleanLaundryCollected', 'OutForDelivery', 'Delivered'].includes(to) ? 'Ready' : 'Accepted',
     ...(action === 'confirmBooking' && order.collectionMethod === 'ShopPickup' ? { confirmedPickupAt: order.requestedPickupAt } : {}),
     ...(to === 'LaundryReceived' && !order.receivedAt ? { receivedAt: new Date() } : {}),
-    ...(to === 'Washing' && !order.processingStartedAt ? { processingStartedAt: new Date() } : {}),
+    ...(to === 'Washing' && !order.processingStartedAt ? { processingStartedAt: now } : {}),
+    ...(timing ? { ...timing, processingTimingCapturedAt: now } : {}),
+    ...(to === 'Drying' && !order.dryingStartedAt ? { dryingStartedAt: now } : {}),
     ...(['ReadyForDelivery', 'ReadyForCollection'].includes(to) && !order.readyAt ? { readyAt: new Date() } : {}),
     ...(to === 'Completed' && !order.completedAt ? { completedAt: new Date() } : {}),
     ...(to === 'Cancelled' && !order.cancelledAt ? { cancelledAt: new Date() } : {}),

@@ -166,6 +166,8 @@ model ShopService {
   serviceName String  @map("service_name")
   price       Decimal @default(0) @db.Decimal(10, 2)
   packageKilos Decimal? @map("package_kilos") @db.Decimal(10, 2)
+  washingMinutes Int? @map("washing_minutes")
+  dryingMinutes  Int? @map("drying_minutes")
   color       String?
 
   shop Shop @relation(fields: [shopId], references: [id], onDelete: Cascade)
@@ -211,6 +213,10 @@ model Transaction {
   confirmedPickupAt DateTime? @map("confirmed_pickup_at") @db.Timestamptz(3)
   receivedAt DateTime? @map("received_at") @db.Timestamptz(3)
   processingStartedAt DateTime? @map("processing_started_at") @db.Timestamptz(3)
+  washingMinutes Int? @map("washing_minutes")
+  dryingMinutes Int? @map("drying_minutes")
+  dryingStartedAt DateTime? @map("drying_started_at") @db.Timestamptz(3)
+  processingTimingCapturedAt DateTime? @map("processing_timing_captured_at") @db.Timestamptz(3)
   estimatedReadyAt DateTime? @map("estimated_ready_at") @db.Timestamptz(3)
   estimateUpdatedAt DateTime? @map("estimate_updated_at") @db.Timestamptz(3)
   estimateReason String? @map("estimate_reason")

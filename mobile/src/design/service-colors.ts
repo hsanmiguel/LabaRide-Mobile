@@ -3,7 +3,6 @@ export const serviceColorOptions = [
   { color: "#886AB8", name: "Lavender" }, { color: "#D0C1E8", name: "Pale Lavender" },
   { color: "#7EA8BE", name: "Steel Blue" }, { color: "#28536B", name: "Charcoal Blue" },
   { color: "#5C374C", name: "Mauve Shadow" }, { color: "#052F5F", name: "Oxford Navy" },
-  { color: "#AA5042", name: "Terracotta Clay" },
 ];
 
 export function normalizeServiceColor(color?: string | null) {

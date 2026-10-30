@@ -156,6 +156,17 @@ test("legacy shop flows resolve inside the shop shell", () => {
   }
 });
 
+test("live operations and its order details retain the originating Dashboard or Orders tab", () => {
+  for (const tab of ["home", "transactions"]) {
+    for (const flow of ["shop-live-operations", "shop-transaction"]) {
+      const target = flowTarget(flow, { id: "42" }, ["shop", tab, "[flow]"]);
+      assert.equal(target.pathname, `/shop/${tab}/[flow]`);
+      assert.deepEqual(focusedRoutes(getStateFromPath(target.pathname.replace("[flow]", flow), config)), ["shop", tab, "[flow]"]);
+    }
+  }
+  assert.equal(legacyShopFlows["shop-live-operations"], "transactions");
+});
+
 test("customer flows stay unchanged and account deletion leaves the signed-in shell", () => {
   assert.equal(flowTarget("checkout", {}, ["(user)", "home"]).pathname, "/(flows)/[flow]");
   assert.equal(flowTarget("account-deleted", {}, ["shop", "profile", "[flow]"]).pathname, "/(flows)/[flow]");

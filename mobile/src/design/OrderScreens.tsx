@@ -1,13 +1,11 @@
 import { ORDERS_PER_PAGE, PageControls } from "./Pagination";
-import { useEffect, useCallback, useRef, useState, type ReactNode } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { Modal, Pressable, ScrollView, View } from "react-native";
 import {
   Clock,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Minus,
-  Plus,
   Pencil,
   Truck,
 } from "lucide-react-native";
@@ -50,10 +48,11 @@ import {
 import { addressError, addressPayload } from "./address";
 import { DeliveryDetails, FormError } from "./AddressFields";
 import { message } from "./data";
-import { clothingNames, householdNames, useLaundryDraft } from "./store";
+import { useLaundryDraft } from "./store";
 import { orderPricing } from "./order-pricing";
 import { validateDeliveryTime } from "./delivery-slots";
-import { TurnaroundDetails, orderUpdateText } from "./TurnaroundDetails";
+import { ProcessingTimer } from "./ProcessingTimer";
+import { OriginalOrderDetails } from "./OriginalOrderDetails";
 import { DeliverySchedule } from "./DeliverySchedule";
 import { QueryState } from "./UserScreens";
 import { serviceAreaError, serviceAreaLabel } from "./service-area";
@@ -91,94 +90,6 @@ export function Totals({ order }: { order?: Order }) {
     </View>
   );
 }
-export function EmbeddedOrderPanel({ children, footer }: { children: ReactNode; footer?: ReactNode; title?: string; background?: string }) {
-  return <View style={{ gap: 16 }}>{children}{footer}</View>;
-}
-
-export function LaundryCountDesign({ embedded = false, onDone }: { embedded?: boolean; onDone?: () => void } = {}) {
-  const palette = usePalette();
-  const draft = useLaundryDraft();
-  const clothing = draft.shop?.clothingTypes?.length
-    ? draft.shop.clothingTypes.map((i) => i.typeName || "Clothing")
-    : clothingNames;
-  const household = draft.shop?.householdItems?.length
-    ? draft.shop.householdItems.map((i) => i.itemName || "Household item")
-    : householdNames;
-  const Container = embedded ? EmbeddedOrderPanel : Screen;
-  return (
-    <Container
-      title="Laundries"
-      footer={
-        <Button
-          title="Confirm"
-          color={palette.navy}
-          onPress={() => onDone ? onDone() : router.back()}
-        />
-      }
-    >
-      <View style={styles.stack}>
-        {[
-          { title: "Types of Clothing", names: clothing },
-          { title: "Household Items", names: household },
-        ].map((group) => (
-          <View key={group.title}>
-            <Section title={group.title} />
-            {group.names.map((name) => (
-              <View
-                key={name}
-                style={[styles.between, { paddingVertical: 10 }]}
-              >
-                <Txt style={{ color: palette.navy, flex: 1 }}>{name}</Txt>
-                <View style={styles.row}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove ${name}`}
-                    disabled={!draft.counts[name]}
-                    style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: palette.surface }}
-                    onPress={() =>
-                      draft.set({
-                        counts: {
-                          ...draft.counts,
-                          [name]: Math.max(0, (draft.counts[name] || 0) - 1),
-                        },
-                      })
-                    }
-                  >
-                    <Minus color={palette.navy} size={22} />
-                  </Pressable>
-                  <Txt
-                    style={{
-                      fontWeight: "600",
-                      minWidth: 20,
-                      textAlign: "center",
-                    }}
-                  >
-                    {draft.counts[name] || 0}
-                  </Txt>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Add ${name}`}
-                    style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: palette.surface }}
-                    onPress={() =>
-                      draft.set({
-                        counts: {
-                          ...draft.counts,
-                          [name]: (draft.counts[name] || 0) + 1,
-                        },
-                      })
-                    }
-                  >
-                    <Plus color={palette.navy} size={22} />
-                  </Pressable>
-                </View>
-              </View>
-            ))}
-          </View>
-        ))}
-      </View>
-    </Container>
-  );
-}
 export function OrderSummaryDesign() {
   return <CheckoutDesign />;
 }
@@ -203,7 +114,7 @@ export function CheckoutDesign() {
     setCountdown(null);
   }, []);
   useFocusEffect(useCallback(() => cancelCountdown, [cancelCountdown]));
-  const [dialog, setDialog] = useState<"items" | "address" | "schedule" | null>(null);
+  const [dialog, setDialog] = useState<"address" | "schedule" | null>(null);
   const [transportOpen, setTransportOpen] = useState(false);
   const cache = useQueryClient();
   const customerAddress = draft.address || profile.data;
@@ -291,9 +202,6 @@ export function CheckoutDesign() {
         ...(draft.collectionMethod === "ShopPickup" ? { requestedPickupAt: draft.requestedPickupAt } : {}),
         paymentMethod: draft.paymentMethod,
         notes: draft.notes,
-        items: Object.entries(draft.counts)
-          .filter(([, count]) => count > 0)
-          .map(([itemName, quantity]) => ({ itemName, quantity })),
       });
       await cache.invalidateQueries({ queryKey: ["user-orders"] });
       draft.clearOrder();
@@ -448,19 +356,6 @@ export function CheckoutDesign() {
           ))}
         </Card>
         <Card>
-          <View style={[styles.between, { flexWrap: "wrap" }]}>
-            <Txt style={styles.heading}>Laundry Items</Txt>
-            <Button title="Add Types of Clothes" compact outline color={palette.navy}
-              icon={<Pencil size={14} color={palette.navy} />} onPress={() => setDialog("items")} />
-          </View>
-          {Object.entries(draft.counts)
-            .filter(([, n]) => n > 0)
-            .map(([name, n]) => (
-              <PriceRow key={name} label={`${name} x${n}`} value="" />
-            ))}
-          {!Object.values(draft.counts).some(count => count > 0) && <Txt style={styles.muted}>No clothing quantities added yet.</Txt>}
-        </Card>
-        <Card>
           <Section title="Turnaround & Updates" />
           <Txt style={{ fontWeight: "600" }}>Your laundry’s completion time will be confirmed by the shop.</Txt>
           <Txt style={styles.muted}>After receiving your laundry, the shop will estimate when it will be ready based on its queue. You’ll receive updates when processing starts and when it’s ready.</Txt>
@@ -494,10 +389,10 @@ export function CheckoutDesign() {
           {dialog === "schedule" ? <ScheduleDesign embedded inDialog pickup onDone={() => setDialog(null)} onClose={() => setDialog(null)} /> : <Card style={{ width: "100%", maxWidth: 540, maxHeight: "90%", padding: 24 }}>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16 }}>
               <View style={[styles.between, { flexWrap: "wrap" }]}>
-                <Txt style={styles.heading}>{dialog === "items" ? "Laundry Items" : "Choose your address"}</Txt>
+                <Txt style={styles.heading}>Choose your address</Txt>
                 <Button title="Close" compact outline color={palette.navy} onPress={() => setDialog(null)} />
               </View>
-              {dialog === "items" ? <LaundryCountDesign embedded onDone={() => setDialog(null)} /> : <View>
+              <View>
                 <Txt style={styles.muted}>Choose an address you saved in your profile. Add or edit addresses in Profile before placing your order.</Txt>
                 <QueryState loading={savedAddresses.isLoading} error={savedAddresses.error} retry={() => savedAddresses.refetch()} />
                 <View accessibilityRole="radiogroup" accessibilityLabel="Saved addresses" style={{ gap: 10, marginVertical: 14 }}>
@@ -521,7 +416,7 @@ export function CheckoutDesign() {
                 </View>
                 {!addressOptions.length && <Txt style={styles.muted}>No addresses saved yet. Add your address in Profile before checkout.</Txt>}
                 {!!user && <Button title="Manage addresses in Profile" compact outline onPress={manageAddresses} />}
-              </View>}
+              </View>
             </ScrollView>
           </Card>}
         </View>}
@@ -648,6 +543,7 @@ export function OrderCard({
         {shopMode ? order.userName : order.shop?.shopName || "Laundry Shop"}
       </Txt>
       <Txt style={styles.muted}>Service: {order.serviceName}</Txt>
+      <ProcessingTimer order={order} compact />
       <View style={styles.between}>
         <View>
           <Txt style={{ color: palette.muted, fontSize: 12 }}>Order total</Txt>
@@ -744,6 +640,7 @@ function CustomerOrderCard({ order }: { order: Order }) {
             )}
           </View>
         </View>
+        {customerOrderStatus(order) === "Processing" && <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}><ProcessingTimer order={order} compact /></View>}
         <View style={{ minHeight: 68, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: palette.line, backgroundColor: "#FCFDFE", flexDirection: "row", alignItems: "center", gap: 12 }}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <Txt style={{ fontWeight: "700", fontSize: 13 }}>View order details</Txt>
@@ -902,116 +799,11 @@ export function OrderDetailsDesign({
         )}
       </Screen>
     );
-  return (
-    <Screen
-      title={
-        delivered ? "Order Delivered" : full ? "Full Details" : "Order Details"
-      }
-      background={palette.surface}
-      footer={
-        order.status === "Pending" ? (
-          <Button
-            title="Cancel Order"
-            outline
-            color={palette.navy}
-            onPress={() => go("cancel-order", { id: String(id) })}
-          />
-        ) : order.status === "Completed" ? (
-          <Button
-            title="Order Again"
-            color={palette.navy}
-            onPress={() =>
-              inShop ? go("shop-menu", { id: String(order.shopId) }) : router.push({
-                pathname: "/(user)/order/[shopId]",
-                params: { shopId: String(order.shopId) },
-              })
-            }
-          />
-        ) : undefined
-      }
-    >
-      <View style={styles.stack}>
-        <Card>
-          <View style={styles.between}>
-            <Txt style={styles.heading}>
-              {delivered ? "Order Complete" : "Thank you for your order!"}
-            </Txt>
-            <StatusBadge status={order.status} />
-          </View>
-          <Txt style={styles.muted}>
-            {delivered
-              ? "Thank you for your order in our laundry shop! We hope to see you and serve you again."
-              : `Order #${order.id}`}
-          </Txt>
-          {!full && (
-            <View style={styles.row}>
-              <CheckCircle2 size={24} color={palette.blue} />
-              <Txt style={styles.muted}>
-                {orderUpdateText(order)}
-              </Txt>
-            </View>
-          )}
-        </Card>
-        <Card>
-          <Section title={full ? "Shipping Information" : "Order Details"} />
-          <MenuRow
-            title={order.deliveryType === "Pickup" ? "Pickup location" : order.userName}
-            detail={address(order)}
-            asset="delivery.png"
-          />
-          <DeliveryDetails value={order} />
-          {order.collectionMethod === "ShopPickup" && order.collectionAddress && <>
-            <Section title="Laundry Collection Address" />
-            <Txt style={styles.muted}>{address(order.collectionAddress)}</Txt>
-            <DeliveryDetails value={order.collectionAddress} />
-          </>}
-          <MenuRow
-            title={order.shop?.shopName || "Laundry Shop"}
-            detail={order.shop?.address}
-            asset="shop.png"
-          />
-          <PriceRow label="Order ID:" value={`#${order.id}`} />
-          <PriceRow label="Payment Method" value={order.paymentMethod} />
-          <TurnaroundDetails order={order} />
-        </Card>
-        <Card>
-          <View style={styles.row}>
-            <Asset name="washonly.png" size={40} />
-            <View>
-              <Txt style={styles.heading}>{order.serviceName}</Txt>
-              <Txt style={styles.muted}>
-                {order.kiloAmount} kg · {order.deliveryType}
-              </Txt>
-            </View>
-          </View>
-          <Section title="Items" />
-          {order.items?.length ? (
-            order.items.map((item) => (
-              <PriceRow
-                key={item.itemName}
-                label={item.itemName}
-                value={`×${item.quantity}`}
-              />
-            ))
-          ) : (
-            <Txt style={styles.muted}>No items listed</Txt>
-          )}
-          {!!order.notes && <Txt style={styles.muted}>{order.notes}</Txt>}
-        </Card>
-        <Card>
-          <Totals order={order} />
-        </Card>
-        {delivered && (
-          <Button
-            title="Tip and Rate"
-            outline
-            color={palette.navy}
-            onPress={() => unavailable("Tip and Rate")}
-          />
-        )}
-      </View>
-    </Screen>
-  );
+  return <OriginalOrderDetails order={order}
+    primaryAction={order.status === "Pending" ? <Button title="Cancel Order" outline onPress={() => go("cancel-order", { id: String(id) })} />
+      : order.status === "Completed" ? <Button title="Order Again" onPress={() => inShop ? go("shop-menu", { id: String(order.shopId) }) : router.push({ pathname: "/(user)/order/[shopId]", params: { shopId: String(order.shopId) } })} /> : undefined}
+    extraAction={delivered ? <Button title="Tip and Rate" outline onPress={() => unavailable("Tip and Rate")} /> : undefined}
+  />;
 }
 export function CancelOrderDesign({ id }: { id: number }) {
   const palette = usePalette();

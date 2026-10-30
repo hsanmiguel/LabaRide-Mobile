@@ -10,11 +10,12 @@ const { TransactionController } = require('../dist/controllers/transaction.contr
 
 async function invoke({ method = 'cancelTransaction', status = 'Pending', userId = 1,
   body = { reason: '  I changed my mind  ' }, rowFields = {}, race, missing = false, id = '42' } = {}) {
-  let row = missing ? null : { id: 42, userId: 1, shopId: 5, status, notes: '', totalAmount: 130, shop: { userId: 2, approvalStatus: 'Approved' }, ...rowFields };
+  let row = missing ? null : { id: 42, userId: 1, shopId: 5, serviceName: 'Full Service', status, notes: '', totalAmount: 130, shop: { userId: 2, approvalStatus: 'Approved' }, ...rowFields };
   let writes = 0, error;
   const events = [];
   const notifications = [];
   database.$transaction = async callback => callback(database);
+  database.shopService = { findMany: async () => [{ serviceName: 'Full Service', washingMinutes: 30, dryingMinutes: 45 }] };
   database.notification = { createMany: async ({ data }) => { notifications.push(...data); return { count: data.length }; } };
   database.transaction = {
     findUnique: async () => row && { ...row },
@@ -119,6 +120,9 @@ test('receipt and processing are separate, timestamps start on explicit action a
   assert.equal(receipt.row.processingStartedAt, undefined);
   const start = await invoke({ method: 'updateStatus', userId: 2, status: 'Queued', body: { status: 'Processing' } });
   assert.ok(start.row.processingStartedAt instanceof Date);
+  assert.equal(start.row.washingMinutes, 30);
+  assert.equal(start.row.dryingMinutes, 45);
+  assert.ok(start.row.processingTimingCapturedAt instanceof Date);
   const original = new Date('2026-01-01T00:00:00Z');
   const repeat = await invoke({ method: 'updateStatus', userId: 2, status: 'Processing', rowFields: { processingStartedAt: original }, body: { status: 'Processing' } });
   assert.equal(repeat.row.processingStartedAt, original);

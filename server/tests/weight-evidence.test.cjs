@@ -59,13 +59,23 @@ test('saving weight stores an immutable sanitized photo, updates price, and noti
   const metadata = await sharp(evidence[0].bytes).metadata();
   assert.equal(metadata.format, 'jpeg'); assert.equal(metadata.exif, undefined);
   assert.ok(metadata.width <= 1440 && metadata.height <= 1080);
-  assert.ok(notices.some(item => item.userId === 2 && item.message.includes('Scale photo available')));
+  assert.ok(notices.some(item => item.userId === 2 && /scale photo/i.test(item.message)));
   const oldBytes = Buffer.from(evidence[0].bytes);
   assert.equal((await request('/delivery/orders/47/weight', 'PUT', { ...payload(), kilos: 7.5 })).status, 200);
   assert.equal(evidence.length, 2); assert.deepEqual(evidence[0].bytes, oldBytes);
   const detail = await (await request('/delivery/orders/47', 'GET', undefined, 2)).json();
   assert.equal(detail.data.weightEvidence.length, 2);
   assert.equal(detail.data.weightEvidence[0].bytes, undefined);
+});
+
+test('measured weight updates preserve a confirmed distance fee and earnings snapshot', async () => {
+  order.deliveryFee = 73.25;
+  order.deliveryPricing = { pickupEarnings: 30, returnEarnings: 32.26, commission: 10.99 };
+  const before = JSON.stringify(order.deliveryPricing);
+  assert.equal((await request('/delivery/orders/47/weight', 'PUT', payload())).status, 200);
+  assert.equal(Number(order.deliveryFee), 73.25);
+  assert.equal(Number(order.totalAmount), 273.25);
+  assert.equal(JSON.stringify(order.deliveryPricing), before);
 });
 
 test('scale photos are private to the customer, owning shop and admin, scoped to the order', async () => {

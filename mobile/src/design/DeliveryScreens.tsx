@@ -1,3 +1,4 @@
+import { DeliveryFeeSettings } from './DeliveryFeeSettings';
 import { RiderHeader } from './RiderHeader';
 import { HandoverPhotos } from './HandoverPhotos';
 import { toast } from "./toast-service";
@@ -22,7 +23,6 @@ import { RiderNavigationPanel } from './RiderNavigationPanel';
 import type { TurnaroundOrder } from './TurnaroundDetails';
 import { ProcessingTimer } from './ProcessingTimer';
 import { OrderStepIndicator } from './OrderStepIndicator';
-import { RiderJobStepIndicator } from './RiderJobStepIndicator';
 import { riderJobProgress } from './rider-job-steps';
 import { OrderDisclosure } from './OrderDisclosure';
 import { OrderActivity, OrderBentoCard, OrderBentoGrid, OrderFact } from './OrderBento';
@@ -37,17 +37,7 @@ import { AssignedRiderCard, type AssignedRider } from './AssignedRiderCard';
 
 type Handoff = { kind: 'pickup' | 'collection' | 'delivery'; arrived: boolean; released: boolean };
 
-function HandoffPanel({ handoff, rider = false, busy, send }: { handoff: Handoff; rider?: boolean; busy: boolean; send: (action: string) => void }) {
-  const palette = usePalette();
-  const name = handoff.kind === 'collection' ? 'shop' : 'customer';
-  return <View style={{ padding: 16, borderRadius: 14, backgroundColor: palette.soft, gap: 12 }}>
-    <Txt style={{ fontWeight: '700', color: palette.primary }}>Handover confirmation</Txt>
-    <Txt accessibilityLiveRegion="polite" style={styles.muted}>{!handoff.arrived ? rider ? `Mark arrival when you reach the ${name}.` : 'Waiting for the rider to arrive.' : !handoff.released ? rider ? `Waiting for the ${name} to confirm the physical handover in their account.` : handoff.kind === 'delivery' ? 'The rider has arrived. Confirm after receiving your clean laundry.' : 'The rider has arrived. Confirm after handing over the laundry.' : rider ? 'Handover confirmed. Finish this step after checking the laundry.' : 'Handover confirmed. Waiting for the rider to finish this step.'}</Txt>
-    {rider ? !handoff.arrived ? <Button title={handoff.kind === 'collection' ? 'Arrived at shop' : 'Arrived at customer'} busy={busy} onPress={() => send('arriveHandoff')} /> : <Button title={handoff.kind === 'delivery' ? 'Confirm delivery completed' : 'Confirm laundry received'} disabled={!handoff.released} busy={busy} onPress={() => send('receiveHandoff')} /> : <Button title={handoff.kind === 'delivery' ? 'I received my clean laundry' : 'I handed over the laundry'} disabled={!handoff.arrived || handoff.released} busy={busy} onPress={() => send('releaseHandoff')} />}
-  </View>;
-}
-
-type Job = AssignedRider & { id: number; transactionId: number; stage: string; status: string; expiresAt: string; createdAt: string; updatedAt: string; order: { handoff?: Handoff; id: number; status: string; serviceName: string; kiloAmount: string; scheduledDate: string | null; scheduledTime: string | null; requestedPickupAt?: string | null; totalAmount?: string; paymentMethod?: string; customer: { name?: string; phone?: string; address: string; latitude?: number; longitude?: number; instructions?: string; notes?: string; accessCode?: string }; shop: { name: string; address: string; phone?: string; latitude?: number; longitude?: number } } };
+type Job = AssignedRider & { earnings?: number | null; id: number; transactionId: number; stage: string; status: string; expiresAt: string; createdAt: string; updatedAt: string; order: { handoff?: Handoff; id: number; status: string; serviceName: string; kiloAmount: string; scheduledDate: string | null; scheduledTime: string | null; requestedPickupAt?: string | null; totalAmount?: string; paymentMethod?: string; customer: { name?: string; phone?: string; address: string; latitude?: number; longitude?: number; instructions?: string; notes?: string; accessCode?: string }; shop: { name: string; address: string; phone?: string; latitude?: number; longitude?: number } } };
 type Rider = { userId: number; active: boolean; online: boolean; applicationStatus?: string; reviewReason?: string; canEnable?: boolean; approvalMissing?: string[]; workload: number; user: { name: string; email: string; phone?: string } };
 type RiderOptions = { stage: 'Pickup' | 'Delivery'; workflowVersion: number; origin: { source: 'customer' | 'shop'; name: string; address: string; coordinatesAvailable: boolean }; riders: { userId: number; name: string; workload: number; distance: number | null }[] };
 type Event = { id: number; action: string; toStatus: string; detail?: string; createdAt: string; actor: { name: string } };
@@ -57,14 +47,6 @@ const scheduledAt = (order: { scheduledDate: string | null; scheduledTime: strin
 const scheduleLabel = (order: { scheduledDate: string | null; scheduledTime: string | null; requestedPickupAt?: string | null }) => !Number.isFinite(scheduledAt(order).getTime()) ? 'Not scheduled' : scheduledAt(order).toLocaleString([], { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const stamp = (value: string) => new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const stepStamp = (value: string) => new Date(value).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' (PHT)';
-const riderActions: Record<string, { action: string; title: string; code?: boolean }> = {
-  PickupAccepted: { action: 'enRoute', title: 'Start pickup trip' },
-  PickupEnRoute: { action: 'pickedUp', title: 'Confirm laundry pickup', code: true },
-  LaundryPickedUp: { action: 'droppedOff', title: 'Arrived at laundry shop' },
-  DeliveryAccepted: { action: 'collected', title: 'Collect clean laundry', code: true },
-  CleanLaundryCollected: { action: 'outForDelivery', title: 'Start delivery trip' },
-  OutForDelivery: { action: 'delivered', title: 'Confirm delivery', code: true },
-};
 const partnerActions: Record<string, { action: string; title: string }> = {
   BookingPending: { action: 'confirmBooking', title: 'Accept order' },
   AtPartner: { action: 'receive', title: 'Confirm laundry received' },
@@ -161,22 +143,23 @@ export function DeliveryOrderDesign({ id, partner = false }: { id: number; partn
     <State query={query} />
     {order && <View style={{ gap: 12 }}>
       <Card style={{ padding: 16 }}>
-        <View style={styles.between}><View style={[styles.row, { flexShrink: 1 }]}><Package size={22} color={palette.primary} /><Txt style={styles.heading}>{order.serviceName}</Txt></View><Badge value={order.workflowStatus} /></View>
+        <View style={styles.between}><View style={[styles.row, { flexShrink: 1 }]}><Package size={22} color={palette.primary} /><Txt style={styles.heading}>{order.serviceName}</Txt></View><Badge value={order.workflowStatus === 'AtPartner' ? order.collectionMethod === 'Dropoff' ? 'Awaiting customer drop-off' : 'Awaiting shop receipt' : order.workflowStatus} /></View>
         <View style={styles.between}><View><Txt style={{ fontWeight: '600' }}>{order.userName}</Txt><Txt style={{ color: palette.muted, fontSize: 12 }}>{order.kiloAmount} kg · {order.shop.shopName}</Txt></View><Txt style={{ fontSize: 24, fontWeight: '700', color: palette.primary }}>{money(order.totalAmount)}</Txt></View>
       </Card>
+      <Txt style={styles.muted}>{order.collectionMethod === 'ShopPickup' ? 'Dirty laundry: rider pickup' : 'Dirty laundry: customer drop-off'}{' | '}{order.deliveryType === 'Deliver' ? 'Clean laundry: rider delivery' : 'Clean laundry: customer collection'}</Txt>
       <OrderStepIndicator {...progress} selected={viewedStep} onSelect={setSelectedStep} />
       {progress.cancelled && <Txt accessibilityRole="alert" style={{ color: palette.danger, fontWeight: '600' }}>Order cancelled. You can review the recorded steps below.</Txt>}
       {!!command.error && <Txt accessibilityRole="alert" style={{ color: palette.danger }}>{command.error}</Txt>}
       <Card testID="order-step-content" style={{ padding: 20, gap: 12, borderRadius: 20 }}>
         <View style={{ gap: 4 }}>
           <Txt style={{ fontSize: 11, fontWeight: '600', letterSpacing: 0.6, color: palette.primary }}>Step {viewedStep + 1} of 5{currentView && !closed ? ' · Current step' : viewedStep > progress.current ? ' · Not reached' : ''}</Txt>
-          <Txt accessibilityRole="header" style={{ fontSize: 21, fontWeight: '700' }}>{orderDetailSteps[viewedStep].title === 'Received' ? 'Laundry received' : orderDetailSteps[viewedStep].title === 'Return' ? 'Return & handover' : orderDetailSteps[viewedStep].title === 'Complete' ? 'Order complete' : orderDetailSteps[viewedStep].title}</Txt>
+          <Txt accessibilityRole="header" style={{ fontSize: 21, fontWeight: '700' }}>{orderDetailSteps[viewedStep].title === 'Received' ? order.receivedAt || order.workflowStatus === 'LaundryReceived' || progress.current > 1 ? 'Laundry received by shop' : order.collectionMethod === 'ShopPickup' ? 'Laundry pickup & shop receipt' : 'Awaiting customer drop-off' : orderDetailSteps[viewedStep].title === 'Return' ? 'Return & handover' : orderDetailSteps[viewedStep].title === 'Complete' ? 'Order complete' : orderDetailSteps[viewedStep].title}</Txt>
           {!currentView && <Txt style={styles.muted}>{orderDetailSteps[viewedStep].description}</Txt>}
         </View>
         {viewedStep > progress.current ? <Txt style={styles.muted}>{progress.cancelled ? 'This step was not reached before cancellation.' : 'This step becomes active when the earlier steps are confirmed.'}</Txt> : <>
           {viewedStep === 0 && <Txt style={styles.muted}>Booked {stepStamp(order.createdAt)}</Txt>}
           {viewedStep === 1 && <>
-            <Txt>{order.collectionMethod === 'ShopPickup' ? 'Rider collects the laundry from the customer.' : 'Customer drops off the laundry at the shop.'}</Txt>
+            <Txt>{order.collectionMethod === 'ShopPickup' ? 'Rider collects the laundry from the customer.' : 'Customer drop-off selected. The customer brings the dirty laundry to the shop; no pickup rider is requested.'}</Txt>
             {!!order.requestedPickupAt && <Txt style={styles.muted}>Requested pickup: {stepStamp(order.confirmedPickupAt || order.requestedPickupAt)}</Txt>}
             {!!order.receivedAt && <Txt style={styles.muted}>Received: {stepStamp(order.receivedAt)}</Txt>}
             {order.workflowStatus === 'LaundryReceived' && <Txt style={styles.muted}>Laundry is in the queue. Start washing when it is ready to be processed.</Txt>}
@@ -208,11 +191,7 @@ export function DeliveryOrderDesign({ id, partner = false }: { id: number; partn
               <Field label="Notes / issue details" value={note} onChangeText={value => { setNote(value); command.setError(''); }} placeholder="Optional note for the next update" editable={!command.busy} multiline maxLength={1000} />
             </OrderDisclosure>}
           </>}
-          {currentView && !closed && !user?.isAdmin && order.handoff && (viewedStep === 1 && order.handoff.kind === 'pickup' || viewedStep === 3 && order.handoff.kind !== 'pickup') && (partner ? order.handoff.kind === 'collection' : order.handoff.kind !== 'collection') && <HandoffPanel handoff={order.handoff} busy={command.busy} send={name => { void action(name); }} />}
-          {currentView && !closed && !user?.isAdmin && (viewedStep === 3 && order.deliveryType === 'Deliver' && (partner ? order.collectionCode : order.deliveryCode) || viewedStep === 1 && !partner && order.pickupCode) && <OrderDisclosure title="Handoff confirmation">
-            <Txt style={styles.muted}>Share a code only with the assigned rider at the physical handoff.</Txt>
-            {partner ? <Txt selectable style={styles.heading}>Clean laundry collection: {order.collectionCode}</Txt> : viewedStep === 1 ? <Txt selectable style={styles.heading}>Laundry pickup: {order.pickupCode}</Txt> : <Txt selectable style={styles.heading}>Delivery receipt: {order.deliveryCode}</Txt>}
-          </OrderDisclosure>}
+
         </>}
         {!currentView && <Button title={closed ? 'View final recorded step' : 'Back to current step'} compact outline onPress={() => setSelectedStep(null)} />}
       </Card>
@@ -283,13 +262,13 @@ function RiderJobSummary({ job }: { job: Job }) {
   const progress = riderJobProgress(job);
   const stops = job.stage === 'Pickup' ? [job.order.customer, job.order.shop] : [job.order.shop, job.order.customer];
   return <Card style={{ flex: 1, gap: 14, borderTopWidth: 4, borderTopColor: job.stage === 'Pickup' ? palette.primary : '#7c3aed' }}>
-    <View style={[styles.between, { flexWrap: 'wrap', gap: 8 }]}><Txt style={{ color: palette.primary, fontWeight: '700' }}>{job.stage} · #{job.transactionId}</Txt><Badge value={job.status === 'Accepted' ? job.order.status : job.status} /></View>
+    <View style={[styles.between, { flexWrap: 'wrap', gap: 8 }]}><Txt style={{ color: palette.primary, fontWeight: '700' }}>{job.stage} · #{job.transactionId}</Txt><Badge value={job.status} /></View>
     <View style={{ gap: 5 }}><Txt style={styles.heading}>{job.order.shop.name}</Txt><Txt style={styles.muted}>{job.order.serviceName} · {job.order.kiloAmount} kg</Txt></View>
     <View style={{ gap: 12, borderTopWidth: 1, borderBottomWidth: 1, borderColor: palette.line, paddingVertical: 12 }}>
       {stops.map((stop, index) => <View key={index} style={{ flexDirection: 'row', gap: 9, alignItems: 'flex-start' }}><MapPin size={17} color={index ? '#7c3aed' : palette.primary} /><View style={{ flex: 1, gap: 3 }}><Txt style={{ fontSize: 11, color: palette.muted }}>{index ? 'TAKE TO' : 'COLLECT FROM'}</Txt>{!!stop.name && <Txt style={{ fontWeight: '600' }}>{stop.name}</Txt>}<Txt numberOfLines={2} style={{ fontSize: 12, color: palette.muted }}>{stop.address || 'Address not provided'}</Txt></View></View>)}
     </View>
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}><JobFact title="Schedule" value={scheduleLabel(job.order)} /><JobFact title="Order total" value={job.order.totalAmount != null ? money(job.order.totalAmount) : (job.status === 'Offered' ? 'Available after acceptance' : 'Not available')} /></View>
-    <View style={{ padding: 12, backgroundColor: palette.soft, borderRadius: 12, gap: 5 }}><Txt style={{ color: palette.primary, fontWeight: '700', fontSize: 12 }}>{progress.stopped ? label(job.status) : `Step ${progress.current + 1} of ${progress.steps.length} · ${progress.steps[progress.current]}`}</Txt><Txt style={{ fontSize: 12, color: palette.muted }}>{progress.detail}</Txt></View>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}><JobFact title="Schedule" value={scheduleLabel(job.order)} /><JobFact title="Your trip earnings" value={job.earnings == null ? "Not recorded for this older job" : money(job.earnings)} /><JobFact title="Order total" value={job.order.totalAmount != null ? money(job.order.totalAmount) : (job.status === 'Offered' ? 'Available after acceptance' : 'Not available')} /></View>
+    <View style={{ padding: 12, backgroundColor: palette.soft, borderRadius: 12, gap: 5 }}><Txt style={{ color: palette.primary, fontWeight: '700', fontSize: 12 }}>{label(job.status)}</Txt><Txt style={{ fontSize: 12, color: palette.muted }}>{progress.detail}</Txt></View>
     <View style={styles.between}><Txt style={{ color: palette.primary, fontWeight: '700' }}>View order details</Txt><Navigation size={17} color={palette.primary} /></View>
   </Card>;
 }
@@ -303,27 +282,36 @@ export function RiderDashboardDesign({ history = false, orderId }: { history?: b
   const { width } = useWindowDimensions();
   const [filter, setFilter] = useState('All');
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [decision, setDecision] = useState<{ job: Job; action: string; title: string; code?: boolean; response?: boolean } | null>(null);
+  const [decision, setDecision] = useState<{ job: Job; action: string; title: string; response?: boolean } | null>(null);
   const [note, setNote] = useState('');
-  const [code, setCode] = useState('');
   const jobs = query.data?.jobs || [];
   const selectedJob = jobs.find(job => job.id === selectedId);
+  const completionPhotos = useQuery({ queryKey: ['delivery', 'handover-photos', selectedJob?.transactionId],
+    enabled: selectedJob?.status === 'Accepted',
+    queryFn: () => api.get<{ assignmentId: number; kind: string }[]>(`/delivery/orders/${selectedJob!.transactionId}/handover-photos`), refetchInterval: 30000 });
+  const hasCompletionPhoto = !!selectedJob && !completionPhotos.isError && !!completionPhotos.data?.some(photo =>
+    photo.assignmentId === selectedJob.id && photo.kind === (selectedJob.stage === 'Pickup' ? 'ShopDropoff' : 'CustomerDelivery'));
   const [navigationStop, setNavigationStop] = useState<number | null>(null);
+  const linkedJobId = orderId ? jobs.find(job => job.transactionId === orderId && ['Accepted', 'Offered'].includes(job.status))?.id : undefined;
+  useEffect(() => { if (linkedJobId) setSelectedId(linkedJobId); }, [linkedJobId]);
   useEffect(() => { setNavigationStop(null); }, [selectedId, selectedJob?.status]);
   const active = jobs.filter(job => ['Offered', 'Accepted'].includes(job.status));
   const today = new Date().toDateString();
   const completedToday = jobs.filter(job => job.status === 'Completed' && new Date(job.updatedAt).toDateString() === today);
   const shown = orderId ? jobs.filter(job => job.transactionId === orderId)
     : (history ? jobs.filter(job => !['Offered', 'Accepted'].includes(job.status)) : active).filter(job => filter === 'All' || job.stage === filter);
-  function choose(job: Job, action: string, title: string, proof = false, response = false) { command.setError(''); setNote(''); setCode(''); setDecision({ job, action, title, code: proof, response }); }
+  function choose(job: Job, action: string, title: string, response = false) { command.setError(''); setNote(''); setDecision({ job, action, title, response }); }
   async function submit() {
     if (!decision) return;
     const { job } = decision;
+    if (decision.action === 'completeTrip' && (!hasCompletionPhoto || completionPhotos.isFetching || selectedJob?.id !== job.id)) {
+      command.setError('Save the destination handover photo before completing this trip.'); return;
+    }
     let success;
     if (decision.response) success = await command.send(`/delivery/assignments/${job.id}/respond`, { action: decision.action, reason: note.trim() || undefined }, job.transactionId);
     else {
       // Fetch a fresh version; the server also checks the assigned rider and exact current stage.
-      success = await command.send(`/delivery/orders/${job.transactionId}/action`, { action: decision.action, expectedVersion: (job.order as Job['order'] & { version?: number }).version, code: decision.code ? code.trim() : undefined, note: note.trim() || undefined });
+      success = await command.send(`/delivery/orders/${job.transactionId}/action`, { action: decision.action, expectedVersion: (job.order as Job['order'] & { version?: number }).version, note: note.trim() || undefined });
     }
     if (success) {
       setDecision(null);
@@ -331,7 +319,7 @@ export function RiderDashboardDesign({ history = false, orderId }: { history?: b
         if (decision.action === 'decline') toast.info({ title: 'Job declined' });
         else toast.success({ title: 'Job accepted' });
       } else {
-        const states: Record<string, string> = { enRoute: 'Pickup en route', pickedUp: 'Laundry picked up', droppedOff: 'At partner',
+        const states: Record<string, string> = { completeTrip: 'Trip completed; recipient confirmation pending', enRoute: 'Pickup en route', pickedUp: 'Laundry picked up', droppedOff: 'At partner',
           collected: 'Clean laundry collected', outForDelivery: 'Out for delivery', delivered: 'Delivered',
           arriveHandoff: 'Arrival recorded', releaseHandoff: 'Handover confirmed', failedPickup: 'Pickup queued', issue: 'Issue reported' };
         const received = job.order.handoff?.kind === 'pickup' ? 'Laundry picked up' : job.order.handoff?.kind === 'collection' ? 'Clean laundry collected' : 'Completed';
@@ -351,22 +339,20 @@ export function RiderDashboardDesign({ history = false, orderId }: { history?: b
       await command.send('/delivery/availability', { online: query.data?.rider.online || false, latitude: coords.latitude, longitude: coords.longitude });
     } catch { command.setError('Could not retrieve your position. Try again.'); }
   }
-  const inlineDecision = !!decision && decision.job.id === selectedId && ['arriveHandoff', 'receiveHandoff'].includes(decision.action);
   function closeDetails() {
     if (command.busy) return;
     setSelectedId(null); setDecision(null);
   }
   const confirmation = <View testID="rider-action-confirmation" style={{ gap: 12 }}>
       <Txt style={styles.heading}>{decision?.title}</Txt><Txt style={styles.muted}>Order #{decision?.job.transactionId}</Txt>
-      {decision?.code && <Field label="6-digit handoff code" keyboardType="number-pad" maxLength={6} value={code} onChangeText={setCode} />}
       {(decision?.action === 'decline' || decision?.action === 'issue' || decision?.action === 'failedPickup') && <Field label="Reason (required)" value={note} onChangeText={setNote} multiline maxLength={1000} />}
-      <Txt style={styles.muted}>{decision?.code ? 'Find the matching handoff code in your Updates tab. Confirm only after the physical handover.' : decision?.action === 'arriveHandoff' ? 'Confirm you have reached the handover location. The customer or shop will be notified.' : decision?.action === 'receiveHandoff' ? 'Confirm only after the laundry has physically changed hands and you have checked it.' : 'Confirm this update. Everyone involved will be notified.'}</Txt>
+      <Txt style={styles.muted}>{decision?.action === 'completeTrip' ? decision.job.stage === 'Pickup' ? 'Confirm only after handing the laundry to the shop. The shop will separately confirm receipt.' : 'Confirm only after handing the laundry to the customer. The customer will separately confirm receipt.' : 'Confirm this update. Everyone involved will be notified.'}</Txt>
       {!!command.error && <Txt accessibilityRole="alert" style={{ color: palette.danger }}>{command.error}</Txt>}
-      <Button title="Confirm" busy={command.busy} onPress={submit} /><Button title="Cancel" outline disabled={command.busy} onPress={() => setDecision(null)} />
+      <Button title="Confirm" busy={command.busy} disabled={decision?.action === 'completeTrip' && (!hasCompletionPhoto || completionPhotos.isFetching)} onPress={submit} /><Button title="Cancel" outline disabled={command.busy} onPress={() => setDecision(null)} />
   </View>;
   return <Screen header={<RiderHeader />} back={false}>
     <View style={styles.stack}>
-      <View><Txt style={styles.title}>{history ? 'Your delivery record' : 'My deliveries'}</Txt><Txt style={styles.muted}>{history ? 'Completed trips and assignment outcomes.' : 'Keep laundry moving, one handoff at a time.'}</Txt></View>
+      <View><Txt style={styles.title}>{history ? 'Your delivery record' : 'My deliveries'}</Txt><Txt style={styles.muted}>{history ? 'Completed trips and assignment outcomes.' : 'Accept a trip, collect the laundry, and take it to its destination.'}</Txt></View>
       <State query={query} />
       {!history && <RiderLocationSharingControl />}
       {!history && query.data && <>
@@ -384,35 +370,35 @@ export function RiderDashboardDesign({ history = false, orderId }: { history?: b
           <RiderJobSummary job={job} />
         </Pressable>)}
       </View>
-      {!query.isLoading && !query.error && !shown.length && <Empty title={history ? 'No past jobs yet' : 'No active deliveries yet'} message={history ? 'Your job outcomes will appear here.' : 'Go online and claim a pickup or delivery from Order requests.'} action={history ? undefined : 'Browse order requests'} onPress={history ? undefined : () => router.push('/rider/available')} />}
+      {!query.isLoading && !query.error && !shown.length && <Empty title={history ? 'No past jobs yet' : 'No active deliveries yet'} message={history ? 'Your job outcomes will appear here.' : 'Go online and accept a pickup or delivery from Order requests.'} action={history ? undefined : 'Browse order requests'} onPress={history ? undefined : () => router.push('/rider/available')} />}
     </View>
-    <ActionModal visible={selectedId !== null && (!decision || inlineDecision)} maxWidth={900} contentKey={navigationStop === null ? 'details' : 'route-' + navigationStop} close={closeDetails}>
+    <ActionModal visible={selectedId !== null && !decision} maxWidth={900} contentKey={navigationStop === null ? 'details' : 'route-' + navigationStop} close={closeDetails}>
       <View style={styles.between}><Txt accessibilityRole="header" style={styles.title}>Order details</Txt><IconButton label="Close order details" onPress={closeDetails}><X size={22} color={palette.ink} /></IconButton></View>
       {selectedJob ? (() => {
         const job = selectedJob;
-        const next = riderActions[job.order.status];
-        const handoff = job.order.handoff;
         const stops = job.stage === 'Pickup' ? [job.order.customer, job.order.shop] : [job.order.shop, job.order.customer];
         return navigationStop !== null && job.status === 'Accepted' ? <RiderNavigationPanel key={job.id + ':' + navigationStop} stop={stops[navigationStop]} destinationKind={(job.stage === 'Pickup' ? navigationStop === 0 : navigationStop === 1) ? 'customer' : 'shop'} onBack={() => setNavigationStop(null)} /> : <View style={{ gap: 16 }}>
             <View style={[styles.between, { flexWrap: 'wrap', gap: 10 }]}><Txt style={styles.heading}>{job.stage} · Order #{job.transactionId}</Txt><Badge value={job.status === 'Accepted' ? job.order.status : job.status} /></View>
             <Txt style={styles.muted}>{job.order.shop.name} · {job.order.serviceName} · {job.order.kiloAmount} kg</Txt>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16, padding: 16, borderRadius: 14, backgroundColor: palette.soft }}>
-              <JobFact title="Schedule" value={scheduleLabel(job.order)} /><JobFact title="Order total" value={job.order.totalAmount != null ? money(job.order.totalAmount) : (job.status === 'Offered' ? 'Available after acceptance' : 'Not available')} />
+              <JobFact title="Your trip earnings" value={job.earnings == null ? "Not recorded for this older job" : money(job.earnings)} /><JobFact title="Schedule" value={scheduleLabel(job.order)} /><JobFact title="Order total" value={job.order.totalAmount != null ? money(job.order.totalAmount) : (job.status === 'Offered' ? 'Available after acceptance' : 'Not available')} />
               <JobFact title="Payment method" value={job.order.paymentMethod || (job.status === 'Accepted' ? 'Not provided' : (job.status === 'Offered' ? 'Available after acceptance' : 'Not available'))} /><JobFact title="Assignment" value={label(job.status)} />
               <JobFact title="Assigned" value={stepStamp(job.createdAt)} /><JobFact title="Last updated" value={stepStamp(job.updatedAt)} />
             </View>
             {['Accepted', 'Completed'].includes(job.status) && <InvoiceButton orderId={job.transactionId} />}
-            <Txt style={styles.heading}>Trip progress</Txt>
-            <RiderJobStepIndicator job={job} />
-            {inlineDecision ? <View style={{ padding: 16, borderRadius: 14, backgroundColor: palette.soft }}>{confirmation}</View> : job.status === 'Accepted' && handoff && <HandoffPanel handoff={handoff} rider busy={command.busy} send={action => choose(job, action, action === 'arriveHandoff' ? 'Confirm arrival' : handoff.kind === 'delivery' ? 'Confirm delivery completed' : 'Confirm laundry received')} />}
+            {['Accepted', 'Completed'].includes(job.status) && <HandoverPhotos key={job.id} orderId={job.transactionId} assignmentId={job.id} stage={job.stage} canUpload={job.status === 'Accepted'} />}
+            {job.status === 'Accepted' && <View style={{ gap: 10 }}>
+              <Txt style={styles.muted}>{job.stage === 'Pickup' ? 'Collect the dirty laundry from the customer and hand it over at the shop. Confirm only after the entire trip is finished.' : 'Collect the clean laundry from the shop and hand it over to the customer. Confirm only after the entire trip is finished.'}</Txt>
+              {!hasCompletionPhoto && <Txt accessibilityLiveRegion="polite" style={styles.muted}>Save a proof photo of handover to the {job.stage === 'Pickup' ? 'shop' : 'customer'} to enable completion.</Txt>}
+              <Button title="Confirm completed" disabled={!hasCompletionPhoto || completionPhotos.isFetching} busy={command.busy} onPress={() => choose(job, 'completeTrip', 'Confirm trip completed')} />
+            </View>}
             <Txt style={styles.heading}>Pickup & destination</Txt>
             {stops.map((stop, index) => <View key={index} style={{ borderLeftWidth: 2, borderLeftColor: palette.line, paddingLeft: 12, gap: 6 }}><Txt style={{ fontSize: 12, color: palette.muted }}>{index === 0 ? 'COLLECT FROM' : 'TAKE TO'}</Txt>{!!stop.name && <Txt style={{ fontWeight: '600' }}>{stop.name}</Txt>}<Txt>{stop.address || 'Address not provided'}</Txt>{!!stop.phone && <Txt selectable>Contact: {stop.phone}</Txt>}
               {job.status === 'Accepted' && <View style={[styles.row, { flexWrap: 'wrap' }]}><Button title="Navigate" compact outline icon={<Navigation size={15} color={palette.primary} />} onPress={() => setNavigationStop(index)} />{!!stop.phone && <CallContactButton name={stop.name} phone={stop.phone} />}</View>}
             </View>)}
-            {job.status === 'Offered' && <><Txt style={{ color: palette.muted, fontSize: 12 }}>Offer expires {stamp(job.expiresAt)}. Contact details unlock after acceptance.</Txt><View style={[styles.row, { flexWrap: 'wrap' }]}><Button title="Accept job" onPress={() => choose(job, 'accept', 'Accept assignment', false, true)} /><Button title="Decline" outline color={palette.danger} onPress={() => choose(job, 'decline', 'Decline assignment', false, true)} /></View></>}
-            {job.status === 'Accepted' && <><Txt style={styles.heading}>Instructions & actions</Txt>{!job.order.customer.instructions && !job.order.customer.notes && !job.order.customer.accessCode && <Txt style={styles.muted}>No special instructions provided.</Txt>}{!!job.order.customer.instructions && <Txt>Instructions: {job.order.customer.instructions}</Txt>}{!!job.order.customer.notes && <Txt>Order notes: {job.order.customer.notes}</Txt>}{!!job.order.customer.accessCode && <Txt>Access: {job.order.customer.accessCode}</Txt>}{next && <Button title={handoff ? 'Use code instead (fallback)' : next.title} outline={!!handoff} onPress={() => choose(job, next.action, next.title, next.code)} />}{job.stage === 'Pickup' && ['PickupAccepted', 'PickupEnRoute'].includes(job.order.status) && <Button title="Pickup unsuccessful" outline color={palette.danger} onPress={() => choose(job, 'failedPickup', 'Report failed pickup')} />}<Button title="Report an issue" outline color={palette.danger} onPress={() => choose(job, 'issue', 'Report delivery issue')} /></>}
+            {job.status === 'Offered' && <><Txt style={{ color: palette.muted, fontSize: 12 }}>Offer expires {stamp(job.expiresAt)}. Contact details unlock after acceptance.</Txt><View style={[styles.row, { flexWrap: 'wrap' }]}><Button title="Accept job" onPress={() => choose(job, 'accept', 'Accept assignment', true)} /><Button title="Decline" outline color={palette.danger} onPress={() => choose(job, 'decline', 'Decline assignment', true)} /></View></>}
+            {job.status === 'Accepted' && <><Txt style={styles.heading}>Instructions & actions</Txt>{!job.order.customer.instructions && !job.order.customer.notes && !job.order.customer.accessCode && <Txt style={styles.muted}>No special instructions provided.</Txt>}{!!job.order.customer.instructions && <Txt>Instructions: {job.order.customer.instructions}</Txt>}{!!job.order.customer.notes && <Txt>Order notes: {job.order.customer.notes}</Txt>}{!!job.order.customer.accessCode && <Txt>Access: {job.order.customer.accessCode}</Txt>}{job.stage === 'Pickup' && ['PickupAccepted', 'PickupEnRoute'].includes(job.order.status) && <Button title="Pickup unsuccessful" outline color={palette.danger} onPress={() => choose(job, 'failedPickup', 'Report failed pickup')} />}<Button title="Report an issue" outline color={palette.danger} onPress={() => choose(job, 'issue', 'Report delivery issue')} /></>}
             {job.status === 'Accepted' && <CustomerRiderTracking orderId={job.transactionId} orderStatus={job.order.status} viewer="rider" />}
-            {['Accepted', 'Completed'].includes(job.status) && <HandoverPhotos orderId={job.transactionId} assignmentId={job.id} stage={job.stage} canUpload />}
             {job.status !== 'Accepted' && <Txt style={styles.muted}>Customer contact details and handover actions are available only during an accepted assignment.</Txt>}
 
         </View>;
@@ -420,7 +406,7 @@ export function RiderDashboardDesign({ history = false, orderId }: { history?: b
       {!!command.error && <Txt accessibilityRole="alert" style={{ color: palette.danger }}>{command.error}</Txt>}
       <Button title="Back to jobs" outline onPress={() => setSelectedId(null)} />
     </ActionModal>
-    <ActionModal visible={!!decision && !inlineDecision} close={() => !command.busy && setDecision(null)}>
+    <ActionModal visible={!!decision} close={() => !command.busy && setDecision(null)}>
       {confirmation}
     </ActionModal>
   </Screen>;
@@ -469,6 +455,7 @@ export function OperationsDashboardDesign() {
       </View>
       <State query={query} />
       <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>{[['Pending bookings', orders.filter(order => order.workflowStatus === 'BookingPending').length], ['Unassigned jobs', orders.filter(unassigned).length], ['Riders online', roster.filter(rider => rider.active && rider.online).length], ['Riders offline', roster.filter(rider => rider.active && !rider.online).length], ['Delayed orders', orders.filter(delayed).length]].map(([title, count]) => <Card key={title} style={{ flexGrow: 1, flexBasis: 120 }}><Txt style={{ fontSize: 12, color: palette.muted }}>{title}</Txt><Txt style={styles.title}>{count}</Txt></Card>)}</View>
+      <DeliveryFeeSettings />
       <Card><Section title="Rider applications" /><Txt style={styles.muted}>People apply using “Apply as a Rider” on the login page. Review their details here to approve rider access.</Txt>
         {applications.map(rider => <View key={rider.userId} testID={`rider-application-${rider.userId}`} style={{ borderTopWidth: 1, borderTopColor: palette.line, paddingTop: 16, gap: 8 }}><Txt style={styles.heading}>{rider.user.name}</Txt><Badge value={rider.applicationStatus === 'Draft' ? 'Draft · not submitted' : rider.applicationStatus === 'Rejected' ? 'Needs correction' : 'Pending document review'} /><Txt selectable>{rider.user.email}</Txt><Txt selectable>{rider.user.phone}</Txt><Txt style={styles.muted}>{rider.applicationStatus === 'Draft' ? 'The applicant must finish their requirements and submit before approval.' : rider.applicationStatus === 'Rejected' ? 'The applicant must correct the feedback and resubmit.' : 'Open the application and verify each required document before approving.'}</Txt><Button title={rider.applicationStatus === 'Pending' ? 'Review application' : 'View requirements'} outline onPress={() => reviewApplication(rider)} /></View>)}
         {!applications.length && <Txt style={styles.muted}>No rider applications waiting for review.</Txt>}

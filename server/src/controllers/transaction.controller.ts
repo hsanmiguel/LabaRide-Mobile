@@ -1,3 +1,4 @@
+import { feeFingerprint, type FeePricing } from '../services/delivery-fees';
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../config/database';
 import { sendSuccess, sendError } from '../utils/response';
@@ -55,7 +56,13 @@ export class TransactionController {
         || (validatedData.collectionMethod === 'ShopPickup' ? serviceAreaError(area, validatedData.collectionAddress, 'pickup') : null);
       const areaError = checkArea(shop);
       if (areaError) return sendError(res, areaError, 'OUTSIDE_SERVICE_AREA', 400);
+      const needsDelivery = validatedData.deliveryType === 'Deliver' || validatedData.collectionMethod === 'ShopPickup';
+      const quote = validatedData.deliveryQuoteId ? await prisma.deliveryFeeQuote.findUnique({ where: { id: validatedData.deliveryQuoteId } }) : null;
+      if (needsDelivery && (!quote || quote.userId !== userId || quote.usedAt || quote.expiresAt <= new Date() || quote.fingerprint !== feeFingerprint(validatedData, shop)))
+        return sendError(res, 'Review and approve an updated delivery quote before booking.', 'DELIVERY_QUOTE_CHANGED', 409);
+      const deliveryPricing = needsDelivery ? quote!.pricing as unknown as FeePricing : null;
       const pricing = priceOrder({
+        confirmedDeliveryFee: new Prisma.Decimal(deliveryPricing?.deliveryFee || 0),
         kilos: validatedData.kiloAmount,
         serviceIds: validatedData.serviceIds,
         serviceName: validatedData.serviceName,
@@ -68,7 +75,7 @@ export class TransactionController {
         .some((field) => validatedData[field] !== undefined &&
           !new Prisma.Decimal(validatedData[field]!).equals(pricing[field]));
       if (changedQuote) return sendError(res, 'Shop prices changed. Review the updated total and try again.', 'PRICE_CHANGED', 409);
-      const { items, serviceIds, subtotal, deliveryFee, voucherDiscount, totalAmount, collectionAddress, ...transactionData } = validatedData;
+      const { items, serviceIds, subtotal, deliveryFee, voucherDiscount, totalAmount, collectionAddress, deliveryQuoteId, ...transactionData } = validatedData;
       const checkSchedule = (hours: ShopHours) => {
         if (validatedData.collectionMethod !== 'ShopPickup') return null;
         const error = validateDeliveryTime(validatedData.requestedPickupAt!, { ...hours, preparationMinutes: 0 });
@@ -89,10 +96,19 @@ export class TransactionController {
         if (currentScheduleError) return { bookingError: { message: currentScheduleError, code: 'INVALID_SCHEDULE', status: 400 } };
         const currentAreaError = checkArea(current);
         if (currentAreaError) return { bookingError: { message: currentAreaError, code: 'OUTSIDE_SERVICE_AREA', status: 400 } };
+        if (needsDelivery) {
+          // Consume the approved quote once, under a row lock, in the booking transaction.
+          await tx.$queryRaw`SELECT id FROM delivery_fee_quotes WHERE id = ${quote!.id} FOR UPDATE`;
+          const freshQuote = await tx.deliveryFeeQuote.findUnique({ where: { id: quote!.id } });
+          if (!freshQuote || freshQuote.usedAt || freshQuote.expiresAt <= new Date() || freshQuote.fingerprint !== feeFingerprint(validatedData, current!))
+            return { bookingError: { message: 'Delivery quote expired or booking locations changed. Review a new quote.', code: 'DELIVERY_QUOTE_CHANGED', status: 409 } };
+          await tx.deliveryFeeQuote.update({ where: { id: quote!.id }, data: { usedAt: new Date() } });
+        }
         const order = await tx.transaction.create({
         data: {
           ...transactionData,
           ...pricing,
+          deliveryPricing: deliveryPricing ? { ...deliveryPricing, quoteId: quote!.id, confirmedAt: new Date().toISOString() } : Prisma.DbNull,
           collectionAddress: collectionAddress || Prisma.DbNull,
           ...((validatedData.deliveryType === 'Deliver' || validatedData.collectionMethod === 'ShopPickup') ? {
             workflowStatus: 'BookingPending', pickupCode: confirmationCode(), collectionCode: confirmationCode(), deliveryCode: confirmationCode(),

@@ -67,6 +67,7 @@ async function invoke({ area = {}, body = {}, currentArea } = {}) {
   database.shop = { findUnique: async () => shop };
   database.$transaction = async callback => callback({
     $queryRaw: async () => [],
+    deliveryFeeQuote: database.deliveryFeeQuote,
     orderEvent: { create: async () => ({}) },
     user: { findMany: async () => [] },
     notification: { createMany: async ({ data }) => ({ count: data.length }) },
@@ -76,6 +77,12 @@ async function invoke({ area = {}, body = {}, currentArea } = {}) {
   const schedule = new Date(Date.now() + 86400000).toISOString();
   const req = { body: { ...location, longitude: 0.02, shopId: 1, serviceName: 'Wash', serviceIds: [1], kiloAmount: 1,
     deliveryType: 'Deliver', requestedPickupAt: schedule, scheduledDate: schedule, scheduledTime: schedule, ...body }, user: { userId: 7 }, app: { get: () => undefined } };
+  const { feeFingerprint } = require('../dist/services/delivery-fees');
+  let fingerprint;
+  try { fingerprint = feeFingerprint({ ...req.body, collectionMethod: req.body.collectionMethod || 'Dropoff' }, shop); } catch { fingerprint = 'invalid-pin'; }
+  const quote = { id: '00000000-0000-4000-8000-000000000001', userId: 7, expiresAt: new Date('2099-01-01'), fingerprint, pricing: { deliveryFee: 30 } };
+  req.body.deliveryQuoteId = quote.id;
+  database.deliveryFeeQuote = { findUnique: async () => quote, update: async () => ({}) };
   const res = { status(code) { this.code = code; return this; }, json(value) { this.body = value; return this; } };
   await TransactionController.createTransaction(req, res, value => { error = value; });
   assert.equal(error, undefined);

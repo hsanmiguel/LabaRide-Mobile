@@ -10,6 +10,7 @@ export function priceOrder(input: {
   services: ServicePrice[];
   ranges: WeightPrice[];
   deliveryType: string;
+  confirmedDeliveryFee?: Prisma.Decimal;
 }) {
   const weight = new Prisma.Decimal(input.kilos);
   const selected = input.serviceIds?.length
@@ -43,7 +44,7 @@ export function priceOrder(input: {
     amount = amount.plus(weight.mul(rate));
   }
   const subtotal = amount.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-  const deliveryFee = new Prisma.Decimal(input.deliveryType === 'Deliver' ? 30 : 0);
+  const deliveryFee = input.confirmedDeliveryFee ?? new Prisma.Decimal(input.deliveryType === 'Deliver' ? 30 : 0);
   return {
     serviceName: selected.map((service) => service!.serviceName).join(', '),
     subtotal,

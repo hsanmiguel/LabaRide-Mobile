@@ -220,6 +220,7 @@ model Transaction {
   kiloAmount      Decimal           @map("kilo_amount") @db.Decimal(10, 2)
   subtotal        Decimal           @db.Decimal(10, 2)
   deliveryFee     Decimal           @map("delivery_fee") @db.Decimal(10, 2)
+  deliveryPricing Json? @map("delivery_pricing")
   voucherDiscount Decimal           @default(0) @map("voucher_discount") @db.Decimal(10, 2)
   totalAmount     Decimal           @map("total_amount") @db.Decimal(10, 2)
   deliveryType    String            @map("delivery_type")
@@ -281,6 +282,30 @@ model Transaction {
   @@index([shopId, createdAt])
   @@index([shopId, completedAt])
   @@map("transactions")
+}
+
+model DeliveryFeeSettings {
+  id Int @id @default(1)
+  baseFee Decimal @db.Decimal(10, 2) @map("base_fee")
+  ratePerKm Decimal @db.Decimal(10, 2) @map("rate_per_km")
+  minimumFee Decimal @db.Decimal(10, 2) @map("minimum_fee")
+  commissionPercent Decimal @db.Decimal(5, 2) @map("commission_percent")
+  revision Int @default(1)
+  updatedBy Int @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  @@map("delivery_fee_settings")
+}
+
+model DeliveryFeeQuote {
+  id String @id @default(uuid())
+  userId Int @map("user_id")
+  fingerprint String
+  pricing Json
+  expiresAt DateTime @map("expires_at")
+  usedAt DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([userId, expiresAt])
+  @@map("delivery_fee_quotes")
 }
 
 model OrderWeightEvidence {

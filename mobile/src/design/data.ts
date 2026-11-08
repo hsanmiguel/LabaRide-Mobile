@@ -193,6 +193,7 @@ export function useProfile() {
 export function useShops() {
   return useQuery({
     queryKey: ["shops"],
+    refetchInterval: 15000,
     queryFn: () => api.get<Shop[]>("/shops"),
   });
 }
@@ -222,6 +223,7 @@ export function useShop(id: number) {
   const shops = useShops();
   return useQuery({
     queryKey: ["shop", id, !!user],
+    refetchInterval: 15000,
     enabled: !!id && (!!user || !!shops.data),
     queryFn: async () =>
       user

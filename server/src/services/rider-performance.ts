@@ -1,7 +1,8 @@
+import { stageEarnings } from './delivery-fees';
 type Event = { action: string; toStatus: string; actorId: number; createdAt: Date; detail?: string | null };
 export type PerformanceJob = { id: number; riderId: number; transactionId: number; stage: string; status: string;
   createdAt: Date; updatedAt: Date; acceptedAt?: Date | null; completedAt?: Date | null;
-  transaction: { kiloAmount: unknown; shop: { shopName: string }; events: Event[] } };
+  transaction: { kiloAmount: unknown; deliveryPricing?: unknown; shop: { shopName: string }; events: Event[] } };
 const day = (date: Date) => date.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' });
 const validTime = (date?: Date | null) => date && Number.isFinite(date.getTime()) ? date : null;
 export function performanceSummary(jobs: PerformanceJob[], now = new Date()) {
@@ -31,7 +32,8 @@ export function performanceSummary(jobs: PerformanceJob[], now = new Date()) {
     return { date: day(date), label: date.toLocaleDateString('en-PH', { timeZone: 'Asia/Manila', weekday: 'short' }),
       completed: completed.filter(item => day(item.finished) === day(date)).length };
   });
-  return { periodDays: 30, generatedAt: now.toISOString(), completed: completed.length, failed: outcomes.length - completed.length,
+  const earnings = (stage: string) => Math.round(completed.filter(item => item.job.stage === stage).reduce((sum, item) => sum + (stageEarnings(item.job.transaction.deliveryPricing, stage) || 0), 0) * 100) / 100;
+  return { pickupEarnings: earnings('Pickup'), returnEarnings: earnings('Delivery'), periodDays: 30, generatedAt: now.toISOString(), completed: completed.length, failed: outcomes.length - completed.length,
     completionRate: outcomes.length ? Math.round(completed.length / outcomes.length * 1000) / 10 : null,
     active: jobs.filter(job => ['Offered', 'Accepted'].includes(job.status)).length,
     averagePickup: average('Pickup'), averageDelivery: average('Delivery'),

@@ -1,3 +1,4 @@
+import { stageEarnings } from '../services/delivery-fees';
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
@@ -19,6 +20,11 @@ import type { Server } from 'socket.io';
 const idSchema = z.coerce.number().int().positive();
 const noteSchema = z.string().trim().min(5).max(1000);
 const actor = (req: AuthRequest) => req.user!.userId;
+async function requireCompletionPhoto(tx: Prisma.TransactionClient, job: { id: number; transactionId?: number; riderId: number; stage: string }, transactionId: number) {
+  const kind = job.stage === 'Pickup' ? 'ShopDropoff' : 'CustomerDelivery';
+  const proof = await tx.riderHandoverPhoto.findFirst({ where: { transactionId, assignmentId: job.id, riderId: job.riderId, kind }, select: { id: true } });
+  if (!proof) fail(job.stage === 'Pickup' ? 'Save a photo of the laundry handed over to the shop before completing this trip.' : 'Save a photo of the laundry handed over to the customer before completing this trip.', 400);
+}
 function emit(req: AuthRequest) { (req.app.get('io') as Server | undefined)?.emit('operations_update', {}); }
 const riderSelect = { id: true, name: true, email: true, phone: true } as const;
 const orderInclude = { weightEvidence: { orderBy: [{ createdAt: 'desc' as const }, { id: 'desc' as const }], select: { id: true, kilos: true, totalAmount: true, note: true, createdAt: true, actor: { select: { name: true } } } }, shop: { include: { services: true, kiloPrices: true } }, assignments: { select: { id: true, transactionId: true, riderId: true, stage: true, resumeStatus: true, status: true, expiresAt: true, createdAt: true, updatedAt: true, rider: { select: { id: true, name: true, phone: true, photo: { select: { updatedAt: true } } } } } }, events: { orderBy: { createdAt: 'asc' as const }, include: { actor: { select: { name: true } } } } };
@@ -52,7 +58,7 @@ export class DeliveryController {
       // serialize the public preview so private address fields never leave the API.
       const orders = rider.online ? await prisma.transaction.findMany({
         where: { workflowStatus: { in: claimableStatuses }, shop: { approvalStatus: 'Approved' }, assignments: { none: { status: { in: openAssignments } } } },
-        select: { id: true, workflowStatus: true, workflowVersion: true, serviceName: true, kiloAmount: true, scheduledDate: true, scheduledTime: true, requestedPickupAt: true, collectionMethod: true, collectionAddress: true, createdAt: true, city: true, state_province: true, latitude: true, longitude: true, shop: { select: { shopName: true, city: true, state_province: true, latitude: true, longitude: true } } },
+        select: { id: true, workflowStatus: true, workflowVersion: true, serviceName: true, kiloAmount: true, deliveryPricing: true, scheduledDate: true, scheduledTime: true, requestedPickupAt: true, collectionMethod: true, collectionAddress: true, createdAt: true, city: true, state_province: true, latitude: true, longitude: true, shop: { select: { shopName: true, city: true, state_province: true, latitude: true, longitude: true } } },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 100,
       }) : [];
       const area = (value: { city: string | null; state_province: string | null }) => [value.city, value.state_province].filter(Boolean).join(', ') || 'Area not provided';
@@ -60,7 +66,7 @@ export class DeliveryController {
         const stage = order.workflowStatus === 'PickupQueued' ? 'Pickup' : 'Delivery';
         const customer = collectionPoint(order);
         const distance = dispatchDistance(from, dispatchPoint(stage === 'Pickup' ? customer : order.shop));
-        return { id: order.id, stage, workflowVersion: order.workflowVersion, serviceName: order.serviceName, kilos: order.kiloAmount, scheduledDate: order.scheduledDate, scheduledTime: order.scheduledTime, requestedPickupAt: order.requestedPickupAt, createdAt: order.createdAt,
+        return { id: order.id, stage, earnings: stageEarnings(order.deliveryPricing, stage), workflowVersion: order.workflowVersion, serviceName: order.serviceName, kilos: order.kiloAmount, scheduledDate: order.scheduledDate, scheduledTime: order.scheduledTime, requestedPickupAt: order.requestedPickupAt, createdAt: order.createdAt,
           shopName: order.shop.shopName, pickupArea: area(stage === 'Pickup' ? customer : order.shop), dropoffArea: area(stage === 'Pickup' ? order.shop : order), distanceKm: distance == null ? null : Math.round(distance * 10) / 10 };
       }) });
     } catch (error) { next(error); }
@@ -179,7 +185,7 @@ export class DeliveryController {
       return sendSuccess(res, { rider, jobs: jobs.map(({ transaction: order, liveLatitude, liveLongitude, liveAccuracy, locationCapturedAt, locationReceivedAt, locationSharing, locationSession, ...job }) => {
         const contactAllowed = job.status === 'Accepted';
         const customer = job.stage === 'Pickup' ? collectionPoint(order) : order;
-        return { ...job, order: { id: order.id, version: order.workflowVersion, status: order.workflowStatus, serviceName: order.serviceName, kiloAmount: order.kiloAmount,
+        return { ...job, earnings: ['Offered', 'Accepted', 'Completed'].includes(job.status) ? stageEarnings(order.deliveryPricing, job.stage) : 0, order: { id: order.id, version: order.workflowVersion, status: order.workflowStatus, serviceName: order.serviceName, kiloAmount: order.kiloAmount,
           scheduledDate: order.scheduledDate, scheduledTime: order.scheduledTime, requestedPickupAt: job.stage === 'Pickup' ? order.requestedPickupAt : null, totalAmount: contactAllowed ? order.totalAmount : undefined,
           paymentMethod: contactAllowed ? order.paymentMethod : undefined,
           handoff: contactAllowed ? handoffState(order, order.events) : undefined,
@@ -330,7 +336,18 @@ export class DeliveryController {
         if (['Completed', 'Cancelled'].includes(order.workflowStatus!)) fail('Order is closed');
         const job = order.assignments.find(item => item.riderId === actor(req) && item.status === 'Accepted');
         let to: string;
-        if (['arriveHandoff', 'releaseHandoff', 'receiveHandoff'].includes(body.action)) {
+        if (body.action === 'completeTrip') {
+          if (!req.user!.isRider || !job) fail('Only the assigned rider can complete this trip', 403);
+          const eligible = job.stage === 'Pickup'
+            ? ['PickupAccepted', 'PickupEnRoute', 'LaundryPickedUp']
+            : job.stage === 'Delivery' ? ['DeliveryAccepted', 'CleanLaundryCollected', 'OutForDelivery'] : [];
+          if (!eligible.includes(order.workflowStatus!)) fail('This trip is not ready for completion. Refresh your jobs.');
+          await requireCompletionPhoto(tx, job, id);
+          await tx.deliveryAssignment.update({ where: { id: job.id }, data: { status: 'Completed', completedAt: new Date(), ...clearedRiderLocation } });
+          await changeState(tx, order, actor(req), 'TripCompleted', job.stage === 'Pickup' ? 'AtPartner' : 'Delivered',
+            job.stage === 'Pickup' ? 'Rider reported handover at the shop. Shop receipt is pending.' : 'Rider reported handover to the customer. Customer receipt is pending.', job.riderId);
+          return;
+        } else if (['arriveHandoff', 'releaseHandoff', 'receiveHandoff'].includes(body.action)) {
           const events = await tx.orderEvent.findMany({ where: { transactionId: id, action: { in: ['HandoffArrived', 'HandoffReleased'] } } });
           const handoff = handoffState(order, events);
           if (!handoff) fail('This order is not ready for a handover');
@@ -348,7 +365,10 @@ export class DeliveryController {
             if (!assigned) fail('Only the assigned rider can confirm receipt', 403);
             if (!handoff.arrived || !handoff.released) fail('Wait for the customer or shop to confirm the handover');
             const to = handoff.kind === 'pickup' ? 'LaundryPickedUp' : handoff.kind === 'collection' ? 'CleanLaundryCollected' : 'Completed';
-            if (handoff.kind === 'delivery') await tx.deliveryAssignment.update({ where: { id: job!.id }, data: { status: 'Completed', completedAt: new Date(), ...clearedRiderLocation } });
+            if (handoff.kind === 'delivery') {
+              await requireCompletionPhoto(tx, job!, id);
+              await tx.deliveryAssignment.update({ where: { id: job!.id }, data: { status: 'Completed', completedAt: new Date(), ...clearedRiderLocation } });
+            }
             await changeState(tx, order, actor(req), 'HandoffReceived', to, handoff.marker, handoff.riderId);
           }
           return;
@@ -403,7 +423,7 @@ export class DeliveryController {
           if (!partner) fail('Only this laundry partner can update weight', 403);
           if (!['LaundryReceived', 'Washing', 'Drying', 'Folding'].includes(order.workflowStatus!) || !body.kilos || !body.note) fail('Enter the measured weight and explain the change during processing');
           if (Number(body.kilos.toFixed(2)) !== body.kilos) fail('Weight supports up to two decimal places', 400);
-          const priced = priceOrder({ kilos: body.kilos, serviceName: order.serviceName, services: await tx.shopService.findMany({ where: { shopId: order.shopId } }), ranges: await tx.kiloPrice.findMany({ where: { shopId: order.shopId } }), deliveryType: order.deliveryType });
+          const priced = priceOrder({ kilos: body.kilos, serviceName: order.serviceName, services: await tx.shopService.findMany({ where: { shopId: order.shopId } }), ranges: await tx.kiloPrice.findMany({ where: { shopId: order.shopId } }), deliveryType: order.deliveryType, confirmedDeliveryFee: order.deliveryFee });
           if ('error' in priced && priced.error) fail(priced.error);
           await tx.orderWeightEvidence.create({ data: { transactionId: id, actorId: actor(req), kilos: body.kilos, totalAmount: priced.totalAmount!, note: body.note, bytes: weightPhoto! } });
           await tx.transaction.update({ where: { id }, data: { kiloAmount: body.kilos, ...priced, workflowVersion: { increment: 1 } } });
@@ -414,7 +434,10 @@ export class DeliveryController {
           if (!req.user!.isRider || !job || !transition || job.stage !== transition.stage) fail('Only the assigned rider can perform this action', 403);
           if (order.workflowStatus !== transition.from) fail('Complete the previous delivery step first');
           if (transition.proof && body.code !== order[transition.proof]) fail('The confirmation code is incorrect', 400);
-          if (transition.done) await tx.deliveryAssignment.update({ where: { id: job.id }, data: { status: 'Completed', completedAt: new Date(), ...clearedRiderLocation } });
+          if (transition.done) {
+            await requireCompletionPhoto(tx, job, id);
+            await tx.deliveryAssignment.update({ where: { id: job.id }, data: { status: 'Completed', completedAt: new Date(), ...clearedRiderLocation } });
+          }
           to = transition.to;
         }
         await changeState(tx, order, actor(req), body.action, to!, body.note, job?.riderId);

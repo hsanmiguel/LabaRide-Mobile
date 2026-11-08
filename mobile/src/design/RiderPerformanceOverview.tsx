@@ -3,10 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Clock3, Package, TrendingUp } from 'lucide-react-native';
 import { api } from './data';
 import { useAuthStore } from '../store/authStore';
-import { Button, Card, Txt, styles, usePalette } from './ui';
+import { Button, Card, Txt, styles, usePalette, money } from './ui';
 import { QueryState } from './UserScreens';
 
-type Performance = { periodDays: number; completed: number; failed: number; completionRate: number | null; active: number;
+type Performance = { pickupEarnings: number; returnEarnings: number; periodDays: number; completed: number; failed: number; completionRate: number | null; active: number;
   averagePickup: { minutes: number | null; samples: number }; averageDelivery: { minutes: number | null; samples: number };
   averageJobsPerDay: number; averageKilosPerJob: number | null; pickups: number; deliveries: number;
   week: { date: string; label: string; completed: number }[];
@@ -21,6 +21,8 @@ export function RiderPerformanceOverview() {
   const data = query.data;
   if (!data) return <QueryState loading={query.isLoading} error={query.error} retry={() => query.refetch()} />;
   const cards = [
+    { label: 'Pickup earnings', value: money(data.pickupEarnings), detail: 'Completed pickup trips, after commission', Icon: Package, color: '#059669', tint: '#ECFDF5' },
+    { label: 'Return earnings', value: money(data.returnEarnings), detail: 'Completed return deliveries, after commission', Icon: TrendingUp, color: '#2563EB', tint: '#EFF6FF' },
     { label: 'Completed jobs', value: String(data.completed), detail: `${data.pickups} pickups · ${data.deliveries} deliveries`, Icon: Package, color: '#2563EB', tint: '#EFF6FF' },
     { label: 'Completion rate', value: data.completionRate == null ? '—' : `${data.completionRate}%`, detail: `${data.completed} completed · ${data.failed} unsuccessful`, Icon: CheckCircle2, color: '#059669', tint: '#ECFDF5' },
     { label: 'Average pickup time', value: minutes(data.averagePickup.minutes), detail: `${data.averagePickup.samples} timed pickup jobs`, Icon: Clock3, color: '#7C3AED', tint: '#F5F3FF' },

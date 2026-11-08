@@ -10,14 +10,14 @@ import { api, confirmAction, message } from './data';
 import { useAuthStore } from '../store/authStore';
 import { useLogout } from './useLogout';
 import { RiderLocationSharingControl } from './RiderLocationSharing';
-import { Button, Card, Choice, Empty, IconButton, Screen, TabsRow, Txt, styles, usePalette } from './ui';
+import { Button, Card, Choice, Empty, IconButton, Screen, TabsRow, Txt, styles, usePalette, money } from './ui';
 import { RiderDashboardPanel } from './RiderDashboardPanel';
 import { JobRoutePreview } from './JobRoutePreview';
 import { useAvailableRiderJobs } from './useRiderJobUpdates';
 import { useRiderJobSeenStore } from '../store/riderJobSeenStore';
 import { riderJobKey } from './rider-job-updates';
 
-type AvailableJob = { id: number; stage: 'Pickup' | 'Delivery'; workflowVersion: number; serviceName: string; kilos: string; scheduledDate: string | null; scheduledTime: string | null; requestedPickupAt?: string | null; createdAt: string; shopName: string; pickupArea: string; dropoffArea: string; distanceKm: number | null };
+type AvailableJob = { id: number; stage: 'Pickup' | 'Delivery'; earnings?: number | null; workflowVersion: number; serviceName: string; kilos: string; scheduledDate: string | null; scheduledTime: string | null; requestedPickupAt?: string | null; createdAt: string; shopName: string; pickupArea: string; dropoffArea: string; distanceKm: number | null };
 export type JobBoard = { rider: { online: boolean; workload: number; capacity: number; hasPosition: boolean }; limit: number; jobs: AvailableJob[] };
 function schedule(job: AvailableJob) {
   if (job.requestedPickupAt) return new Date(job.requestedPickupAt).toLocaleString([], { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -67,7 +67,7 @@ export function RiderAvailableJobsDesign() {
     pending.current = true; setBusy(true); setError(''); setLocationNotice('');
     try {
       if ((await Location.requestForegroundPermissionsAsync()).status !== 'granted') {
-        setLocationNotice('Location access is off. You can still go online and claim jobs. Distances need a saved dispatch position.');
+        setLocationNotice('Location access is off. You can still go online and accept jobs. Distances need a saved dispatch position.');
         return;
       }
       const { coords } = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -80,13 +80,13 @@ export function RiderAvailableJobsDesign() {
     if (pending.current || !canClaim) return;
     pending.current = true; setClaimingId(job.id); setError(''); setPanel(null);
     try {
-      const confirmed = await confirmAction(`Claim ${job.stage.toLowerCase()} job #${job.id}?`, `Collect from ${job.pickupArea} and take the laundry to ${job.dropoffArea}. Claiming accepts this job immediately and adds it to My deliveries.`, { confirmLabel: 'Claim job' });
+      const confirmed = await confirmAction(`Accept ${job.stage.toLowerCase()} job #${job.id}?`, `Collect from ${job.pickupArea} and take the laundry to ${job.dropoffArea}. Accept this trip and follow the collection and delivery steps in My deliveries.`, { confirmLabel: 'Accept job' });
       if (!confirmed) return;
       setBusy(true);
       await api.put(`/delivery/orders/${job.id}/claim`, { stage: job.stage, expectedVersion: job.workflowVersion });
       await refreshAll();
       toast.success({ title: 'Job accepted' });
-      router.push('/rider/jobs');
+      router.push({ pathname: '/rider/jobs', params: { orderId: String(job.id) } });
     } catch (failure) { setError(message(failure)); await query.refetch(); }
     finally { pending.current = false; setBusy(false); setClaimingId(null); }
   }
@@ -111,7 +111,7 @@ export function RiderAvailableJobsDesign() {
             </View>
             <Button title={board.rider.online ? 'Go offline' : 'Go online'} compact outline={board.rider.online} busy={busy && claimingId === null} disabled={claimingId !== null} onPress={() => { void availability(!board.rider.online); }} />
           </View>
-          {board.rider.online && board.rider.workload >= board.rider.capacity && <Txt style={{ color: palette.warning, fontSize: 12 }}>Your job slots are full. Finish a job in My deliveries to claim another.</Txt>}
+          {board.rider.online && board.rider.workload >= board.rider.capacity && <Txt style={{ color: palette.warning, fontSize: 12 }}>Your job slots are full. Finish a job in My deliveries to accept another.</Txt>}
         </Card>
         {board.rider.online && <>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -145,13 +145,14 @@ export function RiderAvailableJobsDesign() {
               <ChevronRight size={17} color={palette.primary} />
             </View>
             <View style={{ gap: 2 }}><Txt numberOfLines={1} style={{ fontSize: 16, fontWeight: '700' }}>{job.shopName}</Txt><Txt numberOfLines={1} style={{ color: palette.muted, fontSize: 12 }}>{job.serviceName} · {job.kilos} kg</Txt></View>
+            <Txt style={{ fontWeight: '600', color: palette.primary }}>Your earnings: {job.earnings == null ? 'Not recorded for this older job' : money(job.earnings)}</Txt>
             <View style={{ gap: 4 }}>{[['From', job.pickupArea], ['To', job.dropoffArea]].map(([label, area]) => <View key={label} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Txt style={{ width: 30, color: palette.muted, fontSize: 11 }}>{label}</Txt><Txt numberOfLines={1} style={{ flex: 1, fontSize: 12 }}>{area}</Txt>
             </View>)}</View>
           </Pressable>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: 1, borderTopColor: palette.line, paddingTop: 8 }}>
             <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 }}><MapPin size={13} color={palette.muted} /><Txt style={{ color: palette.muted, fontSize: 11 }}>{distance(job)}</Txt></View>
-            <Button title="Claim" accessibilityLabel={`Claim ${job.stage.toLowerCase()} job #${job.id}`} compact busy={claimingId === job.id} disabled={!canClaim || claimingId !== null || busy} onPress={() => { if (user) markSeen(user.id, job); void claim(job); }} />
+            <Button title="Accept job" accessibilityLabel={`Accept ${job.stage.toLowerCase()} job #${job.id}`} compact busy={claimingId === job.id} disabled={!canClaim || claimingId !== null || busy} onPress={() => { if (user) markSeen(user.id, job); void claim(job); }} />
           </View>
         </Card>)}
       </View>}
@@ -168,7 +169,7 @@ export function RiderAvailableJobsDesign() {
       </View>
       {!!board && board.rider.workload > 0 && <RiderLocationSharingControl />}
       <View style={{ gap: 6 }}><Txt style={{ fontWeight: '600' }}>How jobs appear</Txt><Txt style={{ color: palette.muted, fontSize: 12 }}>Pickups appear after the shop confirms a rider-pickup booking. Delivery jobs appear when clean laundry is ready for a rider.</Txt>
-        <Txt style={{ color: palette.muted, fontSize: 12 }}>Jobs refresh every 15 seconds. Exact addresses and customer contacts unlock after claiming.</Txt>
+        <Txt style={{ color: palette.muted, fontSize: 12 }}>Jobs refresh every 15 seconds. Exact addresses and customer contacts unlock after acceptance.</Txt>
         {!!board && board.jobs.length >= board.limit && <Txt style={{ color: palette.muted, fontSize: 12 }}>Showing the oldest {board.limit} jobs.</Txt>}
       </View>
     </RiderDashboardPanel>}
@@ -183,7 +184,7 @@ export function RiderAvailableJobsDesign() {
       {!board?.rider.hasPosition && <Txt style={{ color: palette.muted, fontSize: 12 }}>Save a dispatch position in Rider tools to see distances.</Txt>}
     </RiderDashboardPanel>}
     {panel === 'job' && <RiderDashboardPanel title={selectedJob ? `${selectedJob.stage} · Order #${selectedJob.id}` : 'Job unavailable'} onClose={() => setPanel(null)}
-      footer={selectedJob ? <Button title="Claim job" accessibilityLabel={`Claim ${selectedJob.stage.toLowerCase()} job #${selectedJob.id} from details`} busy={claimingId === selectedJob.id} disabled={!canClaim || busy || claimingId !== null} onPress={() => { void claim(selectedJob); }} /> : <Button title="Close" outline onPress={() => setPanel(null)} />}>
+      footer={selectedJob ? <Button title="Accept job" accessibilityLabel={`Accept ${selectedJob.stage.toLowerCase()} job #${selectedJob.id} from details`} busy={claimingId === selectedJob.id} disabled={!canClaim || busy || claimingId !== null} onPress={() => { void claim(selectedJob); }} /> : <Button title="Close" outline onPress={() => setPanel(null)} />}>
       {selectedJob ? <>
         <View style={{ gap: 4 }}><Txt style={{ fontSize: 21, fontWeight: '700' }}>{selectedJob.shopName}</Txt><Txt style={{ color: palette.muted }}>{selectedJob.serviceName} · {selectedJob.kilos} kg</Txt><Txt style={{ color: palette.primary, fontSize: 12 }}>{distance(selectedJob)}</Txt></View>
         <JobRoutePreview key={selectedJob.id} orderId={selectedJob.id} />
@@ -192,7 +193,7 @@ export function RiderAvailableJobsDesign() {
         </View>)}
         {!!schedule(selectedJob) && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Clock3 size={17} color={palette.primary} /><View><Txt style={{ color: palette.muted, fontSize: 12 }}>{selectedJob.requestedPickupAt ? 'Requested pickup' : 'Service schedule'}</Txt><Txt>{schedule(selectedJob)}</Txt></View></View>}
         <Txt style={{ color: palette.muted, fontSize: 12 }}>Booked {new Date(selectedJob.createdAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} (PHT)</Txt>
-        <Txt style={{ color: palette.muted, fontSize: 12 }}>The map uses saved pickup and destination pins. Customer contacts and written addresses unlock in My deliveries after claiming.</Txt>
+        <Txt style={{ color: palette.muted, fontSize: 12 }}>The map uses saved pickup and destination pins. Customer contacts and written addresses unlock in My deliveries after acceptance.</Txt>
       </> : <Empty title="This job is no longer available" message="Refresh the dashboard to check for other jobs." />}
     </RiderDashboardPanel>}
   </Screen>;

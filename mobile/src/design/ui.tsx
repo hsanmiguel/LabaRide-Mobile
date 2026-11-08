@@ -7,7 +7,7 @@ import { ArrowLeft, ChevronRight, Eye, EyeOff, Search, Check, WashingMachine } f
 import { router, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { flutterAssets } from "./assets";
-import { interfaceIcons } from "./icons";
+import { interfaceIcons, actionIcons, sectionIcons } from "./icons";
 import { usePalette } from "./theme";
 import { useWebAccessibility } from "./web-accessibility";
 import { BrandMark } from './BrandMark';
@@ -56,6 +56,7 @@ export function Button({ title, onPress, busy, disabled, color, textColor, outli
 }) {
   const palette = usePalette();
   const accent = color || palette.primary;
+  const ActionIcon = actionIcons[title];
   return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel || title} accessibilityState={{ disabled: !!disabled || !!busy, busy: !!busy }}
     disabled={disabled || busy} onPress={onPress} style={({ pressed }) => [{
       minHeight: 44, paddingHorizontal: compact ? 14 : 20, paddingVertical: compact ? 10 : 12,
@@ -64,7 +65,7 @@ export function Button({ title, onPress, busy, disabled, color, textColor, outli
       flexDirection: "row", gap: 8, justifyContent: "center", alignItems: "center", flexShrink: 1,
     }, style]}>
     {busy ? <ActivityIndicator accessibilityLabel={`${title}, please wait`} color={outline ? accent : "white"} /> : <>
-      {icon}<Txt style={{ color: textColor || (outline ? accent : "white"), fontWeight: "600", fontSize: 14, textAlign: "center" }}>{title}</Txt>
+      {icon !== undefined ? icon : ActionIcon ? <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ flexShrink: 0 }}><ActionIcon size={18} color={textColor || (outline ? accent : 'white')} strokeWidth={1.8} /></View> : null}<Txt style={{ flexShrink: 1, color: textColor || (outline ? accent : "white"), fontWeight: "600", fontSize: 14, textAlign: "center" }}>{title}</Txt>
     </>}
   </Pressable>;
 }
@@ -136,7 +137,8 @@ export function Card({ children, style, testID }: { children: React.ReactNode; s
 }
 export function Section({ title, action, onPress, light = false }: { title: string; action?: string; onPress?: () => void; light?: boolean }) {
   const palette = usePalette();
-  return <View style={[styles.between, { marginTop: 8, marginBottom: 12 }]}><Txt accessibilityRole="header" style={{ fontSize: 18, fontWeight: "700", color: light ? "white" : palette.ink }}>{title}</Txt>
+  const Icon = sectionIcons[title];
+  return <View style={[styles.between, { marginTop: 8, marginBottom: 12 }]}><View style={[styles.row, { flexShrink: 1, gap: 8 }]}>{Icon && <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Icon size={20} color={light ? 'white' : palette.primary} strokeWidth={1.8} /></View>}<Txt accessibilityRole="header" style={{ fontSize: 18, fontWeight: "700", flexShrink: 1, color: light ? "white" : palette.ink }}>{title}</Txt></View>
     {!!action && onPress && <Pressable accessibilityRole="button" onPress={onPress} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 4 }}><Txt style={{ color: light ? "white" : palette.primary, fontWeight: "600" }}>{action}</Txt></Pressable>}
   </View>;
 }

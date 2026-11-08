@@ -39,7 +39,7 @@ export function HandoverPhotos({ orderId, assignmentId, stage, canUpload = false
   const palette = usePalette(); const cache = useQueryClient();
   const query = useQuery({ queryKey: ['delivery', 'handover-photos', orderId], queryFn: () => api.get<Photo[]>(`/delivery/orders/${orderId}/handover-photos`), refetchInterval: 30000 });
   const choices = stage === 'Pickup' ? ['CustomerPickup', 'ShopDropoff'] : ['ShopCollection', 'CustomerDelivery'];
-  const [kind, setKind] = useState(choices[0]), [note, setNote] = useState('');
+  const [kind, setKind] = useState(choices[1]), [note, setNote] = useState('');
   const [photo, setPhoto] = useState<{ uri: string; base64: string } | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''); const lock = useRef(false);
   const [choosing, setChoosing] = useState(false);
@@ -67,7 +67,7 @@ export function HandoverPhotos({ orderId, assignmentId, stage, canUpload = false
   }
   return <Card style={{ gap: 14 }}>
     <Txt style={styles.heading}>Laundry handover photos</Txt>
-    <Txt style={styles.muted}>Photos support the order's handover record. Keep confirming physical handovers using the existing customer and shop steps.</Txt>
+    <Txt style={styles.muted}>{canUpload ? `Required to complete this trip: save a photo of the laundry handed over to the ${stage === 'Pickup' ? 'shop' : 'customer'}. Selecting a photo is not enough; tap Save handover photo after uploading.` : 'Saved proof of the physical laundry handover. Recipient receipt is confirmed separately.'}</Txt>
     <QueryState loading={query.isLoading} error={query.error} retry={() => query.refetch()} />
     {!query.isLoading && !query.error && !query.data?.length && <Txt style={styles.muted}>No handover photos yet.</Txt>}
     {query.data?.map(item => <SavedPhoto key={item.id} orderId={orderId} photo={item} />)}

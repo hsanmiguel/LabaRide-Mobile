@@ -380,7 +380,6 @@ export function ShopInfoDesign({
         <ShopPhoto name={shop.shopName} photoUrl={shop.photoUrl} style={desktop ? { width: '40%', height: 300, aspectRatio: undefined, flexShrink: 0 } : { width: '100%', maxHeight: 280 }} />
         <View style={{ flex: desktop ? 1 : undefined, minWidth: 0, gap: 12, paddingVertical: 8 }}>
           <Txt style={styles.title}>{shop.shopName}</Txt>
-          <Txt style={styles.muted}>Shop ID: {shop.id}</Txt>
           <Txt style={{ color: availability.isOpen ? palette.primary : palette.muted }}>{availability.message}</Txt>
           <Txt style={styles.muted}>Delivery area: {serviceAreaLabel(shop, "delivery")}</Txt>
           <Txt style={styles.muted}>{shop.pickupEnabled ? `Laundry collection area: ${serviceAreaLabel(shop, "pickup")}` : "Laundry collection is not offered"}</Txt>
@@ -463,7 +462,7 @@ export function ShopMenuDesign({ id }: { id: number }) {
             </Txt>
           </View>
           <Button
-            title={availability.isOpen ? "Review Order" : "Shop closed"}
+            title={availability.isOpen ? "Review Order" : shop?.acceptingOrders === false ? "Orders paused" : "Shop closed"}
             color={palette.navy}
             icon={<ShoppingBasket size={18} color="white" />}
             disabled={!service || !availability.isOpen}
@@ -501,7 +500,7 @@ export function ShopMenuDesign({ id }: { id: number }) {
                   <View style={{ padding: 20, backgroundColor: palette.soft, borderRadius: 16 }}><Store size={32} color={palette.primary} /></View>
                   <View style={styles.grow}>
                     <Txt style={styles.heading}>{shop.shopName}</Txt>
-                    <Txt style={styles.muted}>ID: {shop.id}</Txt>
+                    {!availability.isOpen && <Txt style={{ color: palette.muted, fontSize: 12 }}>{availability.message}</Txt>}
                     <Txt style={styles.muted}>{address(shop)}</Txt>
                     <Txt style={[styles.muted, { fontSize: 12 }]}>
                       Business Hours: {shop.openingTime || "—"} –{" "}

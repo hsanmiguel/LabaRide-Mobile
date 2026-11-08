@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { createTransactionSchema } = require('../dist/validators/transaction.validator');
-const location = { address_line_1: '12 Main Street', city: 'Naga', state_province: 'Camarines Sur', postal_code: '4400', country: 'Philippines', address_type: 'Home' };
+const location = { address_line_1: '12 Main Street', city: 'Naga', state_province: 'Camarines Sur', postal_code: '4400', country: 'Philippines', address_type: 'Home', latitude: 13.6, longitude: 123.2 };
 function input(schedule) { return { ...location, shopId: 1, serviceName: 'Full Service', kiloAmount: 8, deliveryType: 'Deliver', scheduledDate: schedule, scheduledTime: schedule }; }
 // Verify the real controller without credentials or writes to the live database.
 const databasePath = require.resolve('../dist/config/database');
@@ -20,7 +20,7 @@ async function invoke({ minutes, serviceName = '8Kg Full Service Laundry', deliv
   database.notification = { createMany: async ({ data }) => { notifications.push(...data); return { count: data.length }; } };
   database.user = { findUnique: async () => ({ id: 1, name: 'Test User', email: 'test@example.invalid' }), findMany: async () => [] };
   database.orderEvent = { create: async () => ({}) };
-  database.shop = { findUnique: async () => ({ id: 1, userId: 2, approvalStatus: 'Approved', openingTime: '08:00', closingTime: '18:00', services: [
+  database.shop = { findUnique: async () => ({ id: 1, userId: 2, approvalStatus: 'Approved', latitude: 13.7, longitude: 123.3, openingTime: '08:00', closingTime: '18:00', services: [
     { id: 1, serviceName, price: new Prisma.Decimal(215), packageKilos: new Prisma.Decimal(8) },
   ], kiloPrices: [] }) };
   database.transaction = { create: async ({ data }) => { writes++; return { ...data, id: 1 }; } };
@@ -32,6 +32,12 @@ async function invoke({ minutes, serviceName = '8Kg Full Service Laundry', deliv
   if (omitSchedule) {
     delete req.body.scheduledDate;
     delete req.body.scheduledTime;
+  }
+  if (deliveryType === 'Deliver') {
+    const { feeFingerprint } = require('../dist/services/delivery-fees');
+    const quote = { id: '00000000-0000-4000-8000-000000000001', userId: 1, expiresAt: new Date('2099-01-01'), fingerprint: feeFingerprint({ ...req.body, collectionMethod: 'Dropoff' }, await database.shop.findUnique()), pricing: { deliveryFee: 30 } };
+    req.body.deliveryQuoteId = quote.id;
+    database.deliveryFeeQuote = { findUnique: async () => quote, update: async () => ({}) };
   }
   const res = { status(code) { this.code = code; return this; }, json(data) { this.body = data; return this; } };
   try { await TransactionController.createTransaction(req, res, failure => { error = failure; }); }

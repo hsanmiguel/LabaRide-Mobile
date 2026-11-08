@@ -1,7 +1,45 @@
 import { ArrowLeft, ArrowRight, Bell, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight, Circle,
   ClipboardList, Clock, CreditCard, Gift, House, List, LogOut, Mail, Map, MapPin, MessageSquare,
   Package, Pencil, Phone, Plus, Receipt, Search, ShieldCheck, Shirt, ShoppingBasket, Smile,
-  Star, Store, Truck, UserRound, Users, WashingMachine, XCircle } from "lucide-react-native";
+  Star, Store, Truck, UserRound, Users, WashingMachine, XCircle, Camera, ImagePlus,
+  Upload, Save, RefreshCw, Navigation, Bike, Power, CircleHelp, Banknote, FileCheck } from "lucide-react-native";
+
+// Shared, explicit labels keep the same action recognizable in every workspace.
+export const actionIcons: Record<string, typeof Check> = {
+  'Accept job': CheckCircle2, 'Confirm completed': FileCheck,
+  'Confirm laundry received': Package, 'Confirm receipt': CheckCircle2,
+  'Place Order': ShoppingBasket, 'Review Order': Receipt,
+  'Save Changes': Save, 'Save changes': Save, 'Save delivery rates': Save,
+  'Refresh delivery quote': RefreshCw, 'Refresh performance': RefreshCw,
+  'Retry loading rates': RefreshCw, 'Refresh eligible riders': RefreshCw,
+  'Choose laundry photo': ImagePlus, 'Take laundry photo': Camera,
+  'Save handover photo': Upload, 'View handover photo': Camera,
+  'Hide handover photo': Camera, 'Remove selected photo': XCircle,
+  'View invoice': Receipt, 'Navigate': Navigation,
+  'Go online': Power, 'Go offline': Power,
+  'Start sharing location': MapPin, 'Stop sharing location': MapPin,
+  'Update dispatch position': MapPin, 'Report an issue': CircleHelp,
+  'Pickup unsuccessful': XCircle, 'Decline': XCircle, 'Cancel booking': XCircle,
+  'Browse order requests': ClipboardList, 'Open my deliveries': Bike,
+  'My deliveries': Bike, 'Job history': Clock, 'Back to jobs': ArrowLeft,
+  'Add Service': Plus, 'Edit Service': Pencil, 'Delete Service': XCircle,
+  'Start washing': WashingMachine, 'Start drying': Shirt, 'Start folding': Shirt,
+  'Approve rider': ShieldCheck, 'Review application': FileCheck,
+  'View requirements': ClipboardList, 'Send assignment': Truck,
+  'Log In': UserRound, 'Sign Out': LogOut, 'Save address': MapPin,
+};
+
+export const sectionIcons: Record<string, typeof Check> = {
+  'Shop & Selected Services': Store, 'Payment Method': CreditCard,
+  'Fees & Total': Banknote, 'Note to Laundry Shop': MessageSquare,
+  'Business Hours': Clock, 'Shop Address': MapPin,
+  'Delivery & Laundry Collection Areas': Truck,
+  'Rider applications': FileCheck, 'Rider roster': Users,
+  'Rider performance history': ClipboardList,
+  'Customer address': MapPin, 'Requested laundry pickup': CalendarDays,
+  'Account Information': UserRound, 'Shop Details': Store,
+  'Security': ShieldCheck, 'Notifications': Bell,
+};
 
 // Compatibility keys let all migrated screens use the same semantic icon system.
 // Logos, photographs, map imagery and onboarding illustrations stay in assets.ts.

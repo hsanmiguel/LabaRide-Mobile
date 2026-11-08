@@ -27,7 +27,8 @@
     "test:cancel": "npm run build && node tests/cancel-order.test.cjs",
     "test:schedule": "npm run build && node --test tests/order-schedule.test.cjs tests/delivery-slots.test.cjs",
     "test:areas": "npm run build && node --test tests/service-area.test.cjs",
-    "test:pricing": "npm run build && node --test tests/order-pricing.test.cjs tests/service-packages.test.cjs"
+    "test:pricing": "npm run build && node --test tests/order-pricing.test.cjs tests/service-packages.test.cjs",
+    "test:fees": "npm run build && node --test tests/delivery-fees*.test.cjs"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

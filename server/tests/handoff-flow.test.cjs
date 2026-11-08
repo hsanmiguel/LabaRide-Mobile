@@ -17,6 +17,8 @@ function fixture(status = 'PickupEnRoute', stage = 'Pickup') {
   db.user = { findMany: async () => [{ id: 4 }] };
   db.notification = { createMany: async ({ data }) => { notifications.push(...data); } };
   db.deliveryAssignment = { update: async ({ data }) => Object.assign(order.assignments[0], data) };
+  const photos = [{ id: 1, transactionId: order.id, assignmentId: 10, riderId: 3, kind: stage === 'Pickup' ? 'ShopDropoff' : 'CustomerDelivery' }];
+  db.riderHandoverPhoto = { findFirst: async ({ where }) => photos.find(photo => Object.entries(where).every(([key, value]) => photo[key] === value)) || null };
   async function act(userId, action, version = order.workflowVersion, extra = {}) {
     let error;
     const req = { params: { id: '47' }, body: { action, expectedVersion: version, ...extra }, user: { userId, isRider: userId === 3, isAdmin: userId === 4 }, app: { get: () => undefined } };
@@ -24,8 +26,84 @@ function fixture(status = 'PickupEnRoute', stage = 'Pickup') {
     await DeliveryController.action(req, res, failure => { error = failure; });
     return error;
   }
-  return { order, events, notifications, act };
+  return { order, events, notifications, act, photos };
 }
+
+test('completion requires a saved destination photo for this exact order, assignment and rider', async () => {
+  for (const stage of ['Pickup', 'Delivery']) {
+    const f = fixture(stage === 'Pickup' ? 'PickupAccepted' : 'DeliveryAccepted', stage);
+    const valid = { ...f.photos[0] };
+    f.photos.length = 0;
+    assert.equal((await f.act(3, 'completeTrip')).statusCode, 400);
+    for (const changed of [{ kind: stage === 'Pickup' ? 'CustomerPickup' : 'ShopCollection' }, { assignmentId: 99 }, { riderId: 99 }, { transactionId: 99 }]) {
+      f.photos[0] = { ...valid, ...changed };
+      assert.equal((await f.act(3, 'completeTrip')).statusCode, 400);
+      assert.equal(f.order.assignments[0].status, 'Accepted');
+      assert.equal(f.events.length, 0);
+    }
+    f.photos[0] = valid;
+    assert.equal(await f.act(3, 'completeTrip'), undefined);
+    assert.equal(f.order.assignments[0].status, 'Completed');
+  }
+});
+
+test('legacy completion actions cannot bypass destination proof requirements', async () => {
+  for (const [state, stage, action, code] of [
+    ['LaundryPickedUp', 'Pickup', 'droppedOff'], ['OutForDelivery', 'Delivery', 'delivered', '123456'],
+  ]) {
+    const f = fixture(state, stage);
+    f.order.deliveryCode = '123456'; f.photos.length = 0;
+    assert.equal((await f.act(3, action, 0, code ? { code } : {})).statusCode, 400);
+    assert.equal(f.order.assignments[0].status, 'Accepted');
+  }
+});
+
+test('rider completes a pickup in one action and shop receipt remains a separate confirmation', async () => {
+  for (const state of ['PickupAccepted', 'PickupEnRoute', 'LaundryPickedUp']) {
+    const f = fixture(state);
+    f.order.deliveryFee = 73.25;
+    f.order.deliveryPricing = { pickupEarnings: 30 };
+    assert.equal(await f.act(3, 'completeTrip'), undefined);
+    assert.equal(f.order.workflowStatus, 'AtPartner');
+    assert.equal(f.order.assignments[0].status, 'Completed');
+    assert.equal(f.order.receivedAt, undefined);
+    assert.equal(f.order.deliveryFee, 73.25);
+    assert.equal(f.order.deliveryPricing.pickupEarnings, 30);
+    assert.equal(f.events.length, 1);
+    assert.equal(f.events[0].action, 'TripCompleted');
+    assert.ok(f.notifications.some(n => n.userId === 2 && /confirm receipt/i.test(n.message)));
+    assert.equal(await f.act(2, 'receive'), undefined);
+    assert.equal(f.order.workflowStatus, 'LaundryReceived');
+    assert.ok(f.order.receivedAt);
+  }
+});
+
+test('rider completes a return in one action, then the customer confirms final receipt', async () => {
+  for (const state of ['DeliveryAccepted', 'CleanLaundryCollected', 'OutForDelivery']) {
+    const f = fixture(state, 'Delivery');
+    assert.equal(await f.act(3, 'completeTrip'), undefined);
+    assert.equal(f.order.workflowStatus, 'Delivered');
+    assert.equal(f.order.assignments[0].status, 'Completed');
+    assert.equal(f.order.completedAt, undefined);
+    assert.equal(await f.act(1, 'confirmReceipt'), undefined);
+    assert.equal(f.order.workflowStatus, 'Completed');
+  }
+});
+
+test('trip completion rejects other actors, stale versions, reassigned jobs and repeated submissions', async () => {
+  const f = fixture('PickupAccepted');
+  assert.equal((await f.act(1, 'completeTrip')).statusCode, 403);
+  assert.equal((await f.act(2, 'completeTrip')).statusCode, 403);
+  assert.ok(await f.act(3, 'completeTrip', 99));
+  f.order.assignments[0].status = 'Reassigned';
+  assert.equal((await f.act(3, 'completeTrip')).statusCode, 403);
+  f.order.assignments[0].status = 'Accepted';
+  assert.equal(await f.act(3, 'completeTrip'), undefined);
+  assert.ok(await f.act(3, 'completeTrip'));
+  assert.equal(f.events.length, 1);
+  const notStarted = fixture('PickupQueued');
+  assert.ok(await notStarted.act(3, 'completeTrip'));
+});
 
 test('booking confirmation needs no explanation and keeps issue reason requirements', async () => {
   const f = fixture('BookingPending'); f.order.assignments = [];

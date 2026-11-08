@@ -49,7 +49,7 @@ export function NotificationsDesign({ shopMode = false, audience }: { shopMode?:
         cache.setQueryData<Notification[]>(["notifications", user?.id, shopMode, audience], current =>
           current?.map(item => item.id === notification.id ? { ...item, readAt: new Date().toISOString() } : item));
       }
-      if (audience === 'rider') router.push('/rider/jobs');
+      if (audience === 'rider') router.push({ pathname: '/rider/jobs', params: { orderId: String(notification.transactionId) } });
       else if (audience === 'admin') router.push(`/admin/order?id=${notification.transactionId}` as Href);
       else if (shopMode) router.push({ pathname: "/shop/customers/orders/[id]", params: { id: String(notification.transactionId) } });
       else go("transaction-details", { id: String(notification.transactionId) });
@@ -77,11 +77,6 @@ export function NotificationsDesign({ shopMode = false, audience }: { shopMode?:
               {!item.readAt && <Txt style={{ color: palette.primary }}>New</Txt>}
             </View>
             <Txt style={{ marginVertical: 6 }}>{item.message}</Txt>
-            {item.handoff && <View style={{ padding: 14, borderRadius: 10, backgroundColor: 'white', marginVertical: 8, gap: 6 }}>
-              <Txt style={{ fontWeight: '600', color: palette.primary }}>{item.handoff.label} · Order #{item.transactionId}</Txt>
-              <Txt selectable style={{ fontSize: 28, letterSpacing: 4, fontWeight: '700', color: palette.ink }}>{item.handoff.code}</Txt>
-              <Txt style={styles.muted}>Enter this code in the matching job confirmation only after the physical handover.</Txt>
-            </View>}
             <Txt style={styles.muted}>{new Date(item.createdAt).toLocaleString()}</Txt>
           </Pressable>{!!item.readAt && <View style={{ paddingHorizontal: 16, paddingBottom: 12, alignItems: 'flex-end' }}><Button title="Delete" compact outline color={palette.danger} disabled={deleting !== null} busy={deleting === item.id} icon={<Trash2 size={15} color={palette.danger} />} onPress={() => { void remove(item); }} /></View>}</View>)}
         </View>;

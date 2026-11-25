@@ -264,6 +264,7 @@ export function AdminShopApplicationsDesign() {
           <View style={{ flex: wide ? 1.4 : undefined, minWidth: 0, gap: 8 }}>
             <Txt style={{ fontSize: 11, fontWeight: "700", color: palette.muted, letterSpacing: 1 }}>LOCATION & HOURS</Txt>
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}><MapPin size={16} color={palette.muted} style={{ marginTop: 3, flexShrink: 0 }} /><Txt style={{ flex: 1 }}>{address(shop) || "No address provided"}</Txt></View>
+            {(shop.latitude == null || shop.longitude == null) && <Txt style={{ color: palette.warning, fontSize: 12 }}>A map pin is required before approval.</Txt>}
             <View style={[styles.row, { gap: 8 }]}><Clock3 size={15} color={palette.muted} /><Txt style={{ flex: 1, color: palette.muted }}>{shop.openingTime} – {shop.closingTime}</Txt></View>
           </View>
         </View>
@@ -275,7 +276,7 @@ export function AdminShopApplicationsDesign() {
         <View style={{ flexDirection: wide ? "row" : "column", alignItems: wide ? "center" : "stretch", gap: 16, borderTopWidth: 1, borderTopColor: palette.line, paddingTop: 16 }}>
           <Txt style={{ flex: wide ? 1 : undefined, color: palette.muted, fontSize: 12 }}>{shop.approvalStatus === "Approved" ? "Visible to customers and accepting bookings." : shop.approvalStatus === "Pending" ? "Hidden from customers until approved." : shop.approvalStatus === "Suspended" ? "Shop access is paused. Restore to enable bookings." : "The owner can update and resubmit this application."}</Txt>
           <View style={{ flexDirection: compact ? "column" : "row", flexWrap: "wrap", gap: 10 }}>
-            {(shop.approvalStatus === "Pending" || shop.approvalStatus === "Suspended") && <Button title={shop.approvalStatus === "Suspended" ? "Restore Shop" : "Approve Shop"} color={palette.success} onPress={() => choose(shop, "Approved")} />}
+            {(shop.approvalStatus === "Pending" || shop.approvalStatus === "Suspended") && <Button title={shop.approvalStatus === "Suspended" ? "Restore Shop" : "Approve Shop"} disabled={shop.latitude == null || shop.longitude == null} color={palette.success} onPress={() => choose(shop, "Approved")} />}
             {shop.approvalStatus === "Pending" && <Button title="Reject Application" color={palette.danger} outline onPress={() => choose(shop, "Rejected")} />}
             {shop.approvalStatus === "Approved" && <Button title="Suspend Shop" color={palette.danger} outline onPress={() => choose(shop, "Suspended")} />}
           </View>
@@ -290,10 +291,11 @@ export function AdminShopApplicationsDesign() {
           <Txt style={styles.heading}>{decision?.status === "Approved" ? "Approve shop" : decision?.status === "Rejected" ? "Reject application" : "Suspend shop"}</Txt>
           <Txt>{decision?.shop.shopName}</Txt>
           <Txt style={styles.muted}>{decision?.status === "Approved" ? "The shop will be listed for customers and shop mode will be enabled." : "The shop will stay hidden and shop mode will be locked. The applicant will see your reason."}</Txt>
+          {decision?.status === "Approved" && (decision.shop.latitude == null || decision.shop.longitude == null) && <FormError error="A shop map pin is required before approval. Reject the application with a note asking the applicant to add the pin and resubmit." />}
           {decision?.status === 'Approved' && (decision.shop.requirementsVersion || 0) >= 1 && <ShopRequirementsPanel key={decision.shop.id} shopId={decision.shop.id} admin onReady={onDocumentsReady} />}
           <Field label={decision?.status === "Approved" ? "Note (optional)" : "Reason *"} value={reason} onChangeText={setReason} multiline maxLength={1000} />
           <FormError error={error} />
-          <Button title={decision?.status === "Suspended" ? "Suspend Shop" : decision?.status === "Rejected" ? "Reject Application" : decision?.shop.approvalStatus === "Suspended" ? "Restore Shop" : "Approve Shop"} disabled={decision?.status === 'Approved' && (decision.shop.requirementsVersion || 0) >= 1 && !documentsReady} color={decision?.status === "Approved" ? palette.success : palette.danger} busy={busy} onPress={review} />
+          <Button title={decision?.status === "Suspended" ? "Suspend Shop" : decision?.status === "Rejected" ? "Reject Application" : decision?.shop.approvalStatus === "Suspended" ? "Restore Shop" : "Approve Shop"} disabled={decision?.status === 'Approved' && ((decision.shop.latitude == null || decision.shop.longitude == null) || (decision.shop.requirementsVersion || 0) >= 1 && !documentsReady)} color={decision?.status === "Approved" ? palette.success : palette.danger} busy={busy} onPress={review} />
           <Button title="Cancel" disabled={busy} outline onPress={() => setDecision(null)} />
         </Card>
       </ScrollView>

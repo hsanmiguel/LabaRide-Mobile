@@ -62,7 +62,11 @@ function State({ query }: { query: { isLoading: boolean; error: unknown; refetch
 }
 function Badge({ value }: { value: string }) {
   const palette = usePalette();
-  return <View style={{ alignSelf: 'flex-start', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: palette.soft }}><Txt style={{ color: palette.primary, fontSize: 12, fontWeight: '600' }}>{label(value)}</Txt></View>;
+  const status = /cancel|reject|fail|issue|suspend/i.test(value) ? [palette.danger, palette.dangerSoft]
+    : /complete|ready|approved|received|delivered/i.test(value) ? [palette.successInk, palette.successSoft]
+    : /pending|queue|offered|waiting/i.test(value) ? [palette.warning, palette.warningSoft]
+    : [palette.info, palette.infoSoft];
+  return <View style={{ alignSelf: 'flex-start', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, backgroundColor: status[1] }}><Txt style={{ color: status[0], fontSize: 12, fontWeight: '600' }}>{label(value)}</Txt></View>;
 }
 function useCommand() {
   const cache = useQueryClient();
@@ -182,6 +186,18 @@ export function DeliveryOrderDesign({ id, partner = false }: { id: number; partn
             <Txt style={{ fontWeight: '600', color: palette.primary }}>Clean laundry received by the customer.</Txt>
             {!!order.completedAt && <Txt style={styles.muted}>Completed: {stepStamp(order.completedAt)}</Txt>}
           </>}
+          {currentView && !user?.isAdmin && !partner && order.workflowStatus === 'PickupEnRoute' && !!order.pickupCode && <View accessibilityLabel="Pickup handoff code" style={{ padding: 16, borderRadius: 14, backgroundColor: palette.soft, gap: 4 }}>
+            <Txt style={{ fontSize: 12, fontWeight: '600', color: palette.primary }}>Show this code to the rider at pickup</Txt>
+            <Txt selectable style={{ fontSize: 28, lineHeight: 36, fontWeight: '700', letterSpacing: 4, color: palette.ink }}>{order.pickupCode}</Txt>
+          </View>}
+          {currentView && partner && order.workflowStatus === 'DeliveryAccepted' && !!order.collectionCode && <View accessibilityLabel="Shop collection handoff code" style={{ padding: 16, borderRadius: 14, backgroundColor: palette.soft, gap: 4 }}>
+            <Txt style={{ fontSize: 12, fontWeight: '600', color: palette.primary }}>Give this code to the rider collecting clean laundry</Txt>
+            <Txt selectable style={{ fontSize: 28, lineHeight: 36, fontWeight: '700', letterSpacing: 4, color: palette.ink }}>{order.collectionCode}</Txt>
+          </View>}
+          {currentView && !user?.isAdmin && !partner && order.workflowStatus === 'OutForDelivery' && !!order.deliveryCode && <View accessibilityLabel="Delivery receipt code" style={{ padding: 16, borderRadius: 14, backgroundColor: palette.soft, gap: 4 }}>
+            <Txt style={{ fontSize: 12, fontWeight: '600', color: palette.primary }}>Give this code to the rider when your laundry arrives</Txt>
+            <Txt selectable style={{ fontSize: 28, lineHeight: 36, fontWeight: '700', letterSpacing: 4, color: palette.ink }}>{order.deliveryCode}</Txt>
+          </View>}
           {currentView && !closed && <>
             {next && <View style={{ flexDirection: 'row', gap: 10 }}>
               {partner && order.workflowStatus === 'BookingPending' && <Button title="Decline" outline color={palette.danger} disabled={command.busy} onPress={() => setDeclining(true)} style={{ flex: 1 }} />}
@@ -209,7 +225,7 @@ export function DeliveryOrderDesign({ id, partner = false }: { id: number; partn
         {order.assignments.filter(job => job.stage === (viewedStep === 1 ? 'Pickup' : 'Delivery')).map(job => <View key={job.id} style={{ gap: 4 }}><Txt style={{ fontWeight: '600' }}>{job.rider?.name || 'Assigned rider'}</Txt><Txt style={styles.muted}>{job.status} · {stepStamp(job.updatedAt)}</Txt></View>)}
       </OrderDisclosure>}
       <OrderBentoGrid>
-      <OrderBentoCard title="Order information" subtitle={partner ? 'Customer & collection' : 'Your pickup & delivery'} kind="location">
+      <OrderBentoCard title="Order information" subtitle={partner ? 'Customer & collection' : 'Your pickup & delivery'} kind="location" expandable actionLabel="View details">
         <OrderFact label="Customer">{order.userName}</OrderFact>
         <OrderFact label="Pickup & delivery address">{address(order)}</OrderFact>
         {order.collectionMethod === 'ShopPickup' && order.collectionAddress && <OrderFact label="Laundry collection address">{address(order.collectionAddress)}</OrderFact>}
@@ -221,7 +237,7 @@ export function DeliveryOrderDesign({ id, partner = false }: { id: number; partn
         </View>
         {!!order.notes && <OrderFact label="Order notes">{order.notes}</OrderFact>}
       </OrderBentoCard>
-      <OrderBentoCard title="Order total" subtitle="Current amount & invoice" kind="payment">
+      <OrderBentoCard title="Order total" subtitle="Current amount & invoice" kind="payment" expandable actionLabel="View breakdown">
         <View style={{ padding: 16, borderRadius: 12, backgroundColor: palette.soft, gap: 4 }}>
           <Txt style={{ fontSize: 28, fontWeight: '700', color: palette.primary }}>{money(order.totalAmount)}</Txt>
           <Txt style={{ fontSize: 12, color: palette.primary }}>{order.kiloAmount} kg · {order.serviceName}</Txt>
@@ -229,9 +245,9 @@ export function DeliveryOrderDesign({ id, partner = false }: { id: number; partn
         <Txt style={{ fontSize: 12, color: palette.muted }}>View the invoice for the price breakdown and payment method.</Txt>
         <InvoiceButton orderId={order.id} />
       </OrderBentoCard>
-      {!!order.weightEvidence?.length && <OrderBentoCard title="Measured weight & scale photos" subtitle="Recorded measurements & supporting evidence"><WeightEvidenceCard orderId={id} evidence={order.weightEvidence} /></OrderBentoCard>}
-      <OrderBentoCard title="Laundry handover photos" subtitle="Photos from the assigned rider"><HandoverPhotos orderId={id} /></OrderBentoCard>
-      <OrderBentoCard title="Order history" subtitle={`${order.events.length} recorded updates · Latest first`} kind="history">
+      {!!order.weightEvidence?.length && <OrderBentoCard title="Measured weight & scale photos" subtitle="Recorded measurements & supporting evidence" expandable actionLabel="View evidence"><WeightEvidenceCard orderId={id} evidence={order.weightEvidence} /></OrderBentoCard>}
+      <OrderBentoCard title="Laundry handover photos" subtitle="Photos from the assigned rider" expandable actionLabel="View photos"><HandoverPhotos orderId={id} /></OrderBentoCard>
+      <OrderBentoCard title="Order history" subtitle={`${order.events.length} recorded updates · Latest first`} kind="history" expandable actionLabel="View history">
         {order.events.length ? <OrderActivity count={3} total={order.events.length}>{[...order.events].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).map(event => <View key={event.id} style={{ borderLeftWidth: 2, borderLeftColor: palette.soft, paddingLeft: 12, gap: 3 }}>
           <Txt style={{ fontSize: 13, fontWeight: '600' }}>{label(event.toStatus)}</Txt>{!!event.detail && <Txt style={{ fontSize: 13, color: palette.muted }}>{event.detail}</Txt>}<Txt style={{ color: palette.muted, fontSize: 11 }}>{event.actor.name} · {stepStamp(event.createdAt)}</Txt>
         </View>)}</OrderActivity> : <Txt style={styles.muted}>No updates recorded yet.</Txt>}
@@ -298,8 +314,13 @@ export function RiderDashboardDesign({ history = false, orderId }: { history?: b
   const active = jobs.filter(job => ['Offered', 'Accepted'].includes(job.status));
   const today = new Date().toDateString();
   const completedToday = jobs.filter(job => job.status === 'Completed' && new Date(job.updatedAt).toDateString() === today);
-  const shown = orderId ? jobs.filter(job => job.transactionId === orderId)
-    : (history ? jobs.filter(job => !['Offered', 'Accepted'].includes(job.status)) : active).filter(job => filter === 'All' || job.stage === filter);
+  const shown = (orderId ? jobs.filter(job => job.transactionId === orderId)
+    : (history ? jobs.filter(job => !['Offered', 'Accepted'].includes(job.status)) : active).filter(job => filter === 'All' || job.stage === filter))
+    .sort((a, b) => {
+      if (history) return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+      const stagePriority = (job: Job) => job.status === 'Accepted' ? 0 : 1;
+      return stagePriority(a) - stagePriority(b) || Date.parse(a.createdAt) - Date.parse(b.createdAt);
+    });
   function choose(job: Job, action: string, title: string, response = false) { command.setError(''); setNote(''); setDecision({ job, action, title, response }); }
   async function submit() {
     if (!decision) return;
@@ -364,7 +385,7 @@ export function RiderDashboardDesign({ history = false, orderId }: { history?: b
       </>}
       {!!command.error && !decision && <Txt accessibilityRole="alert" style={{ color: palette.danger }}>{command.error}</Txt>}
       {orderId ? <Section title={'Order #' + orderId} action="Show all jobs" onPress={() => router.replace('/rider/jobs')} /> : <TabsRow items={['All', 'Pickup', 'Delivery']} value={filter} onChange={setFilter} />}
-      <View style={{ gap: 5 }}><Txt style={styles.heading}>{history ? 'Past assignments' : 'My deliveries'} ({shown.length})</Txt><Txt style={styles.muted}>Select an order card for full details, trip progress, maps and handover photos.</Txt></View>
+      <View style={{ gap: 5 }}><Txt style={styles.heading}>{history ? 'Past assignments' : 'My deliveries'} ({shown.length})</Txt><Txt style={styles.muted}>{history ? 'Most recently updated trips appear first.' : 'Accepted trips appear first. Open a trip for its next step, route, contact and handover actions.'}</Txt></View>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 16 }}>
         {shown.map(job => <Pressable key={job.id} testID={`rider-job-card-${job.id}`} accessibilityRole="button" accessibilityLabel={`View ${job.stage.toLowerCase()} order #${job.transactionId} details`} onPress={() => { command.setError(''); setSelectedId(job.id); }} style={({ pressed }) => ({ width: width >= 900 ? '48.8%' : '100%', opacity: pressed ? 0.8 : 1 })}>
           <RiderJobSummary job={job} />

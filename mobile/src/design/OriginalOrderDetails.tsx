@@ -87,7 +87,7 @@ export function OriginalOrderDetails({ order, partner = false, primaryAction, bo
       </Card>
       {!!estimateEditor && <View style={{ display: currentView ? "flex" : "none" }}><OrderBentoGrid><OrderBentoCard title="Ready time estimate" subtitle={order.estimatedReadyAt ? timestamp(order.estimatedReadyAt) : 'No ready time shared yet'} kind="history" expandable actionLabel="Edit ready time">{estimateEditor}</OrderBentoCard></OrderBentoGrid></View>}
       <OrderBentoGrid>
-      <OrderBentoCard title="Order information" subtitle={partner ? "Customer Details" : "Your pickup & delivery"} kind="location">
+      <OrderBentoCard title="Order information" subtitle={partner ? "Customer Details" : "Your pickup & delivery"} kind="location" expandable actionLabel="View details">
         <OrderFact label={partner ? `Customer · #${order.userId}` : 'Customer'}>{order.userName}</OrderFact>
         {partner && !!order.userPhone && <OrderFact label="Contact">{order.userPhone}</OrderFact>}
         <OrderFact label="Pickup & delivery address">{address(order)}</OrderFact><DeliveryDetails value={order} />
@@ -96,19 +96,19 @@ export function OriginalOrderDetails({ order, partner = false, primaryAction, bo
         {!!order.shop?.address && <Txt style={{ fontSize: 13, color: palette.muted }}>{order.shop.address}</Txt>}
         {!!order.shop?.contactNumber && <OrderFact label="Shop contact">{order.shop.contactNumber}</OrderFact>}
       </OrderBentoCard>
-      <OrderBentoCard title="Laundry details" subtitle={`${Number(order.kiloAmount)} kg · ${order.serviceName}`}>
+      <OrderBentoCard title="Laundry details" subtitle={`${Number(order.kiloAmount)} kg · ${order.serviceName}`} expandable actionLabel="View details">
         <OrderFact label="Items">
         {order.items?.length ? order.items.map(item => <PriceRow key={item.itemName} label={item.itemName} value={`×${item.quantity}`} />) : <Txt style={styles.muted}>No items listed</Txt>}
         </OrderFact>
         {!!order.notes && <OrderFact label={progress.cancelled ? "Cancellation reason" : "Order notes"}>{order.notes}</OrderFact>}
       </OrderBentoCard>
-      <OrderBentoCard title="Payment information" subtitle="Price breakdown & payment method" kind="payment">
+      <OrderBentoCard title="Payment information" subtitle="Price breakdown & payment method" kind="payment" expandable actionLabel="View breakdown">
         <View style={{ borderRadius: 12, backgroundColor: palette.soft, padding: 14, gap: 3 }}><Txt style={{ fontSize: 11, fontWeight: '600', color: palette.muted }}>ORDER TOTAL</Txt><Txt style={{ fontSize: 26, fontWeight: '700', color: palette.primary }}>{money(order.totalAmount)}</Txt><Txt style={{ fontSize: 12, color: palette.primary }}>{order.paymentMethod}</Txt></View>
         <PriceRow label="Subtotal" value={money(order.subtotal)} /><PriceRow label="Delivery fee" value={money(order.deliveryFee)} />
         <PriceRow label="Voucher discount" value={`−${money(order.voucherDiscount)}`} />
         <InvoiceButton orderId={order.id} />
       </OrderBentoCard>
-      <OrderBentoCard title="Order history" subtitle={`${milestones.length} milestones · Latest first`} kind="history"><OrderActivity count={3} total={milestones.length}>{milestones.map(item => <View key={item.label} style={{ borderLeftWidth: 2, borderLeftColor: palette.soft, paddingLeft: 12, gap: 3 }}>
+      <OrderBentoCard title="Order history" subtitle={`${milestones.length} milestones · Latest first`} kind="history" expandable actionLabel="View history"><OrderActivity count={3} total={milestones.length}>{milestones.map(item => <View key={item.label} style={{ borderLeftWidth: 2, borderLeftColor: palette.soft, paddingLeft: 12, gap: 3 }}>
         <Txt style={{ fontSize: 13, fontWeight: "600" }}>{item.label}</Txt><Txt style={{ fontSize: 11, color: palette.muted }}>{timestamp(item.value)}</Txt>
       </View>)}</OrderActivity></OrderBentoCard>
       </OrderBentoGrid>

@@ -115,6 +115,24 @@ test("customer mode remains separate, including deliberate mode switches", () =>
   );
 });
 
+test("guest Browse shops opens the public shop directory directly", () => {
+  const authScreens = fs.readFileSync(path.resolve(__dirname, "../src/design/AuthScreens.tsx"), "utf8");
+  const panelAccess = fs.readFileSync(path.resolve(__dirname, "../src/navigation/PanelAccess.tsx"), "utf8");
+  const ui = fs.readFileSync(path.resolve(__dirname, "../src/design/ui.tsx"), "utf8");
+  assert.match(authScreens, /title="Browse shops"[^\n]*router\.replace\("\/\(user\)\/shops"\)/);
+  assert.match(panelAccess, /<Stack\.Screen name="\(user\)\/shops"\s*\/>/);
+  assert.match(panelAccess, /<Stack\.Screen name="\(user\)\/shops\/\[id\]"\s*\/>/);
+  assert.match(ui, /user \? "\/\(user\)\/home" : "\/\(onboarding\)\/welcome"/);
+  assert.equal(getPathFromState(getStateFromPath("/(user)/shops", config), config), "/shops");
+});
+
+test("shop service cards use balanced desktop and phone grid widths", () => {
+  const source = fs.readFileSync(path.resolve(__dirname, "../src/design/UserScreens.tsx"), "utf8");
+  assert.match(source, /testID="shop-service-grid"/);
+  assert.match(source, /width >= 1200 \? '31\.8%' : width >= 700 \? '48\.5%' : '100%'/);
+  assert.match(source, /style=\{\{ alignSelf: 'flex-start', minWidth: 148 \}\}/);
+});
+
 test("admin dashboard has its own navigator and retains its URL on refresh", () => {
   const state = getStateFromPath("/admin", config);
   assert.deepEqual(focusedRoutes(state), ["admin", "index"]);

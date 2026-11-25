@@ -35,10 +35,10 @@ test('distance is primary, unknown positions are last, and missing origin uses w
   assert.equal(dispatchStage('Washing'), null);
 });
 
-test('pickup and delivery handoffs require distinct proof types and preserve stage order', () => {
-  assert.equal(jobTransitions.pickedUp.proof, 'pickupCode');
-  assert.equal(jobTransitions.collected.proof, 'collectionCode');
-  assert.equal(jobTransitions.delivered.proof, 'deliveryCode');
+test('pickup and delivery handoffs use trip completion proof and preserve stage order', () => {
+  assert.equal(jobTransitions.pickedUp.proof, undefined);
+  assert.equal(jobTransitions.collected.proof, undefined);
+  assert.equal(jobTransitions.delivered.proof, undefined);
   assert.equal(jobTransitions.droppedOff.to, partnerTransitions.receive.from);
   assert.equal(partnerTransitions.receive.to, partnerTransitions.wash.from);
   assert.equal(partnerTransitions.wash.to, partnerTransitions.dry.from);

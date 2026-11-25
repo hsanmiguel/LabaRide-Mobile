@@ -14,6 +14,9 @@ import {
   Info,
   ShoppingBasket,
   Heart,
+  Truck,
+  WashingMachine,
+  Receipt,
 } from "lucide-react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuthStore } from "../store/authStore";
@@ -414,8 +417,14 @@ export function ShopInfoDesign({
         <View style={{ flex: desktop ? 1 : undefined, minWidth: 0, gap: 12, paddingVertical: 8 }}>
           <Txt style={styles.title}>{shop.shopName}</Txt>
           <Txt style={{ color: availability.isOpen ? palette.primary : palette.muted }}>{availability.message}</Txt>
-          <Txt style={styles.muted}>Delivery area: {serviceAreaLabel(shop, "delivery")}</Txt>
-          <Txt style={styles.muted}>{shop.pickupEnabled ? `Laundry collection area: ${serviceAreaLabel(shop, "pickup")}` : "Laundry collection is not offered"}</Txt>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+            <View accessibilityLabel={`Delivery available: ${serviceAreaLabel(shop, "delivery")}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 12, backgroundColor: palette.soft }}>
+              <Truck size={16} color={palette.primary} /><Txt style={{ color: palette.primary, fontSize: 12, fontWeight: '600' }}>Delivery · {serviceAreaLabel(shop, "delivery")}</Txt>
+            </View>
+            <View accessibilityLabel={shop.pickupEnabled ? `Laundry pickup available: ${serviceAreaLabel(shop, "pickup")}` : 'Laundry pickup not offered'} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 12, backgroundColor: shop.pickupEnabled ? palette.soft : palette.surface }}>
+              <ShoppingBasket size={16} color={shop.pickupEnabled ? palette.primary : palette.muted} /><Txt style={{ color: shop.pickupEnabled ? palette.primary : palette.muted, fontSize: 12, fontWeight: '600' }}>{shop.pickupEnabled ? `Pickup · ${serviceAreaLabel(shop, "pickup")}` : 'Pickup not offered'}</Txt>
+            </View>
+          </View>
           <Txt style={{ color: palette.muted, fontSize: 12 }}>Service areas use straight-line distance from the shop. Collecting finished laundry at the shop has no distance limit.</Txt>
         </View>
         </View>
@@ -440,32 +449,38 @@ export function ShopInfoDesign({
         </View>
         <ShopLocationCard shop={shop} />
         <Section title="Services & prices" />
-        <View style={{ flexDirection: desktop ? 'row' : 'column', flexWrap: 'wrap', gap: 16 }}>
+        <View testID="shop-service-grid" style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', gap: 16 }}>
         {(shop.services || []).map((service) => (
-          <Card key={service.id} style={{ flexGrow: 1, flexBasis: desktop ? '47%' : undefined, minWidth: 0 }}>
-            <View style={[styles.between, { gap: 12 }]}>
-              <Txt style={{ flex: 1, fontWeight: "600", color: palette.navy }}>
-                {service.serviceName}
-              </Txt>
-              <Txt style={{ color: palette.navy }}>
-                {servicePriceLabel(service)}
-              </Txt>
+          <Card key={service.id} testID={`shop-service-${service.id}`} style={{ flexGrow: (shop.services || []).length === 1 ? 1 : 0, flexBasis: (shop.services || []).length === 1 ? '100%' : width >= 1200 ? '31.8%' : width >= 700 ? '48.5%' : '100%', minWidth: 0, justifyContent: 'space-between', padding: width < 400 ? 16 : 20 }}>
+            <View style={{ gap: 14 }}>
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+                  <View style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: palette.soft }}><WashingMachine size={18} color={palette.primary} /></View>
+                  <Txt style={{ flex: 1, fontSize: 16, fontWeight: "700", color: palette.ink }}>{service.serviceName}</Txt>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginLeft: 43 }}>
+                  <Receipt size={15} color={palette.primary} />
+                  <Txt style={{ color: palette.primary, fontSize: 14, fontWeight: '600' }}>{servicePriceLabel(service)}</Txt>
+                </View>
+              </View>
+              <Button
+                title={availability.isOpen ? "Place order" : "Shop closed"}
+                compact
+                disabled={!availability.isOpen}
+                style={{ alignSelf: 'flex-start', minWidth: 148 }}
+                icon={<ShoppingBasket size={17} color="white" />}
+                onPress={() => {
+                  if (!shop || !shopAvailability(shop).isOpen) return;
+                  if (!useAuthStore.getState().user) {
+                    router.push({ pathname: "/(auth)/login", params: { returnShopId: String(id) } });
+                    return;
+                  }
+                  draft.start(shop, service, [service.id]);
+                  if (inShop) openFlow("order-summary", { id: String(id) });
+                  else router.push({ pathname: "/(user)/order/confirm", params: { shopId: String(id) } });
+                }}
+              />
             </View>
-            <Button
-              title={availability.isOpen ? "Place order" : "Shop closed"}
-              compact
-              disabled={!availability.isOpen}
-              onPress={() => {
-                if (!shop || !shopAvailability(shop).isOpen) return;
-                if (!useAuthStore.getState().user) {
-                  router.push({ pathname: "/(auth)/login", params: { returnShopId: String(id) } });
-                  return;
-                }
-                draft.start(shop, service, [service.id]);
-                if (inShop) openFlow("order-summary", { id: String(id) });
-                else router.push({ pathname: "/(user)/order/confirm", params: { shopId: String(id) } });
-              }}
-            />
           </Card>
         ))}
         </View>

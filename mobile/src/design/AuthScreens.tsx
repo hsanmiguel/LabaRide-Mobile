@@ -37,9 +37,43 @@ import { signupError, validBirthdate } from "./form-values";
 
 export function OnboardingScreen({ how = false }: { how?: boolean }) {
   const palette = usePalette();
+  const { width, height } = useWindowDimensions();
+  const desktop = width >= 900;
+  const steps = ["Book a Service", "Rider Pickup", "Fresh Delivery"];
+  const actions = <View style={{ gap: 10, paddingBottom: desktop ? 24 : 28 }}>
+    <Button title="Browse shops" color="white" textColor={palette.primary} onPress={() => router.replace("/(user)/shops")} style={desktop ? { alignSelf: "center", width: "100%", maxWidth: 520 } : undefined} />
+    <View style={[styles.between, { flexWrap: "wrap", justifyContent: "center" }]}>
+      <Pressable accessibilityRole="button" onPress={() => router.push("/(auth)/login")} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }}>
+        <Txt style={{ color: "rgba(255,255,255,.9)", fontSize: 13 }}>Sign in or create an account</Txt>
+      </Pressable>
+      <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: "/(auth)/login", params: { intent: "shop" } })} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }}>
+        <Txt style={{ color: "rgba(255,255,255,.9)", fontSize: 13 }}>Register a laundry shop</Txt>
+      </Pressable>
+      {!how && <Pressable accessibilityRole="button" onPress={() => go("how-it-works")} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }}>
+        <Txt style={{ color: "rgba(255,255,255,.7)", fontSize: 13 }}>How it works</Txt>
+      </Pressable>}
+    </View>
+  </View>;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: palette.welcome }}>
-      <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 60 }}>
+      <View style={{ flex: 1, width: "100%", maxWidth: desktop ? 1440 : undefined, alignSelf: "center", paddingHorizontal: desktop ? 56 : 24, paddingTop: desktop ? 28 : 60 }}>
+        {desktop ? <>
+          <View style={{ flex: 1, minHeight: 0, flexDirection: "row", alignItems: "center", gap: 56 }}>
+            <View style={{ flex: 0.9, minWidth: 320, gap: 22, paddingVertical: 32 }}>
+              <Txt style={{ color: "white", fontSize: Math.min(48, Math.max(36, width * 0.035)), lineHeight: 1.15 * Math.min(48, Math.max(36, width * 0.035)), fontWeight: "700" }}>
+                {how ? "How It Works" : <>Welcome to{"\n"}LabaRide!</>}
+              </Txt>
+              {how ? <View style={{ gap: 18 }}>{steps.map((text, index) => <View key={text} style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: "rgba(255,255,255,.16)", borderWidth: 1, borderColor: "rgba(255,255,255,.35)", alignItems: "center", justifyContent: "center" }}><Txt style={{ color: "white", fontWeight: "700" }}>{index + 1}</Txt></View>
+                <Txt style={{ color: "white", fontSize: 19, fontWeight: "500" }}>{text}</Txt>
+              </View>)}</View> : <Txt style={{ color: "white", fontSize: 18, lineHeight: 28, maxWidth: 460 }}>Find local laundry shops and manage your laundry in one place.</Txt>}
+            </View>
+            <View style={{ flex: 1.1, minWidth: 0, height: Math.min(height * 0.72, 700), justifyContent: "center", alignItems: "center" }}>
+              <Asset name={how ? "how.png" : "welcome.png"} style={{ width: "100%", height: "100%", maxWidth: 760 }} />
+            </View>
+          </View>
+          {actions}
+        </> : <>
         <Txt
           style={{
             color: "white",
@@ -52,7 +86,7 @@ export function OnboardingScreen({ how = false }: { how?: boolean }) {
         </Txt>
         {how ? (
           <View style={{ marginTop: 20, gap: 10 }}>
-            {["Book a Service", "Rider Pickup", "Fresh Delivery"].map(
+            {steps.map(
               (text) => (
                 <View key={text} style={styles.row}>
                   <View
@@ -75,26 +109,14 @@ export function OnboardingScreen({ how = false }: { how?: boolean }) {
             Find local laundry shops and manage your laundry in one place.
           </Txt>
         )}
-        <View style={{ flex: 1, marginVertical: 40, justifyContent: "center" }}>
+        <View style={{ flex: 1, minHeight: 180, marginVertical: 40, justifyContent: "center" }}>
           <Asset
             name={how ? "how.png" : "welcome.png"}
             style={{ width: "100%", height: "100%" }}
           />
         </View>
-        <View style={{ gap: 10, paddingBottom: 28 }}>
-          <Button title="Browse shops" color="white" textColor={palette.primary} onPress={() => router.replace("/(user)/home")} />
-          <View style={[styles.between, { flexWrap: "wrap", justifyContent: "center" }]}>
-            <Pressable accessibilityRole="button" onPress={() => router.push("/(auth)/login")} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }}>
-              <Txt style={{ color: "rgba(255,255,255,.9)", fontSize: 13 }}>Sign in or create an account</Txt>
-            </Pressable>
-            <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: "/(auth)/login", params: { intent: "shop" } })} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }}>
-              <Txt style={{ color: "rgba(255,255,255,.9)", fontSize: 13 }}>Register a laundry shop</Txt>
-            </Pressable>
-            {!how && <Pressable accessibilityRole="button" onPress={() => go("how-it-works")} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }}>
-              <Txt style={{ color: "rgba(255,255,255,.7)", fontSize: 13 }}>How it works</Txt>
-            </Pressable>}
-          </View>
-        </View>
+        {actions}
+        </>}
       </View>
     </SafeAreaView>
   );

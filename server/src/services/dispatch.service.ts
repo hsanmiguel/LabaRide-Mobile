@@ -18,13 +18,13 @@ export const AUTOMATIC_DISPATCH_ENABLED = false;
 export const confirmationCode = () => String(randomInt(100000, 1000000));
 export const openAssignments = ['Offered', 'Accepted'];
 export const claimableStatuses = ['PickupQueued', 'ReadyForDelivery'];
-export const jobTransitions: Record<string, { from: string; to: string; stage: string; proof?: 'pickupCode' | 'collectionCode' | 'deliveryCode'; done?: boolean }> = {
+export const jobTransitions: Record<string, { from: string; to: string; stage: string; done?: boolean }> = {
   enRoute: { from: 'PickupAccepted', to: 'PickupEnRoute', stage: 'Pickup' },
-  pickedUp: { from: 'PickupEnRoute', to: 'LaundryPickedUp', stage: 'Pickup', proof: 'pickupCode' },
+  pickedUp: { from: 'PickupEnRoute', to: 'LaundryPickedUp', stage: 'Pickup' },
   droppedOff: { from: 'LaundryPickedUp', to: 'AtPartner', stage: 'Pickup', done: true },
-  collected: { from: 'DeliveryAccepted', to: 'CleanLaundryCollected', stage: 'Delivery', proof: 'collectionCode' },
+  collected: { from: 'DeliveryAccepted', to: 'CleanLaundryCollected', stage: 'Delivery' },
   outForDelivery: { from: 'CleanLaundryCollected', to: 'OutForDelivery', stage: 'Delivery' },
-  delivered: { from: 'OutForDelivery', to: 'Delivered', stage: 'Delivery', proof: 'deliveryCode', done: true },
+  delivered: { from: 'OutForDelivery', to: 'Delivered', stage: 'Delivery', done: true },
 };
 export const partnerTransitions: Record<string, { from: string; to: string }> = {
   receive: { from: 'AtPartner', to: 'LaundryReceived' },

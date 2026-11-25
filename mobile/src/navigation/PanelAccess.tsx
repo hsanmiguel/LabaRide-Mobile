@@ -9,8 +9,15 @@ export function PanelAccess() {
   const application = useAuthStore(state => state.user?.riderApplicationStatus);
   return <Stack screenOptions={{ headerShown: false }}>
     <Stack.Screen name="(auth)/login" />
+    <Stack.Screen name="(user)/shops" />
+    <Stack.Screen name="(user)/shops/[id]" />
     <Stack.Protected guard={!!user && !isAdmin && !isRider && !application}>
-      <Stack.Screen name="(user)" />
+      <Stack.Screen name="(user)/home" />
+      <Stack.Screen name="(user)/activities" />
+      <Stack.Screen name="(user)/profile" />
+      <Stack.Screen name="(user)/order/[shopId]" />
+      <Stack.Screen name="(user)/order/confirm" />
+      <Stack.Screen name="(user)/order/tracking/[id]" />
       <Stack.Screen name="shop" />
     </Stack.Protected>
     <Stack.Screen name="(flows)/[flow]" />

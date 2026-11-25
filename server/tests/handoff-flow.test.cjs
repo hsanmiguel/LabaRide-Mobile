@@ -47,7 +47,7 @@ test('completion requires a saved destination photo for this exact order, assign
   }
 });
 
-test('legacy completion actions cannot bypass destination proof requirements', async () => {
+test('legacy completion actions require destination photos but no longer require handoff codes', async () => {
   for (const [state, stage, action, code] of [
     ['LaundryPickedUp', 'Pickup', 'droppedOff'], ['OutForDelivery', 'Delivery', 'delivered', '123456'],
   ]) {
@@ -55,6 +55,8 @@ test('legacy completion actions cannot bypass destination proof requirements', a
     f.order.deliveryCode = '123456'; f.photos.length = 0;
     assert.equal((await f.act(3, action, 0, code ? { code } : {})).statusCode, 400);
     assert.equal(f.order.assignments[0].status, 'Accepted');
+    f.photos.push({ id: 1, transactionId: f.order.id, assignmentId: 10, riderId: 3, kind: stage === 'Pickup' ? 'ShopDropoff' : 'CustomerDelivery' });
+    assert.equal(await f.act(3, action, f.order.workflowVersion), undefined);
   }
 });
 

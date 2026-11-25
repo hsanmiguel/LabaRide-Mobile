@@ -10,6 +10,7 @@ import { flutterAssets } from "./assets";
 import { interfaceIcons, actionIcons, sectionIcons } from "./icons";
 import { usePalette } from "./theme";
 import { useWebAccessibility } from "./web-accessibility";
+import { useAuthStore } from "../store/authStore";
 import { BrandMark } from './BrandMark';
 import type { Service } from "./data";
 export { usePalette } from "./theme";
@@ -96,7 +97,8 @@ export function Field({ label, password = false, suffix, style, appearance = "ou
 export function Header({ title, dark = false, back = true, right, branded = false, maxWidth = 1200 }: { title: string; dark?: boolean; back?: boolean; right?: React.ReactNode; branded?: boolean; maxWidth?: number }) {
   const palette = usePalette();
   const segments = useSegments() as string[];
-  const home = segments[0] === "shop" ? "/shop/home" : "/(user)/home";
+  const user = useAuthStore(state => state.user);
+  const home = segments[0] === "shop" ? "/shop/home" : user ? "/(user)/home" : "/(onboarding)/welcome";
   return <View style={{ backgroundColor: dark ? palette.primary : "white", borderBottomWidth: 1, borderBottomColor: palette.line }}>
     <View style={{ width: "100%", maxWidth, alignSelf: "center", minHeight: 72, paddingHorizontal: maxWidth > 1200 ? 32 : 20, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 12 }}>
       {back && <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.canGoBack() ? router.back() : router.replace(home)}

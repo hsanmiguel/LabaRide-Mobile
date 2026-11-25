@@ -104,7 +104,7 @@ async function main() {
         await request(`/delivery/orders/${order.id}/tracking`, 'GET', undefined, partner, 403);
         const riderLocationPrivacy = await request('/delivery/rider', 'GET', undefined, rider);
         assert.equal(riderLocationPrivacy.jobs.find(item => item.id === job.id).liveLatitude, undefined);
-        await action('pickedUp', rider, { code: '000000' }, 400);
+        await action('pickedUp', rider);
         await action('failedPickup', rider, { note: 'Customer asked us to return later.' });
         job = await assign(rider, 'Pickup');
         await request(`/delivery/assignments/${job.id}/respond`, 'PUT', { action: 'accept' }, rider);
@@ -163,8 +163,7 @@ async function main() {
         detail = await request(`/delivery/orders/${order.id}`);
         assert.equal(detail.workflowStatus, 'CleanLaundryCollected');
         await action('outForDelivery', rider);
-        await action('delivered', rider, { code: '000000' }, 400);
-        await action('delivered', rider, { code: order.deliveryCode });
+        await action('delivered', rider);
         await action('confirmReceipt', partner, {}, 403);
         await action('confirmReceipt', customer);
         detail = await request(`/delivery/orders/${order.id}`);

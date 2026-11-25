@@ -433,7 +433,8 @@ export class DeliveryController {
           const transition = jobTransitions[body.action];
           if (!req.user!.isRider || !job || !transition || job.stage !== transition.stage) fail('Only the assigned rider can perform this action', 403);
           if (order.workflowStatus !== transition.from) fail('Complete the previous delivery step first');
-          if (transition.proof && body.code !== order[transition.proof]) fail('The confirmation code is incorrect', 400);
+          // Destination photos provide an auditable handoff record; no one needs to
+          // exchange a confirmation code to advance a rider trip.
           if (transition.done) {
             await requireCompletionPhoto(tx, job, id);
             await tx.deliveryAssignment.update({ where: { id: job.id }, data: { status: 'Completed', completedAt: new Date(), ...clearedRiderLocation } });

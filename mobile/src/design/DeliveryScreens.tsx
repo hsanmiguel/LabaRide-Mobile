@@ -186,18 +186,6 @@ export function DeliveryOrderDesign({ id, partner = false }: { id: number; partn
             <Txt style={{ fontWeight: '600', color: palette.primary }}>Clean laundry received by the customer.</Txt>
             {!!order.completedAt && <Txt style={styles.muted}>Completed: {stepStamp(order.completedAt)}</Txt>}
           </>}
-          {currentView && !user?.isAdmin && !partner && order.workflowStatus === 'PickupEnRoute' && !!order.pickupCode && <View accessibilityLabel="Pickup handoff code" style={{ padding: 16, borderRadius: 14, backgroundColor: palette.soft, gap: 4 }}>
-            <Txt style={{ fontSize: 12, fontWeight: '600', color: palette.primary }}>Show this code to the rider at pickup</Txt>
-            <Txt selectable style={{ fontSize: 28, lineHeight: 36, fontWeight: '700', letterSpacing: 4, color: palette.ink }}>{order.pickupCode}</Txt>
-          </View>}
-          {currentView && partner && order.workflowStatus === 'DeliveryAccepted' && !!order.collectionCode && <View accessibilityLabel="Shop collection handoff code" style={{ padding: 16, borderRadius: 14, backgroundColor: palette.soft, gap: 4 }}>
-            <Txt style={{ fontSize: 12, fontWeight: '600', color: palette.primary }}>Give this code to the rider collecting clean laundry</Txt>
-            <Txt selectable style={{ fontSize: 28, lineHeight: 36, fontWeight: '700', letterSpacing: 4, color: palette.ink }}>{order.collectionCode}</Txt>
-          </View>}
-          {currentView && !user?.isAdmin && !partner && order.workflowStatus === 'OutForDelivery' && !!order.deliveryCode && <View accessibilityLabel="Delivery receipt code" style={{ padding: 16, borderRadius: 14, backgroundColor: palette.soft, gap: 4 }}>
-            <Txt style={{ fontSize: 12, fontWeight: '600', color: palette.primary }}>Give this code to the rider when your laundry arrives</Txt>
-            <Txt selectable style={{ fontSize: 28, lineHeight: 36, fontWeight: '700', letterSpacing: 4, color: palette.ink }}>{order.deliveryCode}</Txt>
-          </View>}
           {currentView && !closed && <>
             {next && <View style={{ flexDirection: 'row', gap: 10 }}>
               {partner && order.workflowStatus === 'BookingPending' && <Button title="Decline" outline color={palette.danger} disabled={command.busy} onPress={() => setDeclining(true)} style={{ flex: 1 }} />}

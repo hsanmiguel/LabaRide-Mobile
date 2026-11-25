@@ -10,12 +10,7 @@ function notificationScope(req: AuthRequest) {
     : { shopMode: req.query.shopMode === 'true', audience: { notIn: ['rider', 'admin'] } }) };
 }
 
-export function riderHandoff(order: { workflowStatus: string | null; pickupCode: string | null; collectionCode: string | null; deliveryCode: string | null; assignments: { riderId: number; status: string; stage: string }[] }, userId: number) {
-  const job = order.assignments.find(job => job.riderId === userId && job.status === 'Accepted');
-  if (!job) return undefined;
-  if (job.stage === 'Pickup' && ['PickupAccepted', 'PickupEnRoute'].includes(order.workflowStatus || '')) return order.pickupCode ? { label: 'Customer laundry pickup', code: order.pickupCode } : undefined;
-  if (job.stage === 'Delivery' && order.workflowStatus === 'DeliveryAccepted') return order.collectionCode ? { label: 'Clean laundry collection from shop', code: order.collectionCode } : undefined;
-  if (job.stage === 'Delivery' && ['CleanLaundryCollected', 'OutForDelivery'].includes(order.workflowStatus || '')) return order.deliveryCode ? { label: 'Customer delivery receipt', code: order.deliveryCode } : undefined;
+export function riderHandoff(_order: { workflowStatus: string | null; pickupCode: string | null; collectionCode: string | null; deliveryCode: string | null; assignments: { riderId: number; status: string; stage: string }[] }, _userId: number) {
   return undefined;
 }
 

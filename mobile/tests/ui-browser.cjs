@@ -1321,7 +1321,7 @@ async function clickText(text) {
     for (const width of [320,390,768,1440]) {
       await visit('/rider/jobs',width,'Rider dashboard',`rider-jobs-${width}`);
       assert.ok((await evaluate('document.body.innerText')).includes('Accept job'));
-      await clickText('Confirm delivery'); await waitFor('document.body.innerText.includes("6-digit handoff code")');
+      await clickText('Confirm delivery'); await waitFor('document.body.innerText.includes("Confirm delivery")');
       assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
       await clickText('Cancel');
       await visit('/rider/history',width,'Your delivery record');
@@ -2084,3 +2084,4 @@ async function clickText(text) {
   try { if(socket?.readyState===1) socket.send(JSON.stringify({ id: ++nextId, method: 'Browser.close' })); } catch {}
   socket?.close(); browser?.kill(); server.closeAllConnections(); server.close();
 });
+

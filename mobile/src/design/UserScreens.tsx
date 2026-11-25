@@ -13,9 +13,11 @@ import {
   Phone,
   Info,
   ShoppingBasket,
+  Heart,
 } from "lucide-react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuthStore } from "../store/authStore";
+import { emptyFavoriteIds, useShopFavoritesStore } from "./shop-favorites-store";
 import {
   Asset,
   IconButton,
@@ -81,11 +83,16 @@ export function ShopCard({ shop, horizontal = false, onPress, distance }: {
   shop: Shop; horizontal?: boolean; onPress?: () => void; distance?: number;
 }) {
   const palette = usePalette();
+  const user = useAuthStore(state => state.user);
+  const owner = user ? `user:${user.id}` : "guest";
+  const favorite = useShopFavoritesStore(state => (state.byOwner[owner] || []).includes(shop.id));
+  const toggleFavorite = useShopFavoritesStore(state => state.toggle);
   const availability = shopAvailability(shop);
   const { width } = useWindowDimensions();
-  return <Pressable accessibilityRole="button" accessibilityLabel={"View " + shop.shopName}
-    onPress={onPress || (() => router.push({ pathname: "/(user)/shops/[id]", params: { id: String(shop.id) } }))}
-    style={({ pressed }) => ({ width: horizontal ? Math.min(296, width - 72) : undefined, opacity: pressed ? 0.86 : 1 })}>
+  return <View style={{ width: horizontal ? Math.min(296, width - 72) : undefined, position: "relative" }}>
+    <Pressable accessibilityRole="button" accessibilityLabel={"View " + shop.shopName}
+      onPress={onPress || (() => router.push({ pathname: "/(user)/shops/[id]", params: { id: String(shop.id) } }))}
+      style={({ pressed }) => ({ opacity: pressed ? 0.86 : 1 })}>
     <Card style={{ padding: 10, gap: 0, borderRadius: 24 }}>
       <ShopPhoto name={shop.shopName} photoUrl={shop.photoUrl} style={{ width: "100%", height: 180, aspectRatio: undefined }} />
       <View style={{ padding: 8, paddingTop: 16, gap: 10 }}>
@@ -110,7 +117,15 @@ export function ShopCard({ shop, horizontal = false, onPress, distance }: {
         </View>
       </View>
     </Card>
-  </Pressable>;
+    </Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel={favorite ? `Remove ${shop.shopName} from favorites` : `Save ${shop.shopName} to favorites`}
+      accessibilityState={{ selected: favorite }} onPress={() => toggleFavorite(owner, shop.id)}
+      style={({ pressed }) => ({ position: "absolute", top: 18, right: 18, width: 44, height: 44, borderRadius: 22,
+        alignItems: "center", justifyContent: "center", backgroundColor: pressed ? palette.soft : "white", opacity: pressed ? 0.85 : 1,
+        borderWidth: 1, borderColor: favorite ? palette.dangerSoft : palette.line })}>
+      <Heart size={21} color={favorite ? palette.danger : palette.primary} fill={favorite ? palette.danger : "transparent"} />
+    </Pressable>
+  </View>;
 }
 export function UserHomeDesign() {
   const palette = usePalette();
@@ -118,6 +133,8 @@ export function UserHomeDesign() {
   const shops = useShops();
   const profile = useProfile();
   const user = useAuthStore(state => state.user);
+  const owner = user ? `user:${user.id}` : "guest";
+  const favorites = useShopFavoritesStore(state => state.byOwner[owner] || emptyFavoriteIds);
   const deliveryAddress = useLaundryDraft(state => state.address);
   const selectedAddress = deliveryAddress || profile.data;
   const location = address(selectedAddress);
@@ -140,7 +157,8 @@ export function UserHomeDesign() {
     });
   };
   const firstName = (profile.data?.name || user?.name || "").trim().split(/\s+/)[0];
-  const displayed = filter === "nearby" ? nearby.map(item => item.shop) : shops.data || [];
+  const displayed = filter === "nearby" ? nearby.map(item => item.shop) : filter === "favorites"
+    ? (shops.data || []).filter(shop => favorites.includes(shop.id)) : shops.data || [];
   return <Screen back={false}>
     <View style={[styles.stack, { gap: 16 }]}>
       <View style={[styles.row, { alignItems: "flex-start", gap: width < 360 ? 8 : 16 }]}>
@@ -163,7 +181,7 @@ export function UserHomeDesign() {
       <View style={{ gap: 12 }}>
         <Txt style={styles.heading}>Find your laundry care</Txt>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
-          {[{ value: "all", label: "All shops" }, { value: "nearby", label: "Nearby" }].map(item =>
+          {[{ value: "all", label: "All shops" }, { value: "nearby", label: "Nearby" }, { value: "favorites", label: `Favorites${favorites.length ? ` · ${favorites.length}` : ""}` }].map(item =>
             <Pressable key={item.value} accessibilityRole="button" accessibilityState={{ selected: filter === item.value }} onPress={() => setFilter(item.value)}
               style={{ minHeight: 44, paddingHorizontal: 18, justifyContent: "center", borderRadius: 24, borderWidth: 1,
                 borderColor: filter === item.value ? palette.primary : palette.line, backgroundColor: filter === item.value ? palette.primary : "white" }}>
@@ -173,14 +191,15 @@ export function UserHomeDesign() {
       </View>
       <QueryState loading={shops.isLoading} error={shops.error} retry={() => shops.refetch()} />
       {!shops.isLoading && !shops.error && <>
-        <View testID="customer-shop-discovery"><Section title={filter === "nearby" ? "Closest to you" : "Laundry shops"} action="View all" onPress={() => router.push({ pathname: "/(user)/shops", params: filter === "nearby" ? { nearby: "true" } : {} })} />
+        <View testID="customer-shop-discovery"><Section title={filter === "nearby" ? "Closest to you" : filter === "favorites" ? "Your favorite shops" : "Laundry shops"} action="View all" onPress={() => router.push({ pathname: "/(user)/shops", params: filter === "nearby" ? { nearby: "true" } : filter === "favorites" ? { favorites: "true" } : {} })} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingBottom: 4 }}>
             {displayed.slice(0, 8).map(shop => <ShopCard key={shop.id} shop={shop} horizontal
               distance={filter === "nearby" ? nearby.find(item => item.shop.id === shop.id)?.distance : undefined} />)}
           </ScrollView>
           {!displayed.length && <Empty title={!shops.data?.length ? "No shops available yet" : "No matching shops"}
-            message={filter === "nearby" && !point ? "Save a position with your delivery address to discover nearby shops." : "Try another laundry service or browse all shops."}
-            action={filter === "nearby" && !point ? "Choose location" : undefined} onPress={() => go("add-location")} />}
+            message={filter === "favorites" ? "Tap the heart on a shop to save it for quick access." : filter === "nearby" && !point ? "Save a position with your delivery address to discover nearby shops." : "Try another laundry service or browse all shops."}
+            action={filter === "favorites" ? "Browse all shops" : filter === "nearby" && !point ? "Choose location" : undefined}
+            onPress={() => filter === "favorites" ? setFilter("all") : go("add-location")} />}
         </View>
         <View><Section title="Nearby laundry shops" action="View all" onPress={() => router.push({ pathname: "/(user)/shops", params: { nearby: "true" } })} />
           <Txt style={[styles.muted, { marginBottom: 16 }]}>{point ? "Closest to your selected location" : "Set a pinned location to find shops closest to you."}</Txt>
@@ -215,13 +234,21 @@ export function ShopsDesign({
   const shops = useShops();
   const [query, setQuery] = useState("");
   const draft = useLaundryDraft();
-  const { nearby } = useLocalSearchParams<{ nearby?: string }>();
+  const { nearby, favorites: favoritesParam } = useLocalSearchParams<{ nearby?: string; favorites?: string }>();
+  const [discoveryFilter, setDiscoveryFilter] = useState<"all" | "nearby" | "favorites">(nearby === "true" ? "nearby" : favoritesParam === "true" ? "favorites" : "all");
+  const user = useAuthStore(state => state.user);
+  const owner = user ? `user:${user.id}` : "guest";
+  const favorites = useShopFavoritesStore(state => state.byOwner[owner] || emptyFavoriteIds);
   const profile = useProfile();
   const point = coordinates(draft.address || profile.data);
   const nearest = nearbyShops(shops.data || [], draft.address || profile.data);
-  const filtered = (nearby === "true" ? nearest.map(item => item.shop) : shops.data || []).filter((s) =>
-    `${s.shopName} ${address(s)}`.toLowerCase().includes(query.toLowerCase()),
-  );
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const searched = (shops.data || []).filter(shop => [shop.shopName, address(shop), ...(shop.services || []).map(service => service.serviceName)]
+    .some(value => String(value || "").toLocaleLowerCase().includes(normalizedQuery)));
+  const filtered = (discoveryFilter === "nearby" ? nearest.map(item => item.shop)
+    : discoveryFilter === "favorites" ? searched.filter(shop => favorites.includes(shop.id)) : searched)
+    .filter(shop => !normalizedQuery || [shop.shopName, address(shop), ...(shop.services || []).map(service => service.serviceName)]
+      .some(value => String(value || "").toLocaleLowerCase().includes(normalizedQuery)));
   function open(shop: Shop) {
     if (query.trim())
       draft.set({
@@ -238,7 +265,7 @@ export function ShopsDesign({
   }
   return (
     <Screen
-      title={map ? "Explore the map" : search ? "Find a laundry shop" : nearby === "true" ? "Nearby laundry shops" : "All laundry shops"}
+      title={map ? "Explore the map" : search ? "Find a laundry shop" : discoveryFilter === "favorites" ? "Favorite laundry shops" : discoveryFilter === "nearby" ? "Nearby laundry shops" : "All laundry shops"}
       dark={false}
       background={map ? palette.surface : "white"}
       scroll
@@ -263,6 +290,9 @@ export function ShopsDesign({
             />
           </View>
         </View>
+        <TabsRow items={["All shops", "Nearby", `Favorites${favorites.length ? ` (${favorites.length})` : ""}`]}
+          value={discoveryFilter === "all" ? "All shops" : discoveryFilter === "nearby" ? "Nearby" : `Favorites${favorites.length ? ` (${favorites.length})` : ""}`}
+          onChange={value => setDiscoveryFilter(value === "Nearby" ? "nearby" : value.startsWith("Favorites") ? "favorites" : "all")} />
         {map && (
           <View style={{ height: webMap && width >= 1000 ? 380 : 300, flexShrink: 0, borderRadius: 16, overflow: "hidden" }}>
             <LaundryMap shops={filtered} latitude={point?.latitude} longitude={point?.longitude} onSelect={open} />
@@ -292,6 +322,7 @@ export function ShopsDesign({
           error={shops.error}
           retry={() => shops.refetch()}
         />
+        {!shops.isLoading && !shops.error && <Txt accessibilityLiveRegion="polite" style={styles.muted}>{filtered.length} {filtered.length === 1 ? "shop" : "shops"}{normalizedQuery ? ` matching “${query.trim()}”` : ""}</Txt>}
         {webMap ? (
           <View style={{ gap: 16 }}>
             <Txt accessibilityRole="header" style={styles.heading}>{filtered.length} {filtered.length === 1 ? "laundry shop" : "laundry shops"}</Txt>
@@ -324,8 +355,10 @@ export function ShopsDesign({
         )}
         {!shops.isLoading && !shops.error && !filtered.length && (
           <Empty
-            title={query ? "No laundry shops matched" : nearby === "true" ? "No nearby shops to show" : "No laundry shops yet"}
-            message={nearby === "true" ? "Save a current position with your address to find shops with map locations." : "Try a different shop name or location."}
+            title={query ? "No laundry shops matched" : discoveryFilter === "favorites" ? "No favorite shops yet" : discoveryFilter === "nearby" ? "No nearby shops to show" : "No laundry shops yet"}
+            message={discoveryFilter === "favorites" && !query ? "Tap the heart on a shop to save it here for quick access." : discoveryFilter === "nearby" ? "Save a current position with your address to find shops with map locations." : "Try a shop name, service, or area."}
+            action={discoveryFilter === "favorites" && !query ? "Browse all shops" : undefined}
+            onPress={discoveryFilter === "favorites" && !query ? () => setDiscoveryFilter("all") : undefined}
           />
         )}
       </View>
@@ -344,9 +377,9 @@ export function ShopInfoDesign({
   const desktop = width >= 1000;
   const { go: openFlow, inShop } = useFlowNavigation();
   const result = useShop(id);
-  const [tab, setTab] = useState("About");
   const shop = result.data;
   const availability = useShopAvailability(shop);
+  const draft = useLaundryDraft();
   if (!shop)
     return (
       <Screen title="Shop Information">
@@ -380,23 +413,13 @@ export function ShopInfoDesign({
         <ShopPhoto name={shop.shopName} photoUrl={shop.photoUrl} style={desktop ? { width: '40%', height: 300, aspectRatio: undefined, flexShrink: 0 } : { width: '100%', maxHeight: 280 }} />
         <View style={{ flex: desktop ? 1 : undefined, minWidth: 0, gap: 12, paddingVertical: 8 }}>
           <Txt style={styles.title}>{shop.shopName}</Txt>
-          <Txt style={styles.muted}>Shop ID: {shop.id}</Txt>
           <Txt style={{ color: availability.isOpen ? palette.primary : palette.muted }}>{availability.message}</Txt>
           <Txt style={styles.muted}>Delivery area: {serviceAreaLabel(shop, "delivery")}</Txt>
           <Txt style={styles.muted}>{shop.pickupEnabled ? `Laundry collection area: ${serviceAreaLabel(shop, "pickup")}` : "Laundry collection is not offered"}</Txt>
           <Txt style={{ color: palette.muted, fontSize: 12 }}>Service areas use straight-line distance from the shop. Collecting finished laundry at the shop has no distance limit.</Txt>
         </View>
         </View>
-        {about && (
-          <TabsRow
-            items={["About", "Pricing"]}
-            value={tab}
-            onChange={setTab}
-            color={palette.navy}
-          />
-        )}
-        {tab === "About" && (
-          <View style={{ flexDirection: desktop ? 'row' : 'column', alignItems: 'stretch', gap: 16 }}>
+        <View style={{ flexDirection: desktop ? 'row' : 'column', alignItems: 'stretch', gap: 16 }}>
             <Card style={{ flex: desktop ? 1 : undefined, minWidth: 0 }}>
               <View style={styles.row}>
                 <Clock color={palette.navy} size={22} />
@@ -414,10 +437,9 @@ export function ShopInfoDesign({
               </View>
               <Txt>{shop.contactNumber || "Not provided"}</Txt>
             </Card>
-          </View>
-        )}
-        {tab === 'About' && <ShopLocationCard shop={shop} />}
-        <Section title={tab === "Pricing" ? "Pricing" : "Services"} />
+        </View>
+        <ShopLocationCard shop={shop} />
+        <Section title="Services & prices" />
         <View style={{ flexDirection: desktop ? 'row' : 'column', flexWrap: 'wrap', gap: 16 }}>
         {(shop.services || []).map((service) => (
           <Card key={service.id} style={{ flexGrow: 1, flexBasis: desktop ? '47%' : undefined, minWidth: 0 }}>
@@ -429,6 +451,21 @@ export function ShopInfoDesign({
                 {servicePriceLabel(service)}
               </Txt>
             </View>
+            <Button
+              title={availability.isOpen ? "Place order" : "Shop closed"}
+              compact
+              disabled={!availability.isOpen}
+              onPress={() => {
+                if (!shop || !shopAvailability(shop).isOpen) return;
+                if (!useAuthStore.getState().user) {
+                  router.push({ pathname: "/(auth)/login", params: { returnShopId: String(id) } });
+                  return;
+                }
+                draft.start(shop, service, [service.id]);
+                if (inShop) openFlow("order-summary", { id: String(id) });
+                else router.push({ pathname: "/(user)/order/confirm", params: { shopId: String(id) } });
+              }}
+            />
           </Card>
         ))}
         </View>
@@ -463,12 +500,16 @@ export function ShopMenuDesign({ id }: { id: number }) {
             </Txt>
           </View>
           <Button
-            title={availability.isOpen ? "Review Order" : "Shop closed"}
+            title={availability.isOpen ? "Place order" : shop?.acceptingOrders === false ? "Orders paused" : "Shop closed"}
             color={palette.navy}
             icon={<ShoppingBasket size={18} color="white" />}
             disabled={!service || !availability.isOpen}
             onPress={() => {
               if (shop && service && shopAvailability(shop).isOpen) {
+                if (!useAuthStore.getState().user) {
+                  router.push({ pathname: "/(auth)/login", params: { returnShopId: String(id) } });
+                  return;
+                }
                 draft.start(shop, service, [service.id]);
                 if (inShop) openFlow("order-summary", { id: String(id) });
                 else router.push({
@@ -501,7 +542,7 @@ export function ShopMenuDesign({ id }: { id: number }) {
                   <View style={{ padding: 20, backgroundColor: palette.soft, borderRadius: 16 }}><Store size={32} color={palette.primary} /></View>
                   <View style={styles.grow}>
                     <Txt style={styles.heading}>{shop.shopName}</Txt>
-                    <Txt style={styles.muted}>ID: {shop.id}</Txt>
+                    {!availability.isOpen && <Txt style={{ color: palette.muted, fontSize: 12 }}>{availability.message}</Txt>}
                     <Txt style={styles.muted}>{address(shop)}</Txt>
                     <Txt style={[styles.muted, { fontSize: 12 }]}>
                       Business Hours: {shop.openingTime || "—"} –{" "}

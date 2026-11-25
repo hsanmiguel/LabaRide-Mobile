@@ -95,6 +95,6 @@ export function RiderNavigationPanel({ stop, destinationKind, onBack }: {
       {route.data.steps.map((step, index) => <View key={index} style={{ flexDirection: 'row', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: palette.line }}><Txt style={{ color: palette.primary, fontWeight: '700' }}>{index + 1}.</Txt><View style={{ flex: 1, gap: 4 }}><Txt>{step.instruction}</Txt><Txt style={styles.muted}>{step.distanceMeters >= 1000 ? `${(step.distanceMeters / 1000).toFixed(1)} km` : `${Math.round(step.distanceMeters)} m`}</Txt></View></View>)}
     </View>}
     {!!token && !!destination && <Button title="Refresh GPS & route" outline busy={locating} onPress={() => setAttempt(value => value + 1)} />}
-    <Txt style={styles.muted}>GPS is used here to calculate your route. To share your position with the customer and shop, turn on Live location sharing in My jobs.</Txt>
+    <Txt style={styles.muted}>GPS is used here to calculate your route. To share your position with the customer and shop, turn on Live location sharing in My deliveries.</Txt>
   </View>;
 }

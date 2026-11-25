@@ -166,6 +166,11 @@ the updated backend. Run pricing checks with `npm run test:pricing` in both
 
 ## Rider pickup and delivery
 
+New rider bookings use server-verified road-distance delivery quotes, with one
+combined pickup/return fee and separate rider earnings after platform commission.
+Configure rates in **Admin > Delivery Operations > Delivery fee settings**.
+See [delivery fee setup and calculation](server/docs/DELIVERY_FEES.md).
+
 New delivery bookings use a rider job board: approved riders go online, browse
 **Available**, and claim a pickup or delivery immediately. Claimed work appears in
 **My jobs**. Customer details unlock after claiming. Admin assignment and

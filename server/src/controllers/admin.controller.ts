@@ -35,6 +35,9 @@ export class AdminController {
         });
         if (!updated.count) return null;
         const shop = await tx.shop.findUniqueOrThrow({ where: { id: shopId }, include: applicationInclude });
+        if (body.status === 'Approved' && (shop.latitude == null || shop.longitude == null)) {
+          fail('Pin the shop location before approving the application.', 400);
+        }
         if (body.status === 'Approved' && shop.requirementsVersion >= 1) {
           const documents = await tx.shopDocument.findMany({ where: { shopId }, select: { type: true, status: true } });
           const missing = shopRequirementsMissing(documents);

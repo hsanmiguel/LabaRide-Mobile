@@ -1,5 +1,35 @@
 # Rider dispatch and laundry delivery
 
+## Current rider actions: accept and complete
+
+Riders accept an available job, transport the laundry, then tap **Confirm completed**.
+The rider details screen has no five-step progress, start/arrival/collection buttons,
+or handover-code fields. Navigation, contact, fees and optional issue reporting remain.
+Pickup and return remain separate jobs. Completion is allowed from the accepted
+state or an existing intermediate state so active jobs can finish after the update.
+
+Before completion, the rider must save a destination handover photo: **Handed over
+to shop** (`ShopDropoff`) for pickup, or **Handed over to customer**
+(`CustomerDelivery`) for return delivery. Choosing an image without saving it does
+not qualify. The button stays disabled until the saved photo list confirms proof
+for the current assignment. The backend checks the order, assignment, rider and
+photo type under the order lock, including legacy completion actions. Reassigned
+jobs require the new assignment's own proof. Recipient confirmations remain separate.
+
+Pickup completion records AtPartner and closes the rider assignment; the shop
+separately confirms receipt to advance to LaundryReceived. Return completion records
+Delivered and closes the assignment; the customer separately confirms receipt to
+complete the order. No arrival or collection notification is invented. Completion
+notifications explicitly state that the rider reported handover and receipt is pending.
+Fees and stage earnings remain unchanged; assignment completion records earnings once.
+
+POST-style action payload on the existing PUT order-action endpoint:
+`{ action: 'completeTrip', expectedVersion }`.
+The server locks the order and validates rider, assignment, stage and version.
+Legacy intermediate action APIs remain for compatibility; descriptions of those
+handover steps below apply to older clients. They are absent from the current UI.
+
+
 ## Access and setup
 
 Apply migrations with `npm run prisma:deploy`, run `npm run prisma:generate`, and

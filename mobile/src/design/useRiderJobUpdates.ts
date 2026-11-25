@@ -43,10 +43,10 @@ export function useRiderJobUpdates(enabled: boolean) {
     if (!enabled || !userId || !hydrated || !query.data?.rider.online || query.isError || query.isFetching || resuming.current || !foreground()) return;
     const fresh = unseenRiderJobs(query.data.jobs, seen).filter(job => !announced?.[riderJobKey(job)]);
     if (!fresh.length) return;
-    const open = () => router.push("/rider");
+    const open = () => router.push("/rider/available");
     markAnnounced(userId, fresh);
     toast.info({ key: "rider-new-jobs", title: fresh.length === 1 ? "New job available" : `${fresh.length} new jobs available`,
-      message: fresh.length === 1 ? `${fresh[0].stage} at ${fresh[0].shopName}.` : "New jobs are ready to claim on your dashboard.",
+      message: fresh.length === 1 ? `${fresh[0].stage} at ${fresh[0].shopName}.` : "New jobs are ready to claim in Order requests.",
       onPress: open, action: { label: "View jobs", onPress: open } });
   }, [enabled, userId, hydrated, seen, announced, markAnnounced, query.data, query.dataUpdatedAt, query.isError, query.isFetching, revision]);
   return hydrated && query.data?.rider.online && !query.isError ? unseenRiderJobs(query.data.jobs, seen).length : 0;

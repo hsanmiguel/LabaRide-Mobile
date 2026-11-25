@@ -7,6 +7,8 @@ import {
   ChevronDown,
   ChevronRight,
   Pencil,
+  Bike,
+  Store,
   Truck,
 } from "lucide-react-native";
 import { router, useFocusEffect } from "expo-router";
@@ -65,9 +67,11 @@ export function draftTotals() {
   const d = useLaundryDraft.getState();
   return orderPricing(d.kilos, d.service, d.shop, d.deliveryType, d.serviceIds);
 }
-export function Totals({ order }: { order?: Order }) {
+export function Totals({ order, quotedFee }: { order?: Order; quotedFee?: number | null }) {
   useLaundryDraft();
   const totals = draftTotals();
+  const fee = quotedFee === undefined ? totals.deliveryFee : quotedFee;
+  const total = totals.subtotal == null || fee == null ? null : Math.round((totals.subtotal + fee - totals.discount) * 100) / 100;
   return (
     <View>
       <PriceRow
@@ -76,7 +80,7 @@ export function Totals({ order }: { order?: Order }) {
       />
       <PriceRow
         label="Delivery Fee"
-        value={money(order?.deliveryFee ?? totals.deliveryFee)}
+        value={order ? money(order.deliveryFee) : fee == null ? "Calculating road distance..." : money(fee)}
       />
       <PriceRow
         label="Voucher"
@@ -85,7 +89,7 @@ export function Totals({ order }: { order?: Order }) {
       <View style={styles.divider} />
       <PriceRow
         label="Total"
-        value={order ? money(order.totalAmount) : totals.total === null ? "Enter laundry weight" : money(totals.total)}
+        value={order ? money(order.totalAmount) : total === null ? "Awaiting quote or weight" : money(total)}
         total
       />
     </View>
@@ -102,6 +106,7 @@ export function CheckoutDesign() {
   const availability = useShopAvailability(draft.shop);
   const profile = useProfile();
   const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState<"details" | "payment">("details");
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -117,7 +122,6 @@ export function CheckoutDesign() {
   useFocusEffect(useCallback(() => cancelCountdown, [cancelCountdown]));
   const [dialog, setDialog] = useState<"address" | "edit-address" | "schedule" | null>(null);
   const [addressSaving, setAddressSaving] = useState(false);
-  const [transportOpen, setTransportOpen] = useState(false);
   const cache = useQueryClient();
   const customerAddress = draft.address || profile.data;
   const deliveryAddress = draft.deliveryType === "Pickup" ? draft.shop : customerAddress;
@@ -125,13 +129,25 @@ export function CheckoutDesign() {
     (draft.deliveryType === "Deliver" ? serviceAreaError(draft.shop, customerAddress, "delivery") : null)
     || (draft.collectionMethod === "ShopPickup" ? serviceAreaError(draft.shop, customerAddress, "pickup") : null) : null;
   const transportOptions: { label: string; description: string; collectionMethod: "Dropoff" | "ShopPickup"; deliveryType: "Deliver" | "Pickup" }[] = [
-    { label: "Pickup & delivery", description: "The shop picks up your dirty laundry and delivers it back clean.", collectionMethod: "ShopPickup", deliveryType: "Deliver" },
-    { label: "Pickup only", description: "The shop picks up your dirty laundry. You collect it at the shop when clean.", collectionMethod: "ShopPickup", deliveryType: "Pickup" },
-    { label: "Delivery only", description: "You drop off your dirty laundry. The shop delivers it back clean.", collectionMethod: "Dropoff", deliveryType: "Deliver" },
-    { label: "I'll handle both trips", description: "You drop off your dirty laundry and collect it at the shop when clean.", collectionMethod: "Dropoff", deliveryType: "Pickup" },
+    { label: "Pickup & delivery", description: "A platform rider collects your laundry and returns it clean.", collectionMethod: "ShopPickup", deliveryType: "Deliver" },
+    { label: "Pickup only", description: "A platform rider collects your laundry. Collect it clean from the shop.", collectionMethod: "ShopPickup", deliveryType: "Pickup" },
+    { label: "Delivery only", description: "Drop off your laundry. A platform rider returns it clean.", collectionMethod: "Dropoff", deliveryType: "Deliver" },
+    { label: "I'll handle both trips", description: "Bring your laundry to the shop and collect it when clean.", collectionMethod: "Dropoff", deliveryType: "Pickup" },
   ];
   const selectedTransport = transportOptions.find(option => option.collectionMethod === (draft.collectionMethod || "Dropoff") && option.deliveryType === draft.deliveryType);
-  const totals = draftTotals();
+  const needsDelivery = draft.collectionMethod === 'ShopPickup' || draft.deliveryType === 'Deliver';
+  const coordinates = (value: typeof customerAddress) => ({ latitude: value?.latitude == null ? undefined : Number(value.latitude), longitude: value?.longitude == null ? undefined : Number(value.longitude) });
+  const quoteInput = { shopId: draft.shop?.id, collectionMethod: draft.collectionMethod || 'Dropoff', deliveryType: draft.deliveryType,
+    ...(draft.deliveryType === 'Deliver' ? coordinates(customerAddress) : {}),
+    ...(draft.collectionMethod === 'ShopPickup' ? { collectionAddress: coordinates(customerAddress) } : {}) };
+  type Quote = { id: string; expiresAt: string; pricing: { deliveryFee: number; pickupKm: number; returnKm: number; distanceKm: number } };
+  const quote = useQuery({ queryKey: ['delivery-quote', user?.id, quoteInput], enabled: !!user && !!draft.shop && needsDelivery,
+    queryFn: () => api.post<Quote>('/transactions/delivery-quote', quoteInput), retry: false, staleTime: Infinity, refetchOnWindowFocus: false });
+  const localTotals = draftTotals();
+  const quotedFee = needsDelivery ? quote.data?.pricing.deliveryFee ?? null : 0;
+  const totals = { ...localTotals, deliveryFee: quotedFee, total: localTotals.subtotal == null || quotedFee == null ? null : Math.round((localTotals.subtotal + quotedFee - localTotals.discount) * 100) / 100 };
+  const detailsKey = JSON.stringify([quoteInput, quote.data?.id, draft.kilos, draft.serviceIds, draft.requestedPickupAt, draft.address, draft.notes, draft.paymentMethod]);
+  useEffect(() => { cancelCountdown(); }, [detailsKey, cancelCountdown]);
   const savedAddresses = useQuery({
     queryKey: ["saved-addresses", user?.id], enabled: !!user,
     queryFn: async () => {
@@ -161,7 +177,12 @@ export function CheckoutDesign() {
   ];
   async function submit(confirmed = false) {
     if (!draft.shop || !draft.service) return;
-    if (!user) { router.push("/(auth)/login"); return; }
+    if (!user) { router.push({ pathname: "/(auth)/login", params: draft.shop ? { returnShopId: String(draft.shop.id) } : {} }); return; }
+    if (needsDelivery && (!quote.data || new Date(quote.data.expiresAt).getTime() <= Date.now())) {
+      setError('Review the delivery fee before confirming your booking.');
+      if (!quote.isFetching) void quote.refetch();
+      return;
+    }
     const currentAvailability = shopAvailability(draft.shop);
     if (!currentAvailability.isOpen) { setError(currentAvailability.message); return; }
     if (submitting.current || busy || countdownTimers.current) return;
@@ -199,6 +220,7 @@ export function CheckoutDesign() {
         kiloAmount: totals.kilos,
         subtotal: totals.subtotal,
         deliveryFee: totals.deliveryFee,
+        ...(needsDelivery ? { deliveryQuoteId: quote.data!.id } : {}),
         voucherDiscount: 0,
         totalAmount: totals.total,
         deliveryType: draft.deliveryType,
@@ -213,7 +235,10 @@ export function CheckoutDesign() {
       draft.clearOrder();
       replaceFlow("order-complete", { id: String(order.id) });
     } catch (error) {
-      if ((error as { error?: { code?: string } })?.error?.code === "PRICE_CHANGED" && draft.shop) {
+      if ((error as { error?: { code?: string } })?.error?.code === 'DELIVERY_QUOTE_CHANGED') {
+        await quote.refetch();
+        setError('Delivery details changed or the quote expired. Review the new delivery fee and confirm again.');
+      } else if ((error as { error?: { code?: string } })?.error?.code === "PRICE_CHANGED" && draft.shop) {
         try {
           const refreshedShop = await api.get<Shop>(`/shops/${draft.shop.id}`);
           const selected = draft.serviceIds.map((id) => refreshedShop.services?.find((service) => service.id === id));
@@ -241,6 +266,22 @@ export function CheckoutDesign() {
       setBusy(false);
     }
   }
+  function continueToPayment() {
+    if (!user) { router.push({ pathname: "/(auth)/login", params: draft.shop ? { returnShopId: String(draft.shop.id) } : {} }); return; }
+    const locationError = addressError(deliveryAddress)
+      || (draft.collectionMethod === "ShopPickup" ? addressError(customerAddress) : null);
+    const scheduleError = draft.collectionMethod !== "ShopPickup" ? null : !draft.requestedPickupAt
+      ? "Choose your requested laundry pickup date and time."
+      : validateDeliveryTime(draft.requestedPickupAt, { ...draft.shop, preparationMinutes: 0 }, Date.now())?.replace(/delivery/gi, "pickup") || null;
+    const validation = !availability.isOpen ? availability.message : totals.kilos === null
+      ? "Enter a weight above 0 kg with up to two decimal places."
+      : totals.pricingError || (totals.subtotal === null || totals.total === null ? "Review the laundry weight and pricing before continuing." : null)
+      || scheduleError || locationError || areaError
+      || (needsDelivery && (!quote.data || new Date(quote.data.expiresAt).getTime() <= Date.now() || quote.isError || quote.isFetching) ? "Wait for a current delivery fee quote before continuing." : null);
+    if (validation) { setError(validation); return; }
+    setError(null);
+    setStep("payment");
+  }
   if (!draft.service)
     return (
       <Screen title="Order Summary">
@@ -249,7 +290,7 @@ export function CheckoutDesign() {
     );
   return (
     <Screen
-      title="Order Summary"
+      title={step === "payment" ? "Payment" : "Order Details"}
       background={palette.surface}
       footer={
         <View style={{ width: "100%", maxWidth: 760, alignSelf: "center" }}>
@@ -260,11 +301,11 @@ export function CheckoutDesign() {
               <Txt style={styles.heading}>{totals.total === null ? "Enter weight" : money(totals.total)}</Txt>
             </View>
             <Button
-              title={user ? availability.isOpen ? "Place Order" : "Shop closed" : "Log In to Place Order"}
+              title={step === "details" ? user ? "Continue to payment" : "Log In to Continue" : user ? availability.isOpen ? "Place Order" : "Shop closed" : "Log In to Place Order"}
               color={palette.navy}
-              onPress={() => submit()}
+              onPress={() => step === "details" ? continueToPayment() : submit()}
               busy={busy}
-              disabled={!!dialog || countdown !== null || (!!user && !availability.isOpen)}
+              disabled={!!dialog || countdown !== null || (!!user && (!availability.isOpen || needsDelivery && (!quote.data || quote.isError || quote.isFetching)))}
             />
           </View>
         </View>
@@ -273,6 +314,7 @@ export function CheckoutDesign() {
       <View style={[styles.stack, { width: "100%", maxWidth: 760, alignSelf: "center" }]}>
         <QueryState loading={profile.isLoading} error={profile.error} retry={() => profile.refetch()} />
         {!availability.isOpen && <View accessibilityRole="alert"><FormError error={availability.message} /></View>}
+        {step === "details" ? <>
         <Card>
           <Section title="Shop & Selected Services" />
           <Txt style={styles.heading}>{draft.shop?.shopName}</Txt>
@@ -297,38 +339,29 @@ export function CheckoutDesign() {
         </Card>
         <Card>
           <Section title="Pickup & Delivery Options" />
-          <Txt style={styles.muted}>Choose how your laundry gets to the shop and back to you.</Txt>
-          <Pressable accessibilityRole="button" accessibilityLabel="Laundry transport"
-            accessibilityState={{ expanded: transportOpen }} accessibilityValue={{ text: selectedTransport?.label }}
-            onPress={() => setTransportOpen(open => !open)}
-            style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, minHeight: 64,
-              borderRadius: 12, borderWidth: 1, borderColor: transportOpen ? palette.primary : palette.line,
-              backgroundColor: pressed ? palette.soft : "white" })}>
-            <View style={styles.grow}>
-              <Txt style={{ fontWeight: "600", color: palette.primary }}>{selectedTransport?.label || "Choose a transport option"}</Txt>
-              {!!selectedTransport && <Txt style={{ fontSize: 12, lineHeight: 18, color: palette.muted, marginTop: 4 }}>{selectedTransport.description}</Txt>}
-            </View>
-            <ChevronDown size={20} color={palette.primary} style={{ transform: [{ rotate: transportOpen ? "180deg" : "0deg" }] }} />
-          </Pressable>
-          {transportOpen && <View accessibilityRole="radiogroup" accessibilityLabel="Laundry transport options"
-            style={{ borderWidth: 1, borderColor: palette.line, borderRadius: 12, overflow: "hidden" }}>
+          <Txt style={styles.muted}>Choose who handles each trip. Rider trips use the platform rider network.</Txt>
+          <View accessibilityRole="radiogroup" accessibilityLabel="Laundry transport options" style={{ gap: 10 }}>
             {transportOptions.filter(option => option.collectionMethod === "Dropoff" || draft.shop?.pickupEnabled).map(option => {
               const selected = (draft.collectionMethod || "Dropoff") === option.collectionMethod && draft.deliveryType === option.deliveryType;
+              const Icon = option.collectionMethod === "ShopPickup" || option.deliveryType === "Deliver" ? Bike : Store;
               return <Pressable key={option.label} accessibilityRole="radio" accessibilityLabel={option.label}
                 accessibilityHint={option.description} accessibilityState={{ checked: selected }}
-                onPress={() => { draft.set({ collectionMethod: option.collectionMethod, deliveryType: option.deliveryType }); setTransportOpen(false); setError(null); }}
-                style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, minHeight: 76,
-                  backgroundColor: selected || pressed ? palette.soft : "white" })}>
-                <View pointerEvents="none" style={{ width: 20, height: 20, borderRadius: 10, borderWidth: selected ? 6 : 1,
-                  borderColor: selected ? palette.primary : palette.muted, backgroundColor: "white" }} />
+                onPress={() => { draft.set({ collectionMethod: option.collectionMethod, deliveryType: option.deliveryType }); setError(null); }}
+                style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, padding: 14, minHeight: 78,
+                  borderRadius: 12, borderWidth: selected ? 2 : 1, borderColor: selected ? palette.primary : palette.line,
+                  backgroundColor: selected ? palette.soft : pressed ? palette.surface : "white" })}>
+                <View style={{ width: 42, height: 42, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: selected ? palette.primary : palette.soft }}>
+                  <Icon size={21} color={selected ? "white" : palette.primary} />
+                </View>
                 <View style={styles.grow}>
                   <Txt style={{ fontWeight: "600", color: selected ? palette.primary : palette.ink }}>{option.label}</Txt>
                   <Txt style={{ fontSize: 12, lineHeight: 18, color: palette.muted, marginTop: 4 }}>{option.description}</Txt>
                 </View>
+                {selected && <CheckCircle2 size={20} color={palette.primary} />}
               </Pressable>;
             })}
-          </View>}
-          {!draft.shop?.pickupEnabled && <Txt style={styles.muted}>This shop does not offer pickup from your address.</Txt>}
+          </View>
+          {!draft.shop?.pickupEnabled && <Txt style={styles.muted}>This shop has not enabled rider pickup. You must bring dirty laundry to the shop. Rider delivery, if selected, covers only the return of clean laundry.</Txt>}
           {draft.collectionMethod === "ShopPickup" && draft.shop && (draft.shop.pickupMaxKm != null || Number(draft.shop.pickupMinKm) > 0) &&
             <Txt style={styles.muted}>Shop pickup range: {serviceAreaLabel(draft.shop, "pickup")}</Txt>}
           {draft.deliveryType === "Deliver" && draft.shop && (draft.shop.deliveryMaxKm != null || Number(draft.shop.deliveryMinKm) > 0) &&
@@ -341,6 +374,11 @@ export function CheckoutDesign() {
               <Button title="Update address & map pin" color={palette.danger} outline onPress={editAddress} />
             </View>}
           </>}
+          {needsDelivery && <View style={{ gap: 8 }}>
+            {quote.data && <Txt style={styles.muted}>Estimated delivery fee: {money(quote.data.pricing.deliveryFee)}</Txt>}
+            {quote.isError && <FormError error={message(quote.error)} />}
+            <Button title="Refresh delivery quote" compact outline busy={quote.isFetching} onPress={() => { void quote.refetch(); }} />
+          </View>}
         </Card>
         <Card>
           <Section title="Laundry Weight" />
@@ -361,6 +399,10 @@ export function CheckoutDesign() {
               {item.loads !== null && !totals.pricingError ? ` · ${item.loads} ${item.loads === 1 ? "load" : "loads"}` : ""}
             </Txt>
           ))}
+          {totals.kilos !== null && totals.packageLoads.some(item => item.loads !== null && item.loads > 1) &&
+            <Txt style={{ color: palette.warning, fontSize: 12, lineHeight: 18 }}>This weight is priced as multiple loads.</Txt>}
+          {needsDelivery && totals.kilos !== null && totals.kilos > 1 &&
+            <Txt style={{ color: palette.warning, fontSize: 12, lineHeight: 18 }}>For larger rider deliveries, confirm vehicle capacity with the shop. Vehicle capacity is not configured in the app.</Txt>}
         </Card>
         <Card>
           <Section title="Turnaround & Updates" />
@@ -384,12 +426,25 @@ export function CheckoutDesign() {
           <Field label="Order Notes (optional)" placeholder="Special instructions for your laundry" multiline
             value={draft.notes} onChangeText={notes => draft.set({ notes })} />
         </Card>
-        <Card>
-          <Section title="Payment Method" />
+        </> : <Card>
+          <Section title="Order summary" />
+          <PriceRow label="Shop" value={draft.shop?.shopName || ""} />
+          <PriceRow label="Service" value={draft.service.serviceName} />
+          <PriceRow label="Laundry weight" value={totals.kilos == null ? "Not set" : `${totals.kilos} kg`} />
+          <PriceRow label="Transport" value={selectedTransport?.label || "Not selected"} />
+          <Section title="Payment method" />
           <PaymentDropdown />
-          <Section title="Fees & Total" />
-          <Totals />
+          <Section title="Fees & total" />
+          <Totals quotedFee={quotedFee} />
+          {needsDelivery && <View style={{ gap: 8 }}>
+            <Txt style={styles.muted}>One combined fee covers your selected pickup and return trips. The fee is confirmed when you place the order.</Txt>
+            {quote.data && <Txt style={styles.muted}>Pickup: {quote.data.pricing.pickupKm.toFixed(2)} km. Return: {quote.data.pricing.returnKm.toFixed(2)} km by road.</Txt>}
+            {quote.isError && <FormError error={message(quote.error)} />}
+            <Button title="Refresh delivery quote" compact outline busy={quote.isFetching} onPress={() => { cancelCountdown(); void quote.refetch(); }} />
+          </View>}
         </Card>
+        }
+        {step === "payment" && <Button title="Back to order details" compact outline onPress={() => { setError(null); setStep("details"); }} />}
       </View>
       <Modal visible={!!dialog} transparent animationType="none" onRequestClose={() => { if (!addressSaving) setDialog(null); }}>
         {dialog && <View style={{ flex: 1, backgroundColor: "#00000070", justifyContent: "center", alignItems: "center", padding: 20 }}>
@@ -506,24 +561,25 @@ export function VouchersDesign() { return <Screen title="Your vouchers"><Empty t
 export function StatusBadge({ status }: { status: Order["status"] }) {
   const palette = usePalette();
   const colors = {
-    Pending: palette.warning,
-    Accepted: palette.primary,
-    Queued: palette.warning,
-    Ready: palette.successInk,
-    Processing: palette.primary,
-    Completed: palette.successInk,
-    Cancelled: palette.danger,
+    Pending: [palette.warning, palette.warningSoft],
+    Accepted: [palette.info, palette.infoSoft],
+    Queued: [palette.warning, palette.warningSoft],
+    Ready: [palette.successInk, palette.successSoft],
+    Processing: [palette.info, palette.infoSoft],
+    Completed: [palette.successInk, palette.successSoft],
+    Cancelled: [palette.danger, palette.dangerSoft],
   };
+  const [color, backgroundColor] = colors[status];
   return (
     <View
       style={{
         borderRadius: 8,
         paddingHorizontal: 10,
         paddingVertical: 5,
-        backgroundColor: `${colors[status]}18`,
+        backgroundColor,
       }}
     >
-      <Txt style={{ color: colors[status], fontSize: 12, fontWeight: "600" }}>
+      <Txt style={{ color, fontSize: 12, fontWeight: "600" }}>
         {status}
       </Txt>
     </View>

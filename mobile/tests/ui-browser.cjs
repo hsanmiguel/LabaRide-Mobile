@@ -1100,7 +1100,7 @@ async function clickText(text) {
     for (const width of [390,1440]) {
       publicBoardJobs.splice(2); boardOnline=true;
       await visit('/rider',width,'2 jobs');
-      await waitFor('document.querySelector("[data-testid=rider-dashboard-tab]")?.innerText.includes("2")');
+      await waitFor('document.querySelector("[data-testid=rider-available-tab]")?.innerText.includes("2")');
       if (width===390) {
         await waitFor('document.body.innerText.includes("2 new jobs available")');
         await clickText('Dismiss notification');
@@ -1109,35 +1109,35 @@ async function clickText(text) {
       publicBoardJobs.push({...publicBoardJobs[0],id:90});
       await clickText('Refresh jobs');
       if(width===390) await waitFor('document.body.innerText.includes("New job available")');
-      await waitFor('document.querySelector("[data-testid=rider-dashboard-tab]")?.innerText.includes("3")');
+      await waitFor('document.querySelector("[data-testid=rider-available-tab]")?.innerText.includes("3")');
       if(width===390) { await clickText('Dismiss notification'); await waitFor('!document.querySelector("[data-testid=toast-info]")'); }
       await clickText('Refresh jobs'); await pause(400);
       assert.equal(await evaluate('!!document.querySelector("[data-testid=toast-info]")'),false,'Refresh does not repeat alerts');
       for(let index=0;index<8;index++) publicBoardJobs.push({...publicBoardJobs[0],id:100+index});
       await clickText('Refresh jobs');
-      await waitFor('document.querySelector("[data-testid=rider-dashboard-tab]")?.innerText.includes("9+")');
+      await waitFor('document.querySelector("[data-testid=rider-available-tab]")?.innerText.includes("9+")');
       if(width===390) { await waitFor('document.body.innerText.includes("8 new jobs available")'); await clickText('View jobs'); }
       await waitFor('location.pathname==="/rider"');
       publicBoardJobs.splice(2); await clickText('Refresh jobs');
-      await waitFor('document.querySelector("[data-testid=rider-dashboard-tab]")?.innerText.includes("2")');
+      await waitFor('document.querySelector("[data-testid=rider-available-tab]")?.innerText.includes("2")');
     }
     assert.deepEqual(errors,[]);
     assert.ok(await evaluate('!!document.querySelector("[data-testid=new-job-badge-42]")'));
     await clickText('View pickup job #42');
     await waitFor('!!document.querySelector("[data-testid=rider-dashboard-panel]")');
     assert.equal(await evaluate('!!document.querySelector("[data-testid=new-job-badge-42]")'),false);
-    await waitFor('document.querySelector("[data-testid=rider-dashboard-badge]")?.innerText==="1"');
+    await waitFor('document.querySelector("[data-testid=rider-available-badge]")?.innerText==="1"');
     await clickText('Close Pickup · Order #42');
     await waitFor('!document.querySelector("[data-testid=rider-dashboard-panel]")');
     await clickText('View delivery job #43');
     await waitFor('!!document.querySelector("[data-testid=rider-dashboard-panel]")');
-    await waitFor('!document.querySelector("[data-testid=rider-dashboard-badge]")');
+    await waitFor('!document.querySelector("[data-testid=rider-available-badge]")');
     await clickText('Close Delivery · Order #43');
     await waitFor('!document.querySelector("[data-testid=rider-dashboard-panel]")');
     await pause(300);
     await visit('/rider',390,'2 jobs');
     assert.equal(await evaluate('document.querySelectorAll("[data-testid^=new-job-badge-]").length'),0,'Viewed cards remain read after reload');
-    assert.ok(!(await evaluate('document.querySelector("[data-testid=rider-dashboard-tab]").innerText')).includes('2'),'Dashboard badge clears after viewing every job');
+    assert.ok(!(await evaluate('document.querySelector("[data-testid=rider-available-tab]").innerText')).includes('2'),'Available Jobs badge clears after viewing every job');
     console.log('PASS rider new-job toasts, read state, persistent card badges, unseen Dashboard count and 9+ cap');
     return;
   }

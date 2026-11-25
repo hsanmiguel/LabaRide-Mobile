@@ -3,6 +3,7 @@ import { addressSchema } from './address.validator';
 
 export const createTransactionSchema = z.object({
   body: z.object({
+    deliveryQuoteId: z.string().uuid().optional(),
     shopId: z.number().int().positive(),
     serviceName: z.string().min(1),
     serviceIds: z.array(z.number().int().positive()).min(1).refine(

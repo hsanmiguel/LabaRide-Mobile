@@ -10,10 +10,10 @@ export function RiderOverviewDashboardDesign() {
       <RiderPerformanceOverview />
       <Card style={{ gap: 12 }}>
         <Txt style={styles.heading}>Ready for your next trip?</Txt>
-        <Txt style={styles.muted}>Open Available Jobs to go online, browse pickups and deliveries, and claim a job. Your accepted assignments stay in My Jobs.</Txt>
+        <Txt style={styles.muted}>Go online, accept a pickup or delivery, and follow the trip steps in My deliveries. Each trip ends at its destination; you do not wait while laundry is washed.</Txt>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-          <Button title="Browse available jobs" onPress={() => router.push('/rider/available')} />
-          <Button title="Open my jobs" outline onPress={() => router.push('/rider/jobs')} />
+          <Button title="Browse order requests" onPress={() => router.push('/rider/available')} />
+          <Button title="Open my deliveries" outline onPress={() => router.push('/rider/jobs')} />
         </View>
       </Card>
     </View>

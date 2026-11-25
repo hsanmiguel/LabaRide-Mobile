@@ -2,7 +2,13 @@ export type InterfaceRole = "customer" | "shop" | "rider" | "admin";
 
 const shared = {
   ink: "#202033", white: "#FFFFFF", muted: "#626B7D",
-  success: "#16865C", successInk: "#126B49", warning: "#9A5700", danger: "#BC3030",
+  // Status colors stay consistent across roles; the role hue is reserved for
+  // navigation, selection, and primary actions.
+  success: "#16865C", successInk: "#126B49", successSoft: "#EAF6EF",
+  warning: "#8A4B08", warningSoft: "#FFF4DE",
+  danger: "#B42318", dangerSoft: "#FEF0EE",
+  info: "#2457AD", infoSoft: "#EDF4FF",
+  input: "#FFFFFF", inputSoft: "#F7F8FA", inputBorder: "#7A8494",
 };
 
 export const themes = {

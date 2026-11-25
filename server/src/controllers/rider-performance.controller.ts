@@ -11,7 +11,7 @@ export class RiderPerformanceController {
       const jobs = await prisma.deliveryAssignment.findMany({ where: { riderId: req.user.userId,
         OR: [{ updatedAt: { gte: new Date(Date.now() - 30 * 86400000) } }, { status: { in: ['Offered', 'Accepted'] } }] },
         select: { id: true, riderId: true, transactionId: true, stage: true, status: true, createdAt: true, updatedAt: true,
-          acceptedAt: true, completedAt: true, transaction: { select: { kiloAmount: true, shop: { select: { shopName: true } },
+          acceptedAt: true, completedAt: true, transaction: { select: { kiloAmount: true, deliveryPricing: true, shop: { select: { shopName: true } },
             events: { where: { actorId: req.user.userId, action: { in: ['JobClaimed', 'AssignmentAccepted', 'droppedOff', 'delivered', 'HandoffReceived'] } },
               select: { action: true, toStatus: true, actorId: true, createdAt: true, detail: true } } } } } });
       res.setHeader('Cache-Control', 'private, no-store');

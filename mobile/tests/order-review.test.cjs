@@ -41,7 +41,7 @@ function elements(element, type) {
   return [...(element.type === type || element.type?.name === type ? [element] : []), ...elements(element.props.children, type)];
 }
 
-function harness({ guest = false, request, failure, saved = [], storageFailure, clock = Date.parse('2026-10-22T02:00:00Z') } = {}) {
+function harness({ guest = false, request, failure, saved = [], storageFailure, quoteFailure = false, quoteExpired = false, clock = Date.parse('2026-10-22T02:00:00Z') } = {}) {
   let index = 0;
   const hooks = [], calls = [], navigation = [], invalidations = [];
   const addressWrites = [];
@@ -83,7 +83,7 @@ function harness({ guest = false, request, failure, saved = [], storageFailure, 
     setTimeout: (callback, delay) => scheduleTimer(callback, delay),
     setInterval: (callback, delay) => scheduleTimer(callback, delay, true),
     clearTimeout: id => timers.delete(id), clearInterval: id => timers.delete(id),
-    useCallback: callback => callback, useFocusEffect: effect => { blur = effect(); },
+    useEffect: () => {}, useCallback: callback => callback, useFocusEffect: effect => { blur = effect(); },
     address: addressHelpers.formatAddress,
     useState(initial) {
       const slot = index++;
@@ -96,7 +96,7 @@ function harness({ guest = false, request, failure, saved = [], storageFailure, 
       return hooks[slot];
     },
     useLaundryDraft: () => draft, useAuthStore: selector => selector({ user: guest ? null : profile }),
-    useProfile: () => ({ data: guest ? undefined : profile }), useQuery: () => ({ data: storedAddresses }),
+    useProfile: () => ({ data: guest ? undefined : profile }), useQuery: options => options.queryKey[0] === 'delivery-quote' ? { data: quoteFailure ? undefined : { id: 'fee-quote', expiresAt: new Date(quoteExpired ? 0 : now + 1800000).toISOString(), pricing: { deliveryFee: 30, pickupKm: 1, returnKm: 2, distanceKm: 3 } }, isError: quoteFailure, isFetching: false, error: quoteFailure ? new Error('No road route') : undefined, refetch: async () => {} } : ({ data: storedAddresses }),
     AsyncStorage: {
       getItem: async key => { assert.equal(key, 'labaride-addresses:1'); return JSON.stringify(storedAddresses); },
       setItem: async (key, value) => {
@@ -128,6 +128,24 @@ function harness({ guest = false, request, failure, saved = [], storageFailure, 
   return { render, button, menu, place, draft, profile, context, calls, navigation, invalidations, addressWrites, advance, leave: () => blur?.(),
     error: () => elements(render().props.footer, 'FormError')[0].props.error };
 }
+
+test('checkout blocks booking without a road quote or after its expiry', async () => {
+  for (const options of [{ quoteFailure: true }, { quoteExpired: true }]) {
+    const app = harness(options);
+    await app.place();
+    await app.advance(6000);
+    assert.equal(app.calls.length, 0);
+    assert.match(app.error(), /delivery fee/);
+  }
+});
+
+test('checkout submits the reviewed delivery quote with the confirmed combined fee', async () => {
+  const app = harness();
+  await app.place(); await app.advance(5000);
+  assert.equal(app.calls.length, 1);
+  assert.equal(app.calls[0].body.deliveryQuoteId, 'fee-quote');
+  assert.equal(app.calls[0].body.deliveryFee, 30);
+});
 
 test('summary is the checkout form with all booking details and a direct Place Order action', () => {
   const app = harness();

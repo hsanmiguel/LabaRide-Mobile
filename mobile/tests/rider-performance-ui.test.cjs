@@ -20,14 +20,14 @@ function ui(context) {
 }
 test('dashboard shows rider averages with sample counts and a seven-day chart on phone and desktop', () => {
   for (const width of [390, 1440]) {
-    const data = { completed: 8, failed: 2, completionRate: 80, active: 1, averagePickup: { minutes: 15, samples: 3 }, averageDelivery: { minutes: 20, samples: 5 },
+    const data = { pickupEarnings: 150, returnEarnings: 250, completed: 8, failed: 2, completionRate: 80, active: 1, averagePickup: { minutes: 15, samples: 3 }, averageDelivery: { minutes: 20, samples: 5 },
       averageJobsPerDay: 0.3, averageKilosPerJob: 6, pickups: 3, deliveries: 5,
       week: Array.from({ length: 7 }, (_, i) => ({ date: `2026-11-0${i + 1}`, label: 'Mon', completed: i })), recent: [] };
-    const context = ui({ useAuthStore: select => select({ user: { id: 7, isRider: true } }), useWindowDimensions: () => ({ width }),
+    const context = ui({ money: value => 'PHP ' + value.toFixed(2), useAuthStore: select => select({ user: { id: 7, isRider: true } }), useWindowDimensions: () => ({ width }),
       useQuery: options => { assert.equal(options.queryKey[2], 7); return { data }; }, minutes: value => value == null ? '—' : `${value.toFixed(1)} min` });
     const render = component('RiderPerformanceOverview.tsx', 'RiderPerformanceOverview', context);
     const tree = render(), text = elements(tree, 'Txt').map(item => item.props.children);
-    for (const value of ['80%', '15.0 min', '20.0 min', 'Average pickup time', 'Average delivery time']) assert.ok(text.includes(value));
+    for (const value of ['80%', '15.0 min', '20.0 min', 'Average pickup time', 'Average delivery time', 'PHP 150.00', 'PHP 250.00']) assert.ok(text.includes(value));
     assert.equal(elements(tree, 'View').filter(item => item.props.accessibilityLabel?.includes('completed jobs')).length, 7);
   }
 });

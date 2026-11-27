@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
 import { Bike, ChevronRight, Clock3, MapPin, Menu, Package, RefreshCw, SlidersHorizontal } from 'lucide-react-native';
-import { api, confirmAction, message } from './data';
+import { api, message } from './data';
 import { useAuthStore } from '../store/authStore';
 import { useLogout } from './useLogout';
 import { RiderLocationSharingControl } from './RiderLocationSharing';
@@ -80,8 +80,6 @@ export function RiderAvailableJobsDesign() {
     if (pending.current || !canClaim) return;
     pending.current = true; setClaimingId(job.id); setError(''); setPanel(null);
     try {
-      const confirmed = await confirmAction(`Accept ${job.stage.toLowerCase()} job #${job.id}?`, `Collect from ${job.pickupArea} and take the laundry to ${job.dropoffArea}. Accept this trip and follow the collection and delivery steps in My deliveries.`, { confirmLabel: 'Accept job' });
-      if (!confirmed) return;
       setBusy(true);
       await api.put(`/delivery/orders/${job.id}/claim`, { stage: job.stage, expectedVersion: job.workflowVersion });
       await refreshAll();

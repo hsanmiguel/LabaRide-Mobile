@@ -67,7 +67,7 @@ export function AppDialogHost({ blurTarget }: { blurTarget?: RefObject<View | nu
           transform: [{ scale: opacity.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1] }) }] }}>
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 20 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: current.destructive ? "#FFF1F0" : palette.soft,
+            <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: current.destructive ? palette.dangerSoft : palette.soft,
               alignItems: "center", justifyContent: "center" }}><Icon size={25} color={accent} strokeWidth={1.8} /></View>
             <Pressable ref={confirmation ? undefined : safeAction} accessibilityRole="button" accessibilityLabel="Close dialog" disabled={disabled} onPress={cancel}
               style={({ pressed }) => ({ width: 44, height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center", opacity: disabled ? 0.4 : 1, backgroundColor: pressed ? palette.soft : "white" })}>
@@ -78,7 +78,7 @@ export function AppDialogHost({ blurTarget }: { blurTarget?: RefObject<View | nu
             <Txt nativeID="app-dialog-title" accessibilityRole="header" style={{ fontSize: 23, lineHeight: 31, fontWeight: "700", color: palette.ink }}>{current.title}</Txt>
             <Txt nativeID="app-dialog-message" style={{ color: palette.muted, lineHeight: 24 }}>{current.message}</Txt>
           </View>
-          {!!current.error && <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ padding: 12, borderRadius: 10, backgroundColor: "#FFF1F0" }}>
+          {!!current.error && <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={{ padding: 12, borderRadius: 10, backgroundColor: palette.dangerSoft }}>
             <Txt style={{ color: palette.danger, fontSize: 13, lineHeight: 21 }}>{current.error}</Txt>
           </View>}
           <View style={{ flexDirection: width < 400 ? "column" : "row", gap: 12, paddingTop: 4 }}>

@@ -21,7 +21,7 @@ export function FormError({ error }: { error?: string | null }) {
   const palette = usePalette();
   if (!error) return null;
   return <View accessibilityRole="alert" accessibilityLiveRegion="assertive"
-    style={{ padding: 14, borderRadius: 10, backgroundColor: "#FFF1F2", marginVertical: 12 }}>
+    style={{ padding: 14, borderRadius: 10, backgroundColor: palette.dangerSoft, marginVertical: 12 }}>
     <Txt style={{ color: palette.danger }}>{error}</Txt>
   </View>;
 }

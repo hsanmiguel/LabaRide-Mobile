@@ -13,8 +13,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
-import { ArrowRight, Bike, CheckCircle2, WashingMachine, Sparkles } from "lucide-react-native";
-import { type Href, router } from "expo-router";
+import { ArrowRight, Bike, CheckCircle2, WashingMachine, Sparkles, Store } from "lucide-react-native";
+import { type Href, router, useLocalSearchParams } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "../store/authStore";
 import {
@@ -81,29 +81,19 @@ export function OnboardingScreen({ how = false }: { how?: boolean }) {
             style={{ width: "100%", height: "100%" }}
           />
         </View>
-        <View style={[styles.between, { paddingBottom: 40 }]}>
-          <Pressable accessibilityRole="button" onPress={() => router.replace("/(auth)/login")}>
-            <Txt style={{ color: "rgba(255,255,255,.7)", fontSize: 16 }}>
-              Skip
-            </Txt>
-          </Pressable>
-          <Pressable accessibilityRole="button"
-            accessibilityLabel={how ? "Continue to login" : "How it works"}
-            onPress={() =>
-              how ? router.replace("/(auth)/login") : go("how-it-works")
-            }
-            style={{
-              width: 50,
-              height: 50,
-              borderRadius: 25,
-              backgroundColor: "white",
-              alignItems: "center",
-              justifyContent: "center",
-              elevation: 5,
-            }}
-          >
-            <ArrowRight size={24} color={palette.welcome} />
-          </Pressable>
+        <View style={{ gap: 10, paddingBottom: 28 }}>
+          <Button title="Browse shops" color="white" textColor={palette.primary} onPress={() => router.replace("/(user)/home")} />
+          <View style={[styles.between, { flexWrap: "wrap", justifyContent: "center" }]}>
+            <Pressable accessibilityRole="button" onPress={() => router.push("/(auth)/login")} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }}>
+              <Txt style={{ color: "rgba(255,255,255,.9)", fontSize: 13 }}>Sign in or create an account</Txt>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: "/(auth)/login", params: { intent: "shop" } })} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }}>
+              <Txt style={{ color: "rgba(255,255,255,.9)", fontSize: 13 }}>Register a laundry shop</Txt>
+            </Pressable>
+            {!how && <Pressable accessibilityRole="button" onPress={() => go("how-it-works")} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }}>
+              <Txt style={{ color: "rgba(255,255,255,.7)", fontSize: 13 }}>How it works</Txt>
+            </Pressable>}
+          </View>
         </View>
       </View>
     </SafeAreaView>
@@ -150,8 +140,12 @@ export function SplashDesign() {
   );
 }
 export function LoginDesign({ initialSignup = false, initialRecovery = false }: { initialSignup?: boolean; initialRecovery?: boolean } = {}) {
+  const params = useLocalSearchParams<{ intent?: string; returnShopId?: string }>();
+  const returnShopId = /^\d+$/.test(params.returnShopId || "") ? params.returnShopId : undefined;
+  const initialShopSignup = params.intent === "shop";
   const [recoveringPassword, setRecoveringPassword] = useState(initialRecovery);
-  const [creatingAccount, setCreatingAccount] = useState(initialSignup);
+  const [creatingAccount, setCreatingAccount] = useState(initialSignup || initialShopSignup);
+  const [shopSignup, setShopSignup] = useState(initialShopSignup);
   const { width } = useWindowDimensions();
   const wide = width >= 900;
   const palette = usePalette();
@@ -173,7 +167,13 @@ export function LoginDesign({ initialSignup = false, initialRecovery = false }: 
       );
       cache.clear();
       await setAuth(result.user, result.token);
-      router.replace(result.user.isAdmin ? "/admin" : result.user.isRider ? "/rider" : result.user.riderApplicationStatus ? "/rider-application" as Href : result.user.isShopOwner ? "/shop/home" : "/(user)/home");
+      if (result.user.isAdmin) router.replace("/admin");
+      else if (result.user.isRider) router.replace("/rider");
+      else if (result.user.riderApplicationStatus) router.replace("/rider-application" as Href);
+      else if (result.user.isShopOwner) router.replace("/shop/home");
+      else if (params.intent === "shop") replaceFlow("register-shop");
+      else if (returnShopId) router.replace({ pathname: "/(user)/shops/[id]", params: { id: returnShopId } });
+      else router.replace("/(user)/home");
     } catch (error) {
       toast.error({ title: "Couldn't sign in", message: message(error) });
     } finally {
@@ -210,17 +210,17 @@ export function LoginDesign({ initialSignup = false, initialRecovery = false }: 
                 </View>
               </View>
               <View style={{ marginTop: 24, marginBottom: 24 }}>
-                <Txt accessibilityRole="header" style={{ fontSize: 32, fontWeight: "700", color: palette.ink, letterSpacing: -0.8 }}>{recoveringPassword ? "Forgot password?" : creatingAccount ? "Create an account." : "Welcome back."}</Txt>
-                <Txt style={{ color: palette.muted, marginTop: 8, lineHeight: 22 }}>{recoveringPassword ? "Enter your email to reset your password." : creatingAccount ? "Get started with a fresher laundry day." : "Sign in to make your next laundry day easier."}</Txt>
+                <Txt accessibilityRole="header" style={{ fontSize: 32, fontWeight: "700", color: palette.ink, letterSpacing: -0.8 }}>{recoveringPassword ? "Forgot password?" : creatingAccount ? shopSignup ? "Create a shop owner account." : "Create an account." : "Welcome back."}</Txt>
+                <Txt style={{ color: palette.muted, marginTop: 8, lineHeight: 22 }}>{recoveringPassword ? "Enter your email to reset your password." : creatingAccount ? shopSignup ? "Create your account, then add your laundry shop details." : "Start with the basics. You can add your address when you place an order." : returnShopId ? "Sign in to continue to this laundry shop." : "Sign in to make your next laundry day easier."}</Txt>
               </View>
               <View accessibilityRole="tablist" style={{ flexDirection: "row", backgroundColor: palette.surface, borderRadius: 12, padding: 4, marginBottom: 24, borderWidth: 1, borderColor: palette.line }}>
-                {[false, true].map(signup => <Pressable key={String(signup)} accessibilityRole="tab" accessibilityState={{ selected: creatingAccount === signup }} onPress={() => { setCreatingAccount(signup); setRecoveringPassword(false); }} style={{ flex: 1, minHeight: 44, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: creatingAccount === signup ? "white" : "transparent" }}><Txt style={{ color: creatingAccount === signup ? palette.primary : palette.muted, fontSize: 13, fontWeight: creatingAccount === signup ? "600" : "400" }}>{signup ? "Create account" : "Sign in"}</Txt></Pressable>)}
+                {[false, true].map(signup => <Pressable key={String(signup)} accessibilityRole="tab" accessibilityState={{ selected: creatingAccount === signup }} onPress={() => { setCreatingAccount(signup); setShopSignup(false); setRecoveringPassword(false); }} style={{ flex: 1, minHeight: 44, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: creatingAccount === signup ? "white" : "transparent" }}><Txt style={{ color: creatingAccount === signup ? palette.primary : palette.muted, fontSize: 13, fontWeight: creatingAccount === signup ? "600" : "400" }}>{signup ? "Create account" : "Sign in"}</Txt></Pressable>)}
               </View>
               {recoveringPassword ? <View>
                 <Field label="Email address" placeholder="you@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
                 <Button title="Reset Password" onPress={() => unavailable("Password recovery")} />
                 <Pressable accessibilityRole="button" onPress={() => { setRecoveringPassword(false); setCreatingAccount(false); }} style={{ minHeight: 48, alignItems: "center", justifyContent: "center", marginTop: 16 }}><Txt style={{ color: palette.primary, fontWeight: "600" }}>Back to sign in</Txt></Pressable>
-              </View> : creatingAccount ? <SignupForm /> : <>
+              </View> : creatingAccount ? <SignupForm shopSignup={shopSignup} returnShopId={returnShopId} /> : <>
               <Field
                 label="Email address"
                 appearance="outlined"
@@ -272,7 +272,7 @@ export function LoginDesign({ initialSignup = false, initialRecovery = false }: 
                 ]}
               >
                 <Txt style={styles.muted}>Don't have an account?</Txt>
-                <Pressable accessibilityRole="button" onPress={() => setCreatingAccount(true)}>
+                <Pressable accessibilityRole="button" onPress={() => { setCreatingAccount(true); setShopSignup(false); }}>
                   <Txt style={{ color: palette.primary, fontWeight: "600" }}>
                     Sign Up
                   </Txt>
@@ -289,6 +289,12 @@ export function LoginDesign({ initialSignup = false, initialRecovery = false }: 
               </Pressable>
               </View>
               </>}
+              <View style={{ gap: 10, marginTop: 18 }}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Register a laundry shop" onPress={() => { setCreatingAccount(true); setShopSignup(true); setRecoveringPassword(false); }} style={{ minHeight: 48, flexDirection: "row", alignItems: "center", gap: 10, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: palette.line }}>
+                  <Store size={19} color={palette.primary} /><Txt style={{ color: palette.primary, fontWeight: "600" }}>Register a laundry shop</Txt>
+                </Pressable>
+                <Pressable accessibilityRole="button" onPress={() => router.replace("/(user)/home")} style={{ minHeight: 44, alignItems: "center", justifyContent: "center" }}><Txt style={{ color: palette.muted, fontSize: 13 }}>Browse shops without an account</Txt></Pressable>
+              </View>
               <Txt style={{ textAlign: "center", color: palette.muted, fontSize: 11, marginTop: 24, paddingTop: 18, borderTopWidth: 1, borderTopColor: palette.line }}>Fresh clothes. More time for you.</Txt>
               </View>
             </View>
@@ -301,7 +307,7 @@ export function LoginDesign({ initialSignup = false, initialRecovery = false }: 
 export function SignupDesign() {
   return <LoginDesign initialSignup />;
 }
-function SignupForm() {
+function SignupForm({ shopSignup, returnShopId }: { shopSignup: boolean; returnShopId?: string }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -320,7 +326,9 @@ function SignupForm() {
         { name: name.trim(), email: email.trim(), password, confirmPassword },
       );
       await useAuthStore.getState().setAuth(result.user, result.token);
-      go("user-details");
+      if (shopSignup) replaceFlow("register-shop");
+      else if (returnShopId) router.replace({ pathname: "/(user)/shops/[id]", params: { id: returnShopId } });
+      else router.replace("/(user)/home");
     } catch (error) {
       setError(message(error));
     } finally {

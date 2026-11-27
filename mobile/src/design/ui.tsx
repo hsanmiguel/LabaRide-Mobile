@@ -81,7 +81,7 @@ export function Field({ label, password = false, suffix, style, appearance = "ou
   const [focused, setFocused] = useState(false);
   return <View style={{ gap: compact ? 4 : 8, marginBottom: compact ? 0 : 16 }}>
     {!!label && <Txt style={{ fontWeight: "500", ...(compact ? { fontSize: 12, lineHeight: 18 } : {}) }}>{label}</Txt>}
-    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: appearance === "soft" ? "#FAFAFA" : "white", borderRadius: 12, borderWidth: 1, borderColor: focused ? palette.primary : appearance === "soft" ? "#F1F1F1" : "#8A94A6" }}>
+    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: appearance === "soft" ? palette.inputSoft : palette.input, borderRadius: 12, borderWidth: 1, borderColor: focused ? palette.primary : appearance === "soft" ? palette.line : palette.inputBorder }}>
       <TextInput accessibilityLabel={label || props.placeholder} {...props} secureTextEntry={password && !visible}
         onFocus={event => { setFocused(true); props.onFocus?.(event); }} onBlur={event => { setFocused(false); props.onBlur?.(event); }}
         placeholderTextColor={palette.muted} style={[{ flex: 1, minWidth: 0, minHeight: compact ? 44 : 48, paddingHorizontal: compact ? 10 : 16, paddingVertical: compact ? 10 : 12,

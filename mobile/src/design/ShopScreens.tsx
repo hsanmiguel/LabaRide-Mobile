@@ -173,6 +173,7 @@ export function RegisterShopDesign() {
           <Field key={key} label={label} value={values[key]} onChangeText={value => setValues(current => ({ ...current, [key]: value }))} />)}
         <Section title="Shop Address" />
         <AddressFields values={values} setValues={setValues} />
+        <Txt style={styles.muted}>The map pin is optional when you submit your application, but an admin must review it before approving your shop.</Txt>
         <Section title="Business Hours" />
         <View style={styles.row}>
           {[["openingTime", "Opening Time *", "08:00"], ["closingTime", "Closing Time *", "18:00"]].map(([key, label, initialValue]) =>

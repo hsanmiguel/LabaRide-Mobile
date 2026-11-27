@@ -3,13 +3,13 @@ import { useAuthStore } from "../store/authStore";
 
 // Admin sessions have their own panel, including direct links and browser Back.
 export function PanelAccess() {
-  const user = useAuthStore(state => state.user);
   const isAdmin = useAuthStore(state => state.user?.isAdmin);
   const isRider = useAuthStore(state => state.user?.isRider);
   const application = useAuthStore(state => state.user?.riderApplicationStatus);
   return <Stack screenOptions={{ headerShown: false }}>
     <Stack.Screen name="(auth)/login" />
-    <Stack.Protected guard={!!user && !isAdmin && !isRider && !application}>
+    {/* Guest customers can browse shops; authenticated-only screens handle their own redirects. */}
+    <Stack.Protected guard={!isAdmin && !isRider && !application}>
       <Stack.Screen name="(user)" />
       <Stack.Screen name="shop" />
     </Stack.Protected>

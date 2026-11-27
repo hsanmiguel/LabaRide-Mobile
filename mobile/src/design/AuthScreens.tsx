@@ -37,9 +37,13 @@ import { signupError, validBirthdate } from "./form-values";
 
 export function OnboardingScreen({ how = false }: { how?: boolean }) {
   const palette = usePalette();
+  const { width } = useWindowDimensions();
+  const desktop = width >= 900;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: palette.welcome }}>
-      <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 60 }}>
+      <View style={{ flex: 1, width: "100%", maxWidth: 1240, alignSelf: "center", paddingHorizontal: desktop ? 64 : 24, paddingTop: desktop ? 72 : 60, paddingBottom: 20 }}>
+       <View style={{ flex: 1, flexDirection: desktop ? "row" : "column", alignItems: desktop ? "center" : "stretch", gap: desktop ? 52 : 0 }}>
+        <View style={{ flex: desktop ? 1 : undefined, minWidth: 0 }}>
         <Txt
           style={{
             color: "white",
@@ -75,14 +79,13 @@ export function OnboardingScreen({ how = false }: { how?: boolean }) {
             Find local laundry shops and manage your laundry in one place.
           </Txt>
         )}
-        <View style={{ flex: 1, marginVertical: 40, justifyContent: "center" }}>
-          <Asset
-            name={how ? "how.png" : "welcome.png"}
-            style={{ width: "100%", height: "100%" }}
-          />
         </View>
-        <View style={{ gap: 10, paddingBottom: 28 }}>
-          <Button title="Browse shops" color="white" textColor={palette.primary} onPress={() => router.replace("/(user)/home")} />
+        <View style={{ flex: 1, minHeight: desktop ? 420 : 220, marginVertical: desktop ? 0 : 24, justifyContent: "center", alignItems: "center" }}>
+          <Asset name={how ? "how.png" : "welcome.png"} style={{ width: "100%", height: desktop ? 480 : 260, maxWidth: desktop ? 560 : 440, flexGrow: 0 }} />
+        </View>
+       </View>
+        <View style={{ gap: 10, paddingBottom: desktop ? 12 : 0, alignItems: desktop ? "flex-start" : "stretch" }}>
+          <Button title="Browse shops" color="white" textColor={palette.primary} style={{ width: desktop ? 240 : "100%", minHeight: 54, borderRadius: 14 }} onPress={() => router.push("/(user)/home")} />
           <View style={[styles.between, { flexWrap: "wrap", justifyContent: "center" }]}>
             <Pressable accessibilityRole="button" onPress={() => router.push("/(auth)/login")} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }}>
               <Txt style={{ color: "rgba(255,255,255,.9)", fontSize: 13 }}>Sign in or create an account</Txt>

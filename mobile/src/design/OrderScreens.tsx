@@ -327,15 +327,41 @@ export function CheckoutDesign() {
             {!!addressError(customerAddress) && <FormError error="Tap Edit address & map pin to complete your address." />}
             {(draft.deliveryType === "Deliver" || draft.collectionMethod === "ShopPickup") && customerAddress && <DeliveryDetails value={customerAddress} />}
           </View>}
+          <View>
           <PriceRow label="Contact Number" value={profile.data?.phone || "Not provided"} />
           {!!user?.email && <PriceRow label="Email" value={user.email} />}
+          </View>
           {(draft.shop?.services?.filter(item => draft.serviceIds.includes(item.id)) || []).map(item => (
-            <View key={item.id} style={{ gap: 4, paddingVertical: 8 }}>
+            <View key={item.id} style={{ gap: 4 }}>
               <Txt style={{ color: palette.navy, fontWeight: "600" }}>{item.serviceName}</Txt>
               <Txt style={styles.muted}>{servicePriceLabel(item)}</Txt>
             </View>
           ))}
           {!draft.serviceIds.length && <Txt style={{ color: palette.navy }}>{draft.service.serviceName}: {servicePriceLabel(draft.service)}</Txt>}
+        </Card>
+        <Card>
+          <Section title="Laundry Weight" />
+          <Field
+            placeholder="Enter weight in kilos"
+            keyboardType="decimal-pad"
+            suffix="kg"
+            value={draft.kilos}
+            onChangeText={(kilos) => draft.set({ kilos })}
+          />
+          {!!draft.kilos && <FormError error={totals.kilos === null ? "Enter a weight above 0 kg with up to two decimal places." : totals.pricingError} />}
+          {totals.kilos !== null && totals.rate !== null && (
+            <Txt style={styles.muted}>Shop rate: {money(totals.rate)} per kg</Txt>
+          )}
+          {totals.packageLoads.map((item, index) => (
+            <Txt key={index} style={styles.muted}>
+              {item.serviceName}: {money(item.price)} per load of up to {item.packageKilos} kg
+              {item.loads !== null && !totals.pricingError ? ` · ${item.loads} ${item.loads === 1 ? "load" : "loads"}` : ""}
+            </Txt>
+          ))}
+          {totals.kilos !== null && totals.packageLoads.some(item => item.loads !== null && item.loads > 1) &&
+            <Txt style={{ color: palette.warning, fontSize: 12, lineHeight: 18 }}>This weight is priced as multiple loads.</Txt>}
+          {needsDelivery && totals.kilos !== null && totals.kilos > 1 &&
+            <Txt style={{ color: palette.warning, fontSize: 12, lineHeight: 18 }}>For larger rider deliveries, confirm vehicle capacity with the shop. Vehicle capacity is not configured in the app.</Txt>}
         </Card>
         <Card>
           <Section title="Pickup & Delivery Options" />
@@ -379,30 +405,6 @@ export function CheckoutDesign() {
             {quote.isError && <FormError error={message(quote.error)} />}
             <Button title="Refresh delivery quote" compact outline busy={quote.isFetching} onPress={() => { void quote.refetch(); }} />
           </View>}
-        </Card>
-        <Card>
-          <Section title="Laundry Weight" />
-          <Field
-            placeholder="Enter weight in kilos"
-            keyboardType="decimal-pad"
-            suffix="kg"
-            value={draft.kilos}
-            onChangeText={(kilos) => draft.set({ kilos })}
-          />
-          {!!draft.kilos && <FormError error={totals.kilos === null ? "Enter a weight above 0 kg with up to two decimal places." : totals.pricingError} />}
-          {totals.kilos !== null && totals.rate !== null && (
-            <Txt style={styles.muted}>Shop rate: {money(totals.rate)} per kg</Txt>
-          )}
-          {totals.packageLoads.map((item, index) => (
-            <Txt key={index} style={styles.muted}>
-              {item.serviceName}: {money(item.price)} per load of up to {item.packageKilos} kg
-              {item.loads !== null && !totals.pricingError ? ` · ${item.loads} ${item.loads === 1 ? "load" : "loads"}` : ""}
-            </Txt>
-          ))}
-          {totals.kilos !== null && totals.packageLoads.some(item => item.loads !== null && item.loads > 1) &&
-            <Txt style={{ color: palette.warning, fontSize: 12, lineHeight: 18 }}>This weight is priced as multiple loads.</Txt>}
-          {needsDelivery && totals.kilos !== null && totals.kilos > 1 &&
-            <Txt style={{ color: palette.warning, fontSize: 12, lineHeight: 18 }}>For larger rider deliveries, confirm vehicle capacity with the shop. Vehicle capacity is not configured in the app.</Txt>}
         </Card>
         <Card>
           <Section title="Turnaround & Updates" />

@@ -403,7 +403,6 @@ export function CheckoutDesign() {
           {needsDelivery && <View style={{ gap: 8 }}>
             {quote.data && <Txt style={styles.muted}>Estimated delivery fee: {money(quote.data.pricing.deliveryFee)}</Txt>}
             {quote.isError && <FormError error={message(quote.error)} />}
-            <Button title="Refresh delivery quote" compact outline busy={quote.isFetching} onPress={() => { void quote.refetch(); }} />
           </View>}
         </Card>
         <Card>
@@ -442,7 +441,6 @@ export function CheckoutDesign() {
             <Txt style={styles.muted}>One combined fee covers your selected pickup and return trips. The fee is confirmed when you place the order.</Txt>
             {quote.data && <Txt style={styles.muted}>Pickup: {quote.data.pricing.pickupKm.toFixed(2)} km. Return: {quote.data.pricing.returnKm.toFixed(2)} km by road.</Txt>}
             {quote.isError && <FormError error={message(quote.error)} />}
-            <Button title="Refresh delivery quote" compact outline busy={quote.isFetching} onPress={() => { cancelCountdown(); void quote.refetch(); }} />
           </View>}
         </Card>
         }

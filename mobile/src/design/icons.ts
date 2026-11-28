@@ -10,7 +10,6 @@ export const actionIcons: Record<string, typeof Check> = {
   'Confirm laundry received': Package, 'Confirm receipt': CheckCircle2,
   'Place Order': ShoppingBasket, 'Review Order': Receipt,
   'Save Changes': Save, 'Save changes': Save, 'Save delivery rates': Save,
-  'Refresh delivery quote': RefreshCw, 'Refresh performance': RefreshCw,
   'Retry loading rates': RefreshCw, 'Refresh eligible riders': RefreshCw,
   'Choose laundry photo': ImagePlus, 'Take laundry photo': Camera,
   'Save handover photo': Upload, 'View handover photo': Camera,

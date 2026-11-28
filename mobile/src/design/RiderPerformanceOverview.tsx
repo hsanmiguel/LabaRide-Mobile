@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Clock3, Package, TrendingUp } from 'lucide-react-native';
 import { api } from './data';
 import { useAuthStore } from '../store/authStore';
-import { Button, Card, Txt, styles, usePalette, money } from './ui';
+import { Card, Txt, styles, usePalette, money } from './ui';
 import { QueryState } from './UserScreens';
 
 type Performance = { pickupEarnings: number; returnEarnings: number; periodDays: number; completed: number; failed: number; completionRate: number | null; active: number;
@@ -31,7 +31,6 @@ export function RiderPerformanceOverview() {
   const max = Math.max(1, ...data.week.map(day => day.completed));
   return <View style={{ gap: 16 }}>
     <View style={styles.between}><View><Txt style={styles.heading}>Your rider performance</Txt><Txt style={styles.muted}>Last 30 days · your jobs only</Txt></View>
-      <Button title="Refresh performance" compact outline onPress={() => { void query.refetch(); }} busy={query.isFetching} />
     </View>
     <QueryState loading={false} error={query.error} retry={() => query.refetch()} />
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>

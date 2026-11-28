@@ -1,6 +1,6 @@
 import { toast } from "./toast-service";
 import { useEffect, useState, useRef } from "react";
-import { Modal, Pressable, Switch, View } from "react-native";
+import { Modal, Platform, Pressable, Switch, View, useWindowDimensions } from "react-native";
 import { ArrowLeft, ChevronRight, LogOut, Pencil } from "lucide-react-native";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -495,7 +495,9 @@ export function ChangePasswordDesign({
 }: {
   security?: boolean;
 }) {
-  const desktop = useDesktopShopSettings();
+  const shopDesktop = useDesktopShopSettings();
+  const { width } = useWindowDimensions();
+  const desktop = Platform.OS === 'web' && width >= 900;
   const palette = usePalette();
   const { go } = useFlowNavigation();
   const [current, setCurrent] = useState("");
@@ -527,7 +529,7 @@ export function ChangePasswordDesign({
       setBusy(false);
     }
   }
-  if (desktop) return <DesktopShopSettings title={security ? 'Security' : 'Change password'} description="Manage the password you use to sign in to your account." active="security">
+  if (shopDesktop) return <DesktopShopSettings title={security ? 'Security' : 'Change password'} description="Manage the password you use to sign in to your account." active="security">
     <SettingsSection title="Change Password" description="Enter your current password and choose a new password with at least 6 characters.">
       <View style={{ maxWidth: 520, gap: 16 }}>
         <Field compact label="Current Password" password placeholder="Enter current password" value={current} onChangeText={setCurrent} autoComplete="current-password" />
@@ -538,6 +540,28 @@ export function ChangePasswordDesign({
     </SettingsSection>
     {security && <SettingsSection title="Two-factor Authentication" description="An additional verification step when signing in."><View style={{ flexDirection: 'row', gap: 16, alignItems: 'center', justifyContent: 'space-between' }}><View style={{ flex: 1, gap: 4 }}><Txt style={{ fontSize: 12, fontWeight: '600', color: palette.muted }}>Not available yet</Txt><Txt style={{ fontSize: 13, color: palette.muted }}>Two-factor authentication is not available yet.</Txt></View><Switch value={false} disabled accessibilityLabel="Two-factor authentication is not available" trackColor={{ false: '#D1D5DB', true: palette.primary }} /></View></SettingsSection>}
   </DesktopShopSettings>;
+  if (desktop) return <Screen title={security ? 'Security' : 'Change Password'} background={palette.surface} maxWidth={1120}>
+    <View style={{ flex: 1, alignItems: 'center', paddingVertical: 20 }}>
+      <Card style={{ width: '100%', maxWidth: 680, padding: 28, gap: 20 }}>
+        <View style={{ gap: 5 }}>
+          <Txt style={{ fontSize: 19, lineHeight: 27, fontWeight: '700' }}>{security ? 'Account security' : 'Update your password'}</Txt>
+          <Txt style={styles.muted}>{security ? 'Change your password or review sign-in security.' : 'Enter your current password, then choose a new password with at least 6 characters.'}</Txt>
+        </View>
+        {security && <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 12, backgroundColor: palette.soft, gap: 16 }}>
+          <View style={{ flex: 1, gap: 3 }}><Txt style={{ fontWeight: '600' }}>Two-factor authentication</Txt><Txt style={styles.muted}>Not available yet.</Txt></View>
+          <Switch value={false} disabled accessibilityLabel="Two-factor authentication is not available" trackColor={{ false: '#D1D5DB', true: palette.primary }} />
+        </View>}
+        <View style={{ width: '100%', maxWidth: 520, gap: 8 }}>
+          <Field compact label="Current Password" password placeholder="Enter current password" value={current} onChangeText={setCurrent} autoComplete="current-password" />
+          <Field compact label="New Password" password placeholder="Enter new password" value={password} onChangeText={setPassword} autoComplete="new-password" />
+          {!security && <Field compact label="Confirm New Password" password placeholder="Confirm new password" value={confirm} onChangeText={setConfirm} autoComplete="new-password" />}
+        </View>
+        <View style={{ alignItems: 'flex-end', borderTopWidth: 1, borderTopColor: palette.line, paddingTop: 16 }}>
+          <Button title={security ? 'Save Changes' : 'Confirm'} busy={busy} onPress={save} style={{ minWidth: 180 }} />
+        </View>
+      </Card>
+    </View>
+  </Screen>;
   return (
     <Screen
       title={security ? "Security" : "Change Password"}

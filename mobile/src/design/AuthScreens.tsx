@@ -502,25 +502,22 @@ export function SuccessDesign({
   purple?: boolean;
 }) {
   const palette = usePalette();
+  const { width } = useWindowDimensions();
+  const desktop = width >= 900;
   return (
-    <Screen scroll={false}>
-      <View style={[styles.grow, styles.center, { gap: 20, padding: 24 }]}>
-        <Asset
-          name={purple ? "DeclineOrderIcon/purplelogo.png" : "logosplash.jpg"}
-          size={140}
-        />
-        <Txt style={[styles.title, { textAlign: "center" }]}>{title}</Txt>
-        {subtitle && (
-          <Txt style={[styles.muted, { textAlign: "center" }]}>{subtitle}</Txt>
-        )}
-        {onPress && (
-          <Button
-            title={action}
-            color={palette.navy}
-            onPress={onPress}
-            style={{ width: "100%", marginTop: 20 }}
-          />
-        )}
+    <Screen scroll={false} maxWidth={desktop ? 900 : 1200} background={palette.welcome}>
+      <View style={[styles.grow, styles.center, { padding: desktop ? 32 : 24 }]}>
+        <View style={{ width: "100%", maxWidth: desktop ? 680 : undefined, alignItems: "center", gap: 20,
+          padding: desktop ? 48 : 0, borderRadius: 24, borderWidth: desktop ? 1 : 0,
+          borderColor: palette.line, backgroundColor: desktop ? "white" : "transparent" }}>
+          {desktop && !purple
+            ? <BrandMark size={112} />
+            : <Asset name={purple ? "DeclineOrderIcon/purplelogo.png" : "logosplash.jpg"} size={desktop ? 112 : 140} />}
+          <Txt style={[styles.title, { textAlign: "center", color: desktop ? palette.ink : "white" }]}>{title}</Txt>
+          {subtitle && <Txt style={[styles.muted, { textAlign: "center", maxWidth: 520, color: desktop ? palette.muted : "rgba(255,255,255,.88)" }]}>{subtitle}</Txt>}
+          {onPress && <Button title={action} color={desktop ? palette.navy : "white"} textColor={desktop ? undefined : palette.primary} onPress={onPress}
+            style={{ width: desktop ? 240 : "100%", minHeight: 52, marginTop: desktop ? 8 : 20 }} />}
+        </View>
       </View>
     </Screen>
   );
